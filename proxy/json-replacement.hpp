@@ -4,7 +4,7 @@
 
 #include "serializer.hpp"
 
-namespace jsre
+namespace slsfs::jsre
 {
 
 enum class type_t : std::int8_t
@@ -23,7 +23,6 @@ enum class operation_t : std::int8_t
 };
 
 using key_t = pack::key_t;
-    //std::int8_t
 
 struct request
 {
@@ -40,24 +39,25 @@ struct request
     }
 };
 
-template<typename CharType> requires (sizeof (CharType) == 8/8)
+template<typename CharType>
 struct request_parser
 {
+    pack::packet_pointer pack;
     CharType const *refdata;
-    request_parser(CharType * ref): refdata {ref} {}
+    request_parser(pack::packet_pointer p): pack {p}, refdata {p->data.buf.data()} {}
 
     auto type() const -> type_t
     {
-        type_t t;
+        std::underlying_type_t<type_t> t;
         std::memcpy(&t, refdata + offsetof(request, type), sizeof(t));
-        return pack::ntoh(t);
+        return static_cast<type_t>(pack::ntoh(t));
     }
 
     auto operation() const -> operation_t
     {
-        operation_t op;
+        std::underlying_type_t<operation_t> op;
         std::memcpy(&op, refdata + offsetof(request, operation), sizeof(op));
-        return pack::ntoh(op);
+        return static_cast<operation_t>(pack::ntoh(op));
     }
 
     auto uuid() const -> key_t
@@ -88,11 +88,13 @@ struct request_parser
         return pack::ntoh(s);
     }
 
-    auto data() const -> CharType*
+    auto data() const -> const CharType*
     {
         return refdata + sizeof(request);
     }
 };
+
+
 
 } // namespace jsre
 

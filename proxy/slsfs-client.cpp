@@ -62,19 +62,19 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
 
     for (int i = 0; i < times; i++)
     {
-        pack::packet_pointer ptr = std::make_shared<pack::packet>();
+        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
-        ptr->header.type = pack::msg_t::trigger;
-        ptr->header.key = pack::key_t{
+        ptr->header.type = slsfs::pack::msg_t::trigger;
+        ptr->header.key = slsfs::pack::key_t{
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8};
 
         //std::string const payload = fmt::format("{{\"operation\": \"read\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {} }}", genpos(i), buf.size());
-        jsre::request r;
-        r.type = jsre::type_t::file;
-        r.operation = jsre::operation_t::read;
+        slsfs::jsre::request r;
+        r.type = slsfs::jsre::type_t::file;
+        r.operation = slsfs::jsre::operation_t::read;
         r.uuid = ptr->header.key;
         r.position = genpos(i);
         r.size = buf.size();
@@ -90,8 +90,8 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
         records.push_back(record([&]() {
             boost::asio::write(s, boost::asio::buffer(sendbuf->data(), sendbuf->size()));
 
-            pack::packet_pointer resp = std::make_shared<pack::packet>();
-            std::vector<pack::unit_t> headerbuf(pack::packet_header::bytesize);
+            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
             boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
             resp->header.parse(headerbuf.data());
@@ -118,19 +118,19 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
     std::list<double> records;
     for (int i = 0; i < times; i++)
     {
-        pack::packet_pointer ptr = std::make_shared<pack::packet>();
+        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
-        ptr->header.type = pack::msg_t::trigger;
-        ptr->header.key = pack::key_t{
+        ptr->header.type = slsfs::pack::msg_t::trigger;
+        ptr->header.key = slsfs::pack::key_t{
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8};
         //std::string const payload = fmt::format("{{ \"operation\": \"write\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {}, \"data\": \"{}\" }}", genpos(i), buf.size(), buf);
 
-        jsre::request r;
-        r.type = jsre::type_t::file;
-        r.operation = jsre::operation_t::write;
+        slsfs::jsre::request r;
+        r.type = slsfs::jsre::type_t::file;
+        r.operation = slsfs::jsre::operation_t::write;
         r.uuid = ptr->header.key;
         r.position = genpos(i);
         r.size = buf.size();
@@ -150,8 +150,8 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
         records.push_back(record([&]() {
             boost::asio::write(s, boost::asio::buffer(buf->data(), buf->size()));
 
-            pack::packet_pointer resp = std::make_shared<pack::packet>();
-            std::vector<pack::unit_t> headerbuf(pack::packet_header::bytesize);
+            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
             boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
             resp->header.parse(headerbuf.data());
@@ -167,7 +167,7 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
 
 int main(int argc, char *argv[])
 {
-    basic::init_log();
+    slsfs::basic::init_log();
 
     boost::log::core::get()->set_filter(
         boost::log::trivial::severity >= boost::log::trivial::trace);

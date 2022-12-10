@@ -20,7 +20,7 @@ public:
     virtual int  blocksize() = 0;
     virtual void replication() {}
 
-    void connect()
+    virtual void connect()
     {
         for (std::shared_ptr<slsfs::storage::interface>& host : hostlist_)
             host->connect();

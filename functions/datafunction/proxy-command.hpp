@@ -45,8 +45,8 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     boost::asio::steady_timer       recv_deadline_;
 
 //    storage_conf_ssbd_stripe datastorage_conf_;
-//    storage_conf_ssbd datastorage_conf_;
-    storage_conf_swift datastorage_conf_;
+    storage_conf_ssbd datastorage_conf_;
+//    storage_conf_swift datastorage_conf_;
     static constexpr bool datastorage_conf_uses_async_ = false;
 
     queue_map& queue_map_;
@@ -90,13 +90,12 @@ public:
           socket_{io_context_},
           write_io_strand_{io_context_},
           recv_deadline_{io_context_},
-        //   datastorage_conf_{io_context_},
           datastorage_conf_{io_context_},
           queue_map_{qm},
           proxy_set_{ps}
     {
         datastorage_conf_.init();
-        // datastorage_conf_.connect();
+        datastorage_conf_.connect();
     }
 
     template<typename Endpoint>

@@ -16,7 +16,7 @@
 #include <iterator>
 #include <atomic>
 
-namespace launcher
+namespace slsfs::launcher
 {
 
 class job
@@ -135,7 +135,7 @@ public:
     {
         for (auto&& worker_pair : worker_set_)
         {
-            if (worker_pair.first->pending_jobs() <= 5 and worker_pair.first->is_valid())
+            if (worker_pair.first->pending_jobs() <= 100 and worker_pair.first->is_valid())
                 return worker_pair.first;
         }
         return nullptr;

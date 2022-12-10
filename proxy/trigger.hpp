@@ -18,7 +18,7 @@
 
 #include <concepts>
 
-namespace trigger
+namespace slsfs::trigger
 {
 
 struct httphost

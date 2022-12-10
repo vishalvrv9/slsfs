@@ -59,6 +59,9 @@
 #include <fstream>
 #include <charconv>
 
+namespace slsfs
+{
+
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http  = boost::beast::http;   // from <boost/beast/http.hpp>
 namespace net   = boost::asio;          // from <boost/asio.hpp>
@@ -160,10 +163,12 @@ auto operator "" _(char const * p, std::size_t m) -> long long int { return hash
 template<typename StringView> inline
 auto hash(StringView const & s) -> long long int { return hash(s.data(), s.size()); }
 
-}// namespace sswitcher
+} // namespace sswitcher
 
 using strhash = long long int;
 
-}// namespace basic
+} // namespace basic
+
+} //namespace slsfs
 
 #endif // BASIC_HPP__

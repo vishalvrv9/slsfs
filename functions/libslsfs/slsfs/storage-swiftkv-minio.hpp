@@ -61,10 +61,7 @@ public:
         kv_store = kvstore_name;
     }
 
-    ~swiftkv()
-    {
-
-    }
+    void connect() override {}
 
     // key interface   [str] -> buf
     auto read_key (pack::key_t const& name, std::size_t partition, std::size_t location, std::size_t size) -> base::buf override

@@ -14,7 +14,7 @@
 #include <algorithm>
 #include <random>
 
-namespace pack
+namespace slsfs::pack
 {
 
 namespace hash

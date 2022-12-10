@@ -9,7 +9,7 @@
 
 #include <concepts>
 
-namespace df
+namespace slsfs::df
 {
 
 class worker;

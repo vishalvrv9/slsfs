@@ -13,7 +13,7 @@
 #include <random>
 #include <vector>
 
-namespace uuid
+namespace slsfs::uuid
 {
 
 struct uuid : public pack::key_t

@@ -22,7 +22,7 @@
 #include <thread>
 #include <vector>
 
-namespace zookeeper
+namespace slsfs::zookeeper
 {
 // assumes owner is main()
 class zookeeper

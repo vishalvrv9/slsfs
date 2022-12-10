@@ -18,7 +18,6 @@ public:
 
     void init() override
     {
-        //hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "ssbd-2", "12000"));
         hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.165", "12000"));
         //hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "zion08", "12000"));
         //hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "zion08", "12000"));
@@ -68,11 +67,13 @@ public:
 
             std::uint32_t const size = input.size(); // input["size"].get<std::size_t>();
 
-            slsfs::log::logstring(fmt::format("_data_ perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size)));
+            slsfs::log::logstring(fmt::format("_data_ read perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size)));
             for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
+            {
                 response = host->read_key(input.uuid(), blockid, offset, size);
+                break;
+            }
 
-            slsfs::log::logstring("_data_ perform_single_request read from ssbd");
             break;
         }
         }
