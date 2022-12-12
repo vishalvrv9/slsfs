@@ -66,8 +66,9 @@ class invoker : public std::enable_shared_from_this<invoker<StreamType>>
     StreamType        stream_;
     std::atomic<bool> stream_is_connected_ = false;
     std::atomic<bool> stream_is_starting_  = false;
+    std::atomic<bool> stream_is_writing_   = false;
     oneapi::tbb::concurrent_queue<std::shared_ptr<http::request<http::string_body>>> pending_requests_;
-    // only for holding before starting connection
+
 
     beast::flat_buffer buffer_;
     Poco::URI          uriparser_;
@@ -113,6 +114,7 @@ public:
         }
     }
 
+private:
     void start_resolve(std::shared_ptr<http::request<http::string_body>> req)
     {
         if constexpr (std::is_same_v<StreamType, ssl_type>)
@@ -164,10 +166,6 @@ public:
                             self->start_write(req);
 
                         self->stream_is_connected_.store(true);
-                        std::shared_ptr<http::request<http::string_body>> pending_request = nullptr;
-
-                        while (self->pending_requests_.try_pop(pending_request))
-                            self->start_write(pending_request);
                     }
                     else
                         BOOST_LOG_TRIVIAL(error) << "start_connect error: " << ec.message();
@@ -178,7 +176,15 @@ public:
     {
         BOOST_LOG_TRIVIAL(trace) << "start sending http request: " << *req;
 
+        if (stream_is_writing_)
+        {
+            pending_requests_.push(req);
+            return;
+        }
+        stream_is_writing_.store(true);
+
         req->prepare_payload();
+
         http::async_write(
             stream_, *req,
             net::bind_executor(
@@ -212,6 +218,14 @@ public:
                         self->on_read_(res);
                         self->on_read_.disconnect_all_slots();
                         BOOST_LOG_TRIVIAL(info) << "read resp: " << res->body();
+
+                        self->stream_is_connected_.store(true);
+                        self->stream_is_writing_.store(false);
+                        std::shared_ptr<http::request<http::string_body>> pending_request = nullptr;
+
+                        if ((not self->pending_requests_.empty()) &&
+                            self->pending_requests_.try_pop(pending_request))
+                            self->start_write(pending_request);
                     }
                     else
                         BOOST_LOG_TRIVIAL(error) << "start_read error: " << ec.message();

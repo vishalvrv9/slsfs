@@ -53,7 +53,7 @@ concept CanResolveZookeeper = requires(T t)
 class launcher
 {
     net::io_context& io_context_;
-    std::shared_ptr<trigger::invoker<beast::ssl_stream<beast::tcp_stream>>> itrigger_;
+    std::shared_ptr<trigger::invoker<beast::ssl_stream<beast::tcp_stream>>> trigger_;
 
     oneapi::tbb::concurrent_hash_map<std::shared_ptr<df::worker>, int /* not used */> worker_set_;
     using worker_set_accessor = decltype(worker_set_)::accessor;
@@ -80,6 +80,13 @@ class launcher
 public:
     launcher(net::io_context& io, uuid::uuid const& id, std::string const& announce, net::ip::port_type port):
         io_context_{io},
+        trigger_{std::make_shared<
+                     trigger::invoker<
+                         beast::ssl_stream<
+                             beast::tcp_stream>>>(
+                                 io_context_,
+                                 "https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction?blocking=false&result=false",
+                                 basic::ssl_ctx())},
         started_jobs_strand_{io},
         job_launch_strand_{io},
         id_{id},
@@ -201,16 +208,11 @@ public:
 
     void create_worker(std::string const& body)
     {
-        static std::string const url = "https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction?blocking=false&result=false";
-
-        if (not itrigger_)
-            itrigger_ = std::make_shared<trigger::invoker<beast::ssl_stream<beast::tcp_stream>>>(io_context_, url, basic::ssl_ctx());
-
         net::post(
             net::bind_executor(
                 job_launch_strand_,
                 [this, body] {
-                    itrigger_->start_post(body);
+                    trigger_->start_post(body);
                 }));
     }
 
@@ -272,6 +274,6 @@ public:
 //        {
 //            BOOST_LOG_TRIVIAL(debug) << "starting function as new worker";
 //            create_worker(body);
-//            itrigger_->register_on_read(
+//            trigger_->register_on_read(
 //                [next](std::shared_ptr<http::response<http::string_body>> /*resp*/) {});
 //        }
