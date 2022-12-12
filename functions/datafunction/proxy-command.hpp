@@ -44,10 +44,10 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     boost::asio::io_context::strand write_io_strand_;
     boost::asio::steady_timer       recv_deadline_;
 
-//    storage_conf_ssbd_stripe datastorage_conf_;
-    storage_conf_ssbd datastorage_conf_;
+    storage_conf_ssbd_stripe datastorage_conf_;
+//    storage_conf_ssbd datastorage_conf_;
 //    storage_conf_swift datastorage_conf_;
-    static constexpr bool datastorage_conf_uses_async_ = false;
+    static constexpr bool datastorage_conf_uses_async_ = true;
 
     queue_map& queue_map_;
     proxy_set& proxy_set_;

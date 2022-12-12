@@ -67,9 +67,9 @@ public:
     {
          // send get
         rocksdb_pack::packet_pointer ptr = std::make_shared<rocksdb_pack::packet>();
-        ptr->header.type = rocksdb_pack::msg_t::get;
-        ptr->header.uuid = *name;
-        ptr->header.blockid = partition;
+        ptr->header.type     = rocksdb_pack::msg_t::get;
+        ptr->header.uuid     = *name;
+        ptr->header.blockid  = partition;
         ptr->header.position = location;
         ptr->header.datasize = size;
         auto buf = ptr->serialize_header();
