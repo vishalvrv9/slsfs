@@ -36,9 +36,8 @@ void hash_range(std::size_t& seed, It first, It last)
 
 } // namespace
 
-
-using unit_t = char; // exp
-static_assert(sizeof(char) == 8/8);
+using unit_t = unsigned char; // exp
+static_assert(sizeof(unit_t) == 8/8);
 
 // key = [32] byte main key // sha256 bit
 using key_t = std::array<unit_t, 256 / 8 / sizeof(unit_t)>;
@@ -106,13 +105,15 @@ struct packet_header
     std::uint32_t blockid;
     std::uint16_t position;
     std::uint32_t datasize;
+    std::array<unit_t, 4> salt;
 
     static constexpr int bytesize =
         sizeof(type) +
         std::tuple_size<decltype(uuid)>::value +
         sizeof(blockid) +
         sizeof(position) +
-        sizeof(datasize);
+        sizeof(datasize) +
+        sizeof(salt);
 
     auto as_string() -> std::string
     {
@@ -146,6 +147,10 @@ struct packet_header
         std::memcpy(std::addressof(datasize), pos, sizeof(datasize));
         pos += sizeof(datasize);
         datasize = ntoh(datasize);
+
+        // |salt|
+        std::memcpy(salt.data(), pos, salt.size());
+        pos += sizeof(salt);
     }
 
     auto dump(unit_t *pos) -> unit_t*
@@ -171,8 +176,29 @@ struct packet_header
         // |datasize|
         decltype(datasize) datasize_copy = hton(datasize);
         std::memcpy(pos, std::addressof(datasize_copy), sizeof(datasize_copy));
-        return pos + sizeof(datasize_copy);
+        pos += sizeof(datasize);
+
+        std::memcpy(pos, salt.data(), salt.size());
+        pos += salt.size();
+
+        return pos;
     }
+
+    auto static_rand_engine() -> std::mt19937&
+    {
+        static thread_local std::random_device rd;
+        static thread_local std::mt19937 gen(rd());
+        return gen;
+    }
+
+    void gen_salt()
+    {
+        std::uniform_int_distribution<unit_t> distrib(1, 0xFF);
+        std::mt19937& gen = static_rand_engine();
+        std::generate(salt.begin(), salt.end(), [&] { return distrib(gen); });
+    }
+
+    void gen() { gen_salt(); }
 };
 
 struct packet_header_key_hash
@@ -181,6 +207,7 @@ struct packet_header_key_hash
     {
         std::size_t seed = 0x1b873593 + k.blockid;
         hash_range(seed, k.uuid.begin(), k.uuid.end());
+        hash_range(seed, k.salt.begin(), k.salt.end());
         return seed;
     }
 };
@@ -189,10 +216,26 @@ struct packet_header_key_compare
 {
     bool operator() (packet_header const& key1, packet_header const& key2) const
     {
-        return (std::tie(key1.uuid, key1.blockid) ==
-                std::tie(key2.uuid, key2.blockid));
+        return (std::tie(key1.uuid, key1.blockid, key1.salt) ==
+                std::tie(key2.uuid, key2.blockid, key2.salt));
     }
 };
+
+struct packet_header_key_hash_compare
+{
+    static
+    auto hash (packet_header const& key) -> std::size_t
+    {
+        return packet_header_key_hash{}(key);
+    }
+
+    static
+    bool equal (packet_header const& key1, packet_header const& key2)
+    {
+        return packet_header_key_compare{}(key1, key2);
+    }
+};
+
 
 auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
 {
@@ -217,6 +260,13 @@ struct packet_data
     }
 
     void parse(std::uint32_t const& size, unit_t *pos)
+    {
+        buf.resize(size);
+        std::memcpy(buf.data(), pos, size);
+    }
+
+    template<typename CharType>
+    void parse(std::uint32_t const& size, CharType *pos)
     {
         buf.resize(size);
         std::memcpy(buf.data(), pos, size);

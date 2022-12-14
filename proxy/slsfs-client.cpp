@@ -99,7 +99,7 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            //BOOST_LOG_TRIVIAL(info) << data ;
+            BOOST_LOG_TRIVIAL(trace) << data ;
         }));
     }
 
@@ -159,7 +159,7 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            BOOST_LOG_TRIVIAL(info) << data ;
+            BOOST_LOG_TRIVIAL(debug) << data ;
        }));
     }
     stats(records.begin(), records.end(), fmt::format("write {}", memo));
@@ -168,9 +168,6 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
 int main(int argc, char *argv[])
 {
     slsfs::basic::init_log();
-
-    boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::trace);
 
     if (argc < 4)
     {

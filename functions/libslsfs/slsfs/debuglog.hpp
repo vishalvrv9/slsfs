@@ -76,7 +76,7 @@ template<level Level = level::trace>
 void logstring(std::string const & msg)
 {
 #ifdef NDEBUG
-//    return;
+    return;
 #endif // NDEBUG
 
     auto const now = std::chrono::high_resolution_clock::now();

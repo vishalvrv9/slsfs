@@ -195,6 +195,7 @@ public:
                 leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
                 resp->header = pack->header;
                 resp->header.type = leveldb_pack::msg_t::ack;
+                resp->data.buf = std::vector<leveldb_pack::unit_t>{'O', 'K'};
                 self->start_write_socket(resp);
             });
     }
@@ -222,12 +223,6 @@ public:
     {
         BOOST_LOG_TRIVIAL(trace) << "start_write_socket: " << pack->header;
         auto buf_pointer = pack->serialize();
-
-        std::stringstream ss;
-        ss << "[ ";
-        for (int i : *buf_pointer)
-            ss << i << " ";
-        BOOST_LOG_TRIVIAL(trace) << ss.str() << "]";
 
         net::async_write(
             socket_,
