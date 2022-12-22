@@ -17,7 +17,7 @@ protected:
 public:
     virtual ~storage_conf() {}
     virtual void init() = 0;
-    virtual int  blocksize() = 0;
+    virtual auto blocksize() -> std::uint32_t = 0;
     virtual void replication() {}
 
     virtual void connect()

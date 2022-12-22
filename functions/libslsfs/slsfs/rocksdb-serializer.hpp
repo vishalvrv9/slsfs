@@ -41,7 +41,7 @@ static_assert(sizeof(unit_t) == 8/8);
 
 // key = [32] byte main key // sha256 bit
 using key_t = std::array<unit_t, 256 / 8 / sizeof(unit_t)>;
-enum class msg_t: unit_t
+enum class msg_t: std::uint16_t
 {
     err = 0b00000000,
     ack = 0b00000001,
@@ -98,6 +98,7 @@ auto ntoh(Integer i) -> Integer
     }
 }
 
+#pragma pack (push, 1)
 struct packet_header
 {
     msg_t type;
@@ -200,6 +201,7 @@ struct packet_header
 
     void gen() { gen_salt(); }
 };
+#pragma pack (pop)
 
 struct packet_header_key_hash
 {
@@ -244,10 +246,14 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
         os << std::hex << static_cast<int>(v);
     os << ",blkid=" << std::hex << pd.blockid;
     os << ",position=" << std::hex << pd.position;
+    os << ",salt=";
+    for (int i : pd.salt)
+        os << std::hex << i;
     os << "|datasize=" << pd.datasize << "]";
     return os;
 }
 
+#pragma pack (push, 1)
 struct packet_data
 {
     std::vector<unit_t> buf;
@@ -278,8 +284,9 @@ struct packet_data
         return pos + buf.size();
     }
 };
+#pragma pack (pop)
 
-
+#pragma pack (push, 1)
 struct packet
 {
     packet_header header;
@@ -303,6 +310,7 @@ struct packet
         return r;
     }
 };
+#pragma pack (pop)
 
 using packet_pointer = std::shared_ptr<packet>;
 

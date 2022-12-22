@@ -22,36 +22,25 @@
 
 using net::ip::tcp;
 
-//class ssbd_merger : public leveldb::AssociativeMergeOperator
-//{
-//public:
-//    virtual
-//    bool Merge(leveldb::Slice const& key,
-//               leveldb::Slice const* existing_value,
-//               leveldb::Slice const& value,
-//               std::string* new_value,
-//               Logger* logger) const override = 0;
-//    {
-//        return true;
-//    }
-//
-//    virtual const char* Name() const override { return "ssbd-merge"; }
-//};
-
 class tcp_connection : public std::enable_shared_from_this<tcp_connection>
 {
     net::io_context& io_context_;
-    tcp::socket socket_;
-    net::io_context::strand write_io_strand_;
-    std::shared_ptr<leveldb::DB> db_;
+    tcp::socket      socket_;
+    net::io_context::strand write_io_strand_, db_io_strand_;
+
+    oneapi::tbb::concurrent_queue<leveldb_pack::packet_pointer> write_queue_;
+    std::atomic<bool> is_writing_ = false;
+
+    leveldb::DB& db_;
 
 public:
     using pointer = std::shared_ptr<tcp_connection>;
 
-    tcp_connection(net::io_context& io, tcp::socket socket, std::shared_ptr<leveldb::DB> db):
+    tcp_connection(net::io_context& io, tcp::socket socket, leveldb::DB& db):
         io_context_{io},
         socket_{std::move(socket)},
         write_io_strand_{io},
+        db_io_strand_{io},
         db_{db} {}
 
     void start_read_header()
@@ -62,10 +51,13 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf] (boost::system::error_code ec, std::size_t /*length*/) {
-                if (not ec)
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "start_read_header err: " << ec.message();
+                else
                 {
                     leveldb_pack::packet_pointer pack = std::make_shared<leveldb_pack::packet>();
                     pack->header.parse(read_buf->data());
+                    BOOST_LOG_TRIVIAL(trace) << "start_read_header start with header: " << pack->header;
 
                     switch (pack->header.type)
                     {
@@ -106,11 +98,6 @@ public:
                     }
                     }
                 }
-                else
-                {
-                    if (ec != boost::asio::error::eof)
-                        BOOST_LOG_TRIVIAL(error) << ", start_read_header err: " << ec.message();
-                }
             });
     }
 
@@ -122,7 +109,9 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "start_check_merge: " << ec.message();
+                else
                 {
                     pack->data.parse(length, read_buf->data());
 
@@ -147,8 +136,6 @@ public:
                     self->start_write_socket(resp);
                     self->start_read_header();
                 }
-                else
-                    BOOST_LOG_TRIVIAL(error) << "start_check_merge: " << ec.message();
             });
     }
 
@@ -160,11 +147,13 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "error start_execute_commit: " << ec.message();
+                else
                 {
                     pack->data.parse(length, read_buf->data());
                     std::string const key = pack->header.as_string();
-                    self->db_->Put(leveldb::WriteOptions(), key, *read_buf);
+                    self->db_.Put(leveldb::WriteOptions(), key, *read_buf);
 
                     leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
                     resp->header = pack->header;
@@ -173,8 +162,6 @@ public:
                     self->start_write_socket(resp);
                     self->start_read_header();
                 }
-                else
-                    BOOST_LOG_TRIVIAL(error) << "start_execute_commit: " << ec.message();
             });
     }
 
@@ -188,9 +175,9 @@ public:
                 //resp->buf;
                 std::string const key = pack->header.as_string();
 
-                self->db_->Get(leveldb::ReadOptions(), key, &value);
+                self->db_.Get(leveldb::ReadOptions(), key, &value);
                 std::copy(pack->data.buf.begin(), pack->data.buf.end(), std::next(value.begin(), pack->header.position));
-                self->db_->Put(leveldb::WriteOptions(), key, value);
+                self->db_.Put(leveldb::WriteOptions(), key, value);
 
                 leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
                 resp->header = pack->header;
@@ -213,7 +200,11 @@ public:
                 resp->header = pack->header;
                 resp->header.type = leveldb_pack::msg_t::ack;
 
-                rb.read(pack->header.position, std::back_inserter(resp->data.buf), resp->header.datasize);
+                std::vector<leveldb_pack::unit_t> buf(resp->header.datasize);
+
+                rb.read(pack->header.position, buf.begin(), resp->header.datasize);
+
+                resp->data.buf.swap(buf);
 
                 self->start_write_socket(resp);
             });
@@ -221,18 +212,41 @@ public:
 
     void start_write_socket(leveldb_pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "start_write_socket: " << pack->header;
-        auto buf_pointer = pack->serialize();
+        write_queue_.push(pack);
+        if (not is_writing_)
+        {
+            is_writing_.store(true);
+            start_write_one_packet();
+        }
+    }
 
-        net::async_write(
-            socket_,
-            net::buffer(buf_pointer->data(), buf_pointer->size()),
-            net::bind_executor(
-                write_io_strand_,
-                [self=shared_from_this(), buf_pointer] (boost::system::error_code ec, std::size_t /*length*/) {
-                    if (not ec)
-                        BOOST_LOG_TRIVIAL(debug) << "sent msg";
-                }));
+    void start_write_one_packet()
+    {
+        BOOST_LOG_TRIVIAL(trace) << "start_write_one_packet";
+        leveldb_pack::packet_pointer pack;
+        if (not write_queue_.try_pop(pack))
+            is_writing_.store(false);
+        else
+        {
+            auto buf_pointer = pack->serialize();
+            BOOST_LOG_TRIVIAL(trace) << "start_write_one_packet: " << pack->header;
+            net::async_write(
+                socket_,
+                net::buffer(buf_pointer->data(), buf_pointer->size()),
+                net::bind_executor(
+                    write_io_strand_,
+                    [self=shared_from_this(), buf_pointer, pack] (boost::system::error_code ec, std::size_t transferred_size) {
+                        if (ec)
+                        {
+                            BOOST_LOG_TRIVIAL(error) << "write error " << ec.message() << " while " << pack->header << " size=" << transferred_size;
+                            self->is_writing_.store(false);
+                            return;
+                        }
+
+                        BOOST_LOG_TRIVIAL(debug) << "write sent " << transferred_size << " bytes, count=" << self.use_count() << " " << pack->header;
+                        self->start_write_one_packet();
+                    }));
+        }
     }
 };
 
@@ -240,20 +254,24 @@ class tcp_server
 {
     net::io_context& io_context_;
     tcp::acceptor acceptor_;
-    std::shared_ptr<leveldb::DB> db_;
+    std::shared_ptr<leveldb::DB> db_ = nullptr;
 
 public:
     tcp_server(net::io_context& io_context, net::ip::port_type port, char const * dbname)
         : io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
     {
-        leveldb::DB* db;
+        leveldb::DB* db = nullptr;
         leveldb::Options options;
         options.create_if_missing = true;
         leveldb::Status status = leveldb::DB::Open(options, dbname, &db);
         if (not status.ok())
+        {
             BOOST_LOG_TRIVIAL(error) << status.ToString() << "\n";
+            throw std::runtime_error("cannot open db");
+        }
 
+        BOOST_LOG_TRIVIAL(debug) << "open db ptr: " << db << "\n";
         db_.reset(db);
         start_accept();
     }
@@ -262,13 +280,15 @@ public:
     {
         acceptor_.async_accept(
             [this] (boost::system::error_code const& error, tcp::socket socket) {
-                if (not error)
+                if (error)
+                    BOOST_LOG_TRIVIAL(error) << "accept error: " << error.message() << "\n";
+                else
                 {
                     socket.set_option(tcp::no_delay(true));
                     auto accepted = std::make_shared<tcp_connection>(
                         io_context_,
                         std::move(socket),
-                        db_);
+                        *db_);
                     accepted->start_read_header();
                     start_accept();
                 }

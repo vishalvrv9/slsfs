@@ -15,7 +15,7 @@ public:
         hostlist_.push_back(std::make_shared<slsfs::storage::cassandra>("ssbd-2"));
     }
 
-    virtual int blocksize() override { return 4096; } // byte
+    virtual std::uint32_t blocksize() override { return 4096; } // byte
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {
         slsfs::base::buf response;

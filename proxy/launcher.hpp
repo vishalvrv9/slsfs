@@ -19,6 +19,7 @@
 namespace slsfs::launcher
 {
 
+// Specifies a READ or WRITE jobs managed by launcher
 class job
 {
 public:
@@ -49,7 +50,7 @@ concept CanResolveZookeeper = requires(T t)
         -> std::convertible_to<net::ip::tcp::endpoint>;
 };
 
-
+// Component responsible for launching jobs and workers
 class launcher
 {
     net::io_context& io_context_;
@@ -142,7 +143,7 @@ public:
     {
         for (auto&& worker_pair : worker_set_)
         {
-            if (worker_pair.first->pending_jobs() <= 100 and worker_pair.first->is_valid())
+            if (worker_pair.first->pending_jobs() <= 5 and worker_pair.first->is_valid())
                 return worker_pair.first;
         }
         return nullptr;
@@ -158,7 +159,7 @@ public:
             auto reuse_worker = get_worker_from_pool(packet_ptr);
             if (!reuse_worker)
             {
-                BOOST_LOG_TRIVIAL(info) << "No avaliable worker. Start one.";
+                BOOST_LOG_TRIVIAL(info) << "No available worker. Starting new one.";
                 create_worker(fmt::format("{{ \"type\": \"wakeup\", \"host\": \"{}\", \"port\": \"{}\" }}",
                                           announce_host_, announce_port_));
                 return nullptr;

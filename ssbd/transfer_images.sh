@@ -3,6 +3,8 @@ images=(hare1039/ssbd:0.0.1)
 
 for i in "${images[@]}"; do
     for h in "${hosts[@]}"; do
+        ssh "$h" 'mkdir -p /tmp/haressbd';
+        ssh "$h" 'sudo chmod -R 777 /tmp/haressbd';
         docker save "$i" | pv | ssh "$h" docker load &
     done
     wait < <(jobs -p);

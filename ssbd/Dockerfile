@@ -22,8 +22,8 @@ RUN --mount=type=cache,target=/ccache \
     cd /final && \
     CCACHE_DIR=/ccache bash -c 'echo debug=$debug; if [[ -z "$debug" ]]; then make release; else make debug; fi'
 
-RUN strip /final/build/bin/client && strip /final/build/bin/run
-
+#RUN strip /final/build/bin/client && strip /final/build/bin/run
+#
 FROM busybox:glibc
 
 COPY --from=builder /final/build/bin/client /final/build/bin/client

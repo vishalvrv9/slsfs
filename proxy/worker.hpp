@@ -11,7 +11,7 @@
 
 namespace slsfs::df
 {
-
+// Represents a worker datafunction that can perform a read or write on multiple files.
 class worker;
 using worker_ptr = std::shared_ptr<worker>;
 

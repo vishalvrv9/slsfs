@@ -49,12 +49,12 @@ public:
         buf_ = std::move(newbuf);
     }
 
-    auto bind(std::shared_ptr<leveldb::DB> db, std::string const& key) -> leveldb::Status {
-        return db->Get(leveldb::ReadOptions(), key, &buf_);
+    auto bind(leveldb::DB& db, std::string const& key) -> leveldb::Status {
+        return db.Get(leveldb::ReadOptions(), key, &buf_);
     }
 
-    auto flush(std::shared_ptr<leveldb::DB> db, std::string const& key) -> leveldb::Status {
-        return db->Put(leveldb::WriteOptions(), key, buf_);
+    auto flush(leveldb::DB& db, std::string const& key) -> leveldb::Status {
+        return db.Put(leveldb::WriteOptions(), key, buf_);
     }
 };
 

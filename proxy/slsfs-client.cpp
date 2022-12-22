@@ -50,6 +50,14 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 }
 
+auto genname() -> std::uint8_t
+{
+    static std::mt19937 engine(19937);
+    static std::uniform_int_distribution<std::uint8_t> dist(0, 255);
+
+    return dist(engine);
+}
+
 void readtest (int const times, int const bufsize, std::function<int(int)> genpos, std::string const memo = "")
 {
     boost::asio::io_context io_context;
@@ -99,7 +107,7 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            BOOST_LOG_TRIVIAL(trace) << data ;
+//            BOOST_LOG_TRIVIAL(trace) << data ;
         }));
     }
 
@@ -108,6 +116,7 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
 
 void writetest (int const times, int const bufsize, std::function<int(int)> genpos, std::string const memo = "")
 {
+    throw std::runtime_error("no runnung desu");
     boost::asio::io_context io_context;
     tcp::socket s(io_context);
     tcp::resolver resolver(io_context);
@@ -159,7 +168,7 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            BOOST_LOG_TRIVIAL(debug) << data ;
+            //BOOST_LOG_TRIVIAL(debug) << data ;
        }));
     }
     stats(records.begin(), records.end(), fmt::format("write {}", memo));
@@ -175,18 +184,9 @@ int main(int argc, char *argv[])
         return -1;
     }
 
-    int const times = std::stoi(argv[1]);
+    int const times   = std::stoi(argv[1]);
     int const clients = std::stoi(argv[2]);
     int const bufsize = std::stoi(argv[3]);
-
-
-    //record([&](){ ; }, "base");
-
-//    writetest(2, 4096, [](int) { return 0;}, "once");
-//    readtest(1, 4096, [](int) { return 0;}, "once");
-//
-//
-//    return 0;
 
     {
         std::vector<std::thread> v;
@@ -198,35 +198,13 @@ int main(int argc, char *argv[])
             th.join();
     }
 
-//    {
-//        std::mt19937 engine(19937);
-//        std::uniform_int_distribution<> dist(0, 1000);
-//        std::vector<std::thread> v;
-//        for (int i = 0; i < clients; i++)
-//            v.emplace_back(writetest, times, bufsize,
-//                           [&engine, &dist](int ) { return dist(engine); }, "rand");
-//
-//        for (std::thread& th : v)
-//            th.join();
-//    }
-//
-//    {
-//        std::vector<std::thread> v;
-//        for (int i = 0; i < clients; i++)
-//            v.emplace_back(readtest, times, bufsize,
-//                           [bufsize](int i) { return i*bufsize; }, "seq");
-//
-//        for (std::thread& th : v)
-//            th.join();
-//    }
-//
     {
         std::mt19937 engine(19937);
         std::uniform_int_distribution<> dist(0, 1000);
         std::vector<std::thread> v;
         for (int i = 0; i < clients; i++)
             v.emplace_back(readtest, times, bufsize,
-                           [&engine, &dist](int) { return dist(engine); }, "rand");
+                           [&engine, &dist](int) { return dist(engine); }, "rand read");
 
         for (std::thread& th : v)
             th.join();

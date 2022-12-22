@@ -2,33 +2,35 @@
 #ifndef STORAGE_CONF_SSBD_STRIPE_HPP__
 #define STORAGE_CONF_SSBD_STRIPE_HPP__
 
-#include "storage-conf.hpp"
+#include "storage-conf-ssbd.hpp"
 
 #include <slsfs.hpp>
+
+#include <oneapi/tbb/concurrent_vector.h>
 
 #include <boost/coroutine2/all.hpp>
 
 #include <vector>
+#include <semaphore>
 
 namespace slsfsdf
 {
 
 // Storage backend configuration for SSBD stripe
-class storage_conf_ssbd_stripe : public storage_conf
+class storage_conf_ssbd_stripe : public storage_conf_ssbd
 {
-    boost::asio::io_context &io_context_;
     static auto static_engine() -> std::mt19937&
     {
         static thread_local std::mt19937 mt;
         return mt;
     }
 
-    auto select_replica(slsfs::pack::key_t const& uuid, int count) -> std::vector<int>
+    auto select_replica(slsfs::pack::key_t const& uuid, int count) -> std::vector<int> // , std::uint32_t blockid
     {
         std::seed_seq seeds {uuid.begin(), uuid.end()};
         static_engine().seed(seeds);
 
-        std::uniform_int_distribution<> dist(0, hostlist_.size());
+        std::uniform_int_distribution<> dist(0, hostlist_.size() - 1);
         auto gen = [this, &dist] () { return dist(static_engine()); };
 
         std::vector<int> rv(count);
@@ -38,7 +40,7 @@ class storage_conf_ssbd_stripe : public storage_conf
     }
 
 public:
-    storage_conf_ssbd_stripe(boost::asio::io_context &io): io_context_{io} {}
+    storage_conf_ssbd_stripe(boost::asio::io_context &io): storage_conf_ssbd{io} {}
 
     void init() override
     {
@@ -53,85 +55,7 @@ public:
         hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.8",   "12000"));
     }
 
-    constexpr std::size_t fullsize()   { return 4 * 1024; } // byte
-    constexpr std::size_t headersize() { return 4; } // byte
-    int blocksize() override { return fullsize() - headersize(); }
-    constexpr int replication_size()   { return 3; }
-
-    auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
-    {
-        boost::system::error_code ec;
-
-        slsfs::base::buf response;
-        switch (input.operation())
-        {
-        case slsfs::jsre::operation_t::write:
-        {
-            slsfs::log::logstring("_data_ perform_single_request get data");
-            auto const write_buf = input.data();
-            slsfs::pack::key_t const uuid = input.uuid();
-
-            int const realpos = input.position();
-            int const blockid = realpos / blocksize();
-            int const offset  = realpos % blocksize();
-
-            std::vector<int> const selected_host_index = select_replica(uuid, replication_size());
-
-            // 2PC first phase
-            slsfs::log::logstring("_data_ perform_single_request check version");
-            bool version_valid = false;
-            std::uint32_t v = 0;
-            while (not version_valid)
-            {
-                version_valid = true;
-                std::uint32_t setv = std::max(v, version());
-
-                for (int const index : selected_host_index)
-                {
-                    if (bool ok = hostlist_.at(index)->check_version_ok(input.uuid(), blockid, setv); not ok)
-                        version_valid = false;
-                    v = setv;
-                }
-                //** add failure and recovery here **
-            }
-
-            slsfs::log::logstring("_data_ perform_single_request agreed");
-            // 2PC second phase
-            slsfs::base::buf b;
-            std::copy_n(write_buf, input.size(), std::back_inserter(b));
-            for (int const index : selected_host_index)
-                hostlist_.at(index)->write_key(uuid, blockid, b, offset, v);
-
-            response = {'O', 'K'};
-            break;
-        }
-
-        case slsfs::jsre::operation_t::create:
-        {
-            break;
-        }
-
-        case slsfs::jsre::operation_t::read:
-        {
-            int const realpos = input.position();
-            int const blockid = realpos / blocksize();
-            int const offset  = realpos % blocksize();
-            slsfs::log::logstring("_data_ perform_single_request reading");
-
-            std::uint32_t const size = input.size(); // input["size"].get<std::size_t>();
-
-            slsfs::log::logstring(fmt::format("_data_ perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size)));
-
-            std::vector<int> const selected_host_index = select_replica(input.uuid(), replication_size());
-            for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
-                response = host->read_key(input.uuid(), blockid, offset, size);
-
-            slsfs::log::logstring("_data_ perform_single_request read from ssbd");
-            break;
-        }
-        }
-        return response;
-    }
+    constexpr int replication_size() { return 3; }
 
     void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
     {
@@ -151,12 +75,8 @@ public:
         case slsfs::jsre::operation_t::read:
         {
             auto uuid = input.uuid_shared();
-            int const realpos = input.position();
-            int const blockid = realpos / blocksize();
-            int const offset  = realpos % blocksize();
-            std::uint32_t const size = input.size();
-
-            start_read_key(uuid, blockid, offset, size, input, std::move(next));
+            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
+            start_read_key(uuid, input, next_ptr);
             break;
         }
         }
@@ -179,7 +99,7 @@ public:
                                  slsfs::jsre::request_parser<slsfs::base::byte> const& input,
                                  std::function<void(slsfs::base::buf)> next)
     {
-        slsfs::log::logstring(fmt::format("ssbd check version, starting with index {}", write_index));
+        slsfs::log::logstring(fmt::format("ssbd check version, starting with index {}, {}", write_index, selected_host_index.at(write_index)));
         auto selected = hostlist_.at(selected_host_index.at(write_index));
 
         int const blockid = input.position() / blocksize();
@@ -217,61 +137,178 @@ public:
         auto buffer = std::make_shared<slsfs::base::buf>();
         std::copy_n(input.data(), input.size(), std::back_inserter(*buffer));
 
-        int const realpos = input.position();
-        int const blockid = realpos / blocksize();
-        int const offset  = realpos % blocksize();
-
         std::vector<int> const selected_host_index = select_replica(*uuid, replication_size());
 
+        auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
         start_write_key(0, selected_host_index,
                         uuid,
-                        blockid, offset, version,
+                        version,
                         buffer,
                         input,
-                        std::move(next));
+                        next_ptr);
     }
 
     void start_write_key(int const write_index, std::vector<int> const selected_host_index,
                          std::shared_ptr<slsfs::pack::key_t> const uuid,
-                         int const blockid, int const offset, std::uint32_t version,
+                         std::uint32_t version,
                          std::shared_ptr<slsfs::base::buf> buffer,
                          slsfs::jsre::request_parser<slsfs::base::byte> const& input,
-                         std::function<void(slsfs::base::buf)> next)
+                         std::shared_ptr<std::function<void(slsfs::base::buf)>> next_ptr)
     {
         slsfs::log::logstring(fmt::format("ssbd start_write_key, starting with index {}", write_index));
         auto selected = hostlist_.at(selected_host_index.at(write_index));
-        selected->start_write_key(
-            uuid, blockid,
-            buffer, offset,
-            version,
-            [=, this, next=std::move(next)] (slsfs::base::buf b) {
-                int next_index = write_index + 1;
-                if (next_index < replication_size())
-                    start_write_key(
-                        next_index, selected_host_index,
-                        uuid,
-                        blockid, offset, version,
-                        buffer,
-                        input,
-                        next);
-                else
-                    std::invoke(next, b);
-            });
+
+        std::uint32_t const realpos = input.position();
+        std::uint32_t const endpos  = realpos + buffer->size();
+
+        std::uint32_t processpos  = realpos;
+        std::uint32_t index_count = 0;
+        for (std::uint32_t index = 0; processpos < endpos; index++)
+        {
+            std::uint32_t offset = processpos % blocksize();
+            std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
+            processpos += blockwritesize;
+            index_count++;
+        }
+
+        auto write_result_ready = std::make_shared<oneapi::tbb::concurrent_vector<std::atomic<bool>>>(index_count);
+        for (std::atomic<bool>& b : *write_result_ready)
+            b.store(false);
+
+        std::uint32_t currentpos = realpos, buf_pointer = 0;
+
+        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        {
+            std::uint32_t blockid = currentpos / blocksize();
+            std::uint32_t offset  = currentpos % blocksize();
+            slsfs::log::logstring("_data_ perform_single_request writing");
+
+            std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - currentpos, blocksize() - offset);
+
+            slsfs::log::logstring(fmt::format("_data_ async write perform_single_request sending: {}, {}, {}", blockid, offset, blockwritesize));
+            auto partial_buf = std::make_shared<slsfs::base::buf> (blockwritesize);
+            std::copy_n(buffer->begin() + buf_pointer, blockwritesize, partial_buf->begin());
+
+            currentpos  += blockwritesize;
+            buf_pointer += blockwritesize;
+
+//            selected->write_key(input.uuid(), blockid, *partial_buf, offset, 0);
+
+            selected->start_write_key(
+                uuid, blockid,
+                partial_buf, offset,
+                version,
+                [=, this] (slsfs::base::buf return_val) {
+                    write_result_ready->at(index) = true;
+
+                    for (auto it = write_result_ready->rbegin(); it != write_result_ready->rend(); ++it)
+                        if (not *it)
+                            return;
+
+                    // return at the primary finish
+                    if (write_index == 0)
+                    {
+                        slsfs::log::logstring("finish first repl, executing next");
+                        std::invoke(*next_ptr, return_val);
+                    }
+
+
+                    // replicate to other index
+//                    int next_index = write_index + 1;
+//                    if (next_index < replication_size())
+//                        start_write_key(
+//                            next_index, selected_host_index,
+//                            uuid,
+//                            version,
+//                            buffer,
+//                            input,
+//                            nullptr);
+                });
+
+
+        }
+        io_context_.post([next_ptr]() { std::invoke(*next_ptr, slsfs::base::buf{}); });
     }
 
+    struct buf_stat_t
+    {
+        std::atomic<bool> ready = false;
+        slsfs::base::buf  buf;
+    };
+
     void start_read_key(std::shared_ptr<slsfs::pack::key_t> const uuid,
-                        int const blockid, int const offset, std::size_t size,
                         slsfs::jsre::request_parser<slsfs::base::byte> const input,
-                        std::function<void(slsfs::base::buf)> next)
+                        std::shared_ptr<std::function<void(slsfs::base::buf)>> next_ptr)
     {
         slsfs::log::logstring("ssbd start_read_key");
-        auto selected = hostlist_.at(select_replica(*uuid, 1).front());
-        selected->start_read_key(
-            uuid, blockid,
-            offset, size,
-            [input, next=std::move(next)] (slsfs::base::buf b) {
-                std::invoke(next, b);
-            });
+
+        std::uint32_t const realpos  = input.position();
+        std::uint32_t const readsize = input.size(); // input["size"].get<std::size_t>();
+        std::uint32_t const endpos   = realpos + readsize;
+
+        if (readsize == 0)
+        {
+            std::invoke(*next_ptr, slsfs::base::buf{});
+            return;
+        }
+
+
+        // dry run
+        std::uint32_t processpos  = realpos;
+        std::uint32_t index_count = 0;
+        for (std::uint32_t index = 0; processpos < endpos; index++)
+        {
+            std::uint32_t offset  = processpos % blocksize();
+            std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
+            processpos += blockreadsize;
+            index_count++;
+        }
+
+        auto result_accumulator = std::make_shared<oneapi::tbb::concurrent_vector<buf_stat_t>>(index_count);
+
+        std::uint32_t currentpos = realpos;
+        slsfs::base::buf b;
+        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        {
+            std::uint32_t blockid = currentpos / blocksize();
+            std::uint32_t offset  = currentpos % blocksize();
+            slsfs::log::logstring("_data_ perform_single_request reading");
+            std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - currentpos, blocksize() - offset);
+
+            currentpos += blockreadsize;
+            slsfs::log::logstring(fmt::format("_data_ async read perform_single_request sending: {}, {}, {}", blockid, offset, blockreadsize));
+
+            auto selected = hostlist_.at(select_replica(*uuid, 1).front());
+
+//            auto readed = selected->read_key(
+//                uuid, blockid,
+//                offset, blockreadsize);
+
+            selected->start_read_key(
+                uuid, blockid,
+                offset, blockreadsize,
+                [index, result_accumulator, next_ptr] (slsfs::base::buf b) {
+                    result_accumulator->at(index).ready = true;
+                    result_accumulator->at(index).buf   = std::move(b);
+
+                    for (buf_stat_t& bufstat : *result_accumulator)
+                        if (not bufstat.ready)
+                        {
+                            slsfs::log::logstring("read data have incomplete transfer. Wait for next call");
+                            return;
+                        }
+
+                    slsfs::log::logstring("read executing next");
+                    slsfs::base::buf collect;
+                    for (buf_stat_t& bufstat : *result_accumulator)
+                        collect.insert(collect.begin(),
+                                       bufstat.buf.begin(),
+                                       bufstat.buf.end());
+
+                    slsfs::log::logstring(fmt::format("read executing next with bufsize = {}", collect.size()));
+                    std::invoke(*next_ptr, std::move(collect));
+                });
+        }
     }
 };
 

@@ -8,6 +8,7 @@
 #include "scope-exit.hpp"
 #include "rocksdb-serializer.hpp"
 #include "debuglog.hpp"
+#include "socket-writer.hpp"
 
 #include <oneapi/tbb/concurrent_hash_map.h>
 
@@ -50,7 +51,6 @@ class ssbd : public interface
 {
     boost::asio::io_context& io_context_;
     boost::asio::ip::tcp::socket socket_;
-    boost::asio::io_context::strand write_strand_, read_strand_;
     char const * host_;
     char const * port_;
     boost::asio::steady_timer timer_;
@@ -62,13 +62,31 @@ class ssbd : public interface
 
     std::once_flag read_started_flag_;
     jobmap outstanding_jobs_;
+
+    std::mutex socket_mutex_;
     using jobmap_accessor = decltype(outstanding_jobs_)::accessor;
+
+    socket_writer::socket_writer<rocksdb_pack::packet_pointer, std::vector<rocksdb_pack::unit_t>> writer_;
+
+//    std::counting_semaphore<1000> outstanding_request_semaphore_{1000};
+//    template<typename AsyncOperation>
+//    void start_jobs_in_window (AsyncOperation && operation)
+//    {
+//        log::logstring("start_jobs_in_window");
+//        if (outstanding_request_semaphore_.try_acquire())
+//            std::invoke(operation);
+//        else
+//            io_context_.post(
+//                [this, operation=std::move(operation)] {
+//                    start_jobs_in_window(std::move(operation));
+//                });
+//    }
 
 public:
     ssbd(boost::asio::io_context& io, char const * host, char const * port):
         io_context_{io}, socket_(io),
-        write_strand_{io}, read_strand_{io},
-        host_{host}, port_{port}, timer_{io} {}
+        host_{host}, port_{port}, timer_{io},
+        writer_{io, socket_} {}
 
     void connect() override
     {
@@ -80,6 +98,7 @@ public:
     auto read_key(pack::key_t const& name, std::size_t partition,
                   std::size_t location, std::size_t size) -> base::buf override
     {
+        std::lock_guard<std::mutex> lk{socket_mutex_};
         { // send get
             rocksdb_pack::packet_pointer ptr = std::make_shared<rocksdb_pack::packet>();
             ptr->header.type = rocksdb_pack::msg_t::get;
@@ -112,36 +131,75 @@ public:
     {
         rocksdb_pack::packet_pointer resp = std::make_shared<rocksdb_pack::packet>();
         auto headerbuf = std::make_shared<std::vector<rocksdb_pack::unit_t>> (rocksdb_pack::packet_header::bytesize);
-        log::logstring(fmt::format("async_read read head called"));
+        log::logstring(fmt::format("async_read read head called headersize: {}", rocksdb_pack::packet_header::bytesize));
         boost::asio::async_read(
             socket_,
             boost::asio::buffer(headerbuf->data(), headerbuf->size()),
-            boost::asio::bind_executor(
-                read_strand_,
-                [this, resp, headerbuf] (boost::system::error_code const& ec, std::size_t) {
-                    resp->header.parse(headerbuf->data());
-                    auto bodybuf = std::make_shared<base::buf>(resp->header.datasize, 0);
+            [this, resp, headerbuf] (boost::system::error_code const& ec, std::size_t transferred_size) {
 
-                    log::logstring(fmt::format("async_read read body called readsize={}", bodybuf->size()));
-                    boost::asio::async_read(
-                        socket_,
-                        boost::asio::buffer(bodybuf->data(), bodybuf->size()),
-                        boost::asio::bind_executor(
-                            read_strand_,
-                            [this, resp, bodybuf] (boost::system::error_code const&, std::size_t length) {
-                                resp->data.parse(length, bodybuf->data());
-                                jobmap_accessor it;
-                                bool found = outstanding_jobs_.find(it, resp->header);
+                if (ec)
+                {
+                    std::stringstream ss;
+                    ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_read_one() " << ec << " header " << resp->header;
 
-                                assert(found);
+                    log::logstring(fmt::format("{}", ss.str()));
 
-                                it->second->run(resp);
+                    start_read_one();
+                    return;
+                }
 
-                                outstanding_jobs_.erase(it);
+//                if (resp->header.type != rocksdb_pack::msg_t::ack)
+//                {
+//                    std::stringstream ss;
+//                    ss << resp->header;
+//                    log::logstring(fmt::format("ssbd backend parsed header: {}", ss.str()));
+//
+//                    throw std::runtime_error("ssbd backend read non ack packet");
+//                }
 
-                                start_read_one();
-                            }));
-                }));
+
+                assert(headerbuf->size() == transferred_size);
+
+                resp->header.parse(headerbuf->data());
+
+                start_read_one_body(resp);
+            });
+    }
+
+    void start_read_one_body(rocksdb_pack::packet_pointer resp)
+    {
+        auto bodybuf = std::make_shared<base::buf>(resp->header.datasize, 0);
+
+        log::logstring(fmt::format("async_read read body called readsize={}", bodybuf->size()));
+        boost::asio::async_read(
+            socket_,
+            boost::asio::buffer(bodybuf->data(), bodybuf->size()),
+            [this, resp, bodybuf] (boost::system::error_code const& ec, std::size_t transferred_size) {
+                assert(bodybuf->size() == transferred_size);
+
+                if (ec)
+                {
+                    std::stringstream ss;
+                    ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_read_one() -> body " << ec << " header " << resp->header;
+                    log::logstring(ss.str());
+                    return;
+                }
+
+                resp->data.parse(transferred_size, bodybuf->data());
+                jobmap_accessor it;
+                bool found = outstanding_jobs_.find(it, resp->header);
+
+                std::stringstream ss;
+                ss << resp->header;
+                log::logstring(fmt::format("async read body executing with header {}", ss.str()));
+                assert(found);
+
+                it->second->run(resp);
+
+                outstanding_jobs_.erase(it);
+
+                start_read_one();
+            });
     }
 
     void start_read_key (std::shared_ptr<pack::key_t> const name, std::size_t partition,
@@ -165,20 +223,30 @@ public:
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 
-        auto buf = ptr->serialize_header();
-        boost::asio::async_write(
-            socket_,
-            boost::asio::buffer(buf->data(), buf->size()),
-            boost::asio::bind_executor(
-                write_strand_,
-                [this, buf] (boost::system::error_code const& , std::size_t) {
-                    start_read_loop();
-                }));
+        auto next = std::make_shared<socket_writer::boost_callback>(
+            [this, ptr] (boost::system::error_code const& ec, std::size_t) {
+                //log::logstring("start_read_key release semaphore");
+                //SCOPE_DEFER([this] () { outstanding_request_semaphore_.release(); });
+
+                if (ec)
+                {
+                    std::stringstream ss;
+                    ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_read_key() write " << ec << " header " << ptr->header;
+                    log::logstring(ss.str());
+                    return;
+                }
+
+                start_read_loop();
+            });
+
+        writer_.start_write_socket(ptr, next, ptr->serialize_header());
     }
 
     bool check_version_ok(pack::key_t const& name, std::size_t partition,
                           std::uint32_t& version) override
     {
+        std::lock_guard<std::mutex> lk{socket_mutex_};
+
         // request commit
         log::logstring("storage-ssbd.hpp check version start");
 
@@ -284,23 +352,50 @@ public:
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 
-        auto buf = ptr->serialize();
+        auto next = std::make_shared<socket_writer::boost_callback>(
+            [this, ptr] (boost::system::error_code ec, std::size_t) {
+                log::logstring("check version write finish");
 
-        boost::asio::async_write(
-            socket_,
-            boost::asio::buffer(buf->data(), buf->size()),
-            boost::asio::bind_executor(
-                write_strand_,
-                [buf, this] (boost::system::error_code const&, std::size_t) {
-                    start_read_loop();
-                })
-            );
+                if (ec)
+                {
+                    std::stringstream ss;
+                    ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_write_key() write " << ec << " header " << ptr->header;
+                    log::logstring(ss.str());
+                    return;
+                }
+
+                start_read_loop();
+            });
+
+        writer_.start_write_socket(ptr, next);
+
+//        auto buf = ptr->serialize();
+//
+//        boost::asio::async_write(
+//            socket_,
+//            boost::asio::buffer(buf->data(), buf->size()),
+//            boost::asio::bind_executor(
+//                write_strand_,
+//                [buf, this, ptr] (boost::system::error_code const& ec, std::size_t) {
+//                    if (ec)
+//                    {
+//                        std::stringstream ss;
+//                        ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_check_version_ok write " << ec << " header " << ptr->header;
+//                        log::logstring(ss.str());
+//                        return;
+//                    }
+//
+//                    start_read_loop();
+//                })
+//            );
     };
 
     void write_key(pack::key_t const& name, std::size_t partition,
                    base::buf const& buffer, std::size_t location,
                    std::uint32_t version) override
     {
+        std::lock_guard<std::mutex> lk{socket_mutex_};
+
         rocksdb_pack::packet_pointer ptr = std::make_shared<rocksdb_pack::packet>();
         ptr->header.type = rocksdb_pack::msg_t::merge_execute_commit;
         std::copy(name.begin(), name.end(), ptr->header.uuid.begin());
@@ -317,7 +412,6 @@ public:
         boost::asio::write(socket_, boost::asio::buffer(buf->data(), buf->size()));
 
         { // read resp
-
             rocksdb_pack::packet_pointer resp = std::make_shared<rocksdb_pack::packet>();
             std::vector<rocksdb_pack::unit_t> headerbuf(rocksdb_pack::packet_header::bytesize);
 
@@ -353,16 +447,50 @@ public:
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 
-        auto buf = ptr->serialize();
-        boost::asio::async_write(
-            socket_,
-            boost::asio::buffer(buf->data(), buf->size()),
-            boost::asio::bind_executor(
-                write_strand_,
-                [this, buf] (boost::system::error_code const&, std::size_t) {
-                    start_read_loop();
-                })
-            );
+        auto next = std::make_shared<socket_writer::boost_callback>(
+            [this, ptr] (boost::system::error_code ec, std::size_t) {
+                log::logstring("write finish");
+
+                if (ec)
+                {
+                    std::stringstream ss;
+                    ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_write_key() write " << ec << " header " << ptr->header;
+                    log::logstring(ss.str());
+                    return;
+                }
+
+                start_read_loop();
+            });
+
+        writer_.start_write_socket(ptr, next);
+//        auto buf = ptr->serialize();
+//        std::stringstream ss;
+//        ss << ptr->header;
+//
+//        log::logstring(fmt::format("final send header for write: {}, datasize={}", ss.str(), ptr->data.buf.size()));
+//        start_jobs_in_window(
+//            [this, buf, ptr] {
+//                boost::asio::async_write(
+//                    socket_,
+//                    boost::asio::buffer(buf->data(), buf->size()),
+//                    boost::asio::bind_executor(
+//                        write_strand_,
+//                        [this, buf, ptr] (boost::system::error_code const& ec, std::size_t) {
+//                            log::logstring("write finish, semaphore_.release()");
+//                            outstanding_request_semaphore_.release();
+//
+//                            if (ec)
+//                            {
+//                                std::stringstream ss;
+//                                ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_write_key() write " << ec << " header " << ptr->header;
+//                                log::logstring(ss.str());
+//                                return;
+//                            }
+//
+//                            start_read_loop();
+//                        })
+//                    );
+//            });
     };
 
     void append_list_key(pack::key_t const& name, base::buf const& buffer) override

@@ -76,8 +76,6 @@ try
     std::cin >> input;
     input = input["value"];
 
-
-//    slsfs::log::logstring(fmt::format("get request from stdin: {}", input));
     auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, queue_map, proxys);
     proxys.emplace(proxy_command_ptr, 0);
 
@@ -100,7 +98,7 @@ try
         th.join();
 
     slsfs::log::logstring("data function shutdown");
-    ow_out << "{\"hello\": \"world\"}" << std::endl;
+    ow_out << "{\"finish\": \"job\"}" << std::endl;
 
     return 0;
 }
@@ -110,31 +108,6 @@ catch (std::exception const & e)
     std::cerr << "do function ecxception: " << e.what() << std::endl;
     return -1;
 }
-
-
-
-//    try
-//    {
-//        if (input.contains("action_name"))
-//        {
-//            ow_out << perform(datastorage, input["value"], version).dump() << std::endl;
-//        }
-//        else if (input.contains("messages"))
-//            for (json & single_input : input["messages"])
-//            {
-//                json const converted = slsfs::base::decode_kafkajson(single_input["value"].get<std::string>());
-//                output["response"].push_back(perform(datastorage, converted, version));
-//            }
-//        else
-//            output["response"].push_back(perform(datastorage, input, version));
-//    }
-//    catch (std::exception const & e)
-//    {
-//        output["exception thrown"] = e.what();
-//        std::cerr << "exception thrown" << e.what() << "\n";
-//        return -1;
-//    }
-
 
 } // namespace slsfsdf
 

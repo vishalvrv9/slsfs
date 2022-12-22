@@ -12,6 +12,7 @@ namespace slsfsdf
 // Storage backend configuration for SSBD
 class storage_conf_ssbd : public storage_conf
 {
+protected:
     boost::asio::io_context &io_context_;
 public:
     storage_conf_ssbd(boost::asio::io_context &io): io_context_{io} {}
@@ -25,29 +26,42 @@ public:
 
     constexpr std::size_t fullsize()   { return 4 * 1024; } // byte
     constexpr std::size_t headersize() { return 4; } // byte
-    int blocksize() override { return fullsize() - headersize(); }
+    std::uint32_t blocksize() override { return fullsize() - headersize(); }
 
-    virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
+    auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {
         slsfs::base::buf response;
         switch (input.operation())
         {
         case slsfs::jsre::operation_t::write:
         {
-            slsfs::log::logstring("_data_ perform_single_request get data");
             auto const write_buf = input.data();
-            slsfs::pack::key_t const uuid = input.uuid();
 
-            int const realpos = input.position();
-            int const blockid = realpos / blocksize();
-            int const offset  = realpos % blocksize();
+            std::uint32_t realpos  = input.position();
+            std::uint32_t writesize = input.size(); // input["size"].get<std::size_t>();
+            std::uint32_t endpos   = realpos + writesize;
+            while (realpos < endpos)
+            {
+                std::uint32_t blockid = realpos / blocksize();
+                std::uint32_t offset  = realpos % blocksize();
+                std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - realpos, blocksize());
 
-            slsfs::log::logstring("_data_ perform_single_request agreed");
-            slsfs::base::buf b;
-            std::copy_n(write_buf, input.size(), std::back_inserter(b));
+                if (offset + writesize > blocksize())
+                    blockwritesize = blocksize() - offset;
+                realpos += blockwritesize;
 
-            for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
-                host->write_key(uuid, blockid, b, offset, 0);
+                slsfs::base::buf b(blockwritesize);
+                std::copy_n(write_buf, blockwritesize, b.begin());
+
+                for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
+                {
+                    //slsfs::base::buf resp = host->write_key(input.uuid(), blockid, offset, blockwritesize);
+
+                    host->write_key(input.uuid(), blockid, b, offset, 0);
+                    break;
+                }
+            }
+            break;
 
             response = {'O', 'K'};
             break;
@@ -60,20 +74,28 @@ public:
 
         case slsfs::jsre::operation_t::read:
         {
-            int const realpos = input.position();
-            int const blockid = realpos / blocksize();
-            int const offset  = realpos % blocksize();
-            slsfs::log::logstring("_data_ perform_single_request reading");
-
-            std::uint32_t const size = input.size(); // input["size"].get<std::size_t>();
-
-            slsfs::log::logstring(fmt::format("_data_ read perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size)));
-            for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
+            std::uint32_t realpos  = input.position();
+            std::uint32_t readsize = input.size(); // input["size"].get<std::size_t>();
+            std::uint32_t endpos   = realpos + readsize;
+            while (realpos < endpos)
             {
-                response = host->read_key(input.uuid(), blockid, offset, size);
-                break;
-            }
+                std::uint32_t blockid = realpos / blocksize();
+                std::uint32_t offset  = realpos % blocksize();
+                slsfs::log::logstring("_data_ perform_single_request reading");
 
+                std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - realpos, blocksize());
+                if (offset + readsize > blocksize())
+                    blockreadsize = blocksize() - offset;
+                realpos += blockreadsize;
+
+                slsfs::log::logstring(fmt::format("_data_ read perform_single_request sending: {}, {}, {}", blockid, offset, blockreadsize));
+                for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
+                {
+                    slsfs::base::buf resp = host->read_key(input.uuid(), blockid, offset, blockreadsize);
+                    response.insert(response.end(), resp.begin(), resp.end());
+                    break;
+                }
+            }
             break;
         }
         }

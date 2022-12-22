@@ -34,17 +34,14 @@ endif()
 
 add_executable(run main.cpp)
 add_executable(slsfs-client slsfs-client.cpp)
-#add_executable(trace_emulator trace_emulator_ceph.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 target_precompile_headers(run PRIVATE <boost/asio.hpp>)
 target_precompile_headers(run PRIVATE <fmt/core.h>)
-target_precompile_headers(slsfs-client REUSE_FROM run)
-#target_precompile_headers(trace_emulator REUSE_FROM run)
+#target_precompile_headers(slsfs-client REUSE_FROM run)
 
 target_link_libraries(run ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
-target_link_libraries(slsfs-client ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
-#target_link_libraries(trace_emulator ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(slsfs-client -static ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 
 IF ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
    target_link_libraries(run ws2_32 wsock32)

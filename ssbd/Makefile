@@ -15,6 +15,8 @@ debug-from-docker:
 	DOCKER_BUILDKIT=1 docker build -t hare1039/ssbd:0.0.1 . --build-arg debug=true
 	docker run --rm --entrypoint cat hare1039/ssbd:0.0.1 /final/build/bin/client > client
 	chmod +x client
+	docker run --rm --entrypoint cat hare1039/ssbd:0.0.1 /final/build/bin/run > run
+	chmod +x run
 
 release-all: release debug
 	echo "build all"

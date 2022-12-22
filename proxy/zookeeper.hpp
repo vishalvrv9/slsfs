@@ -25,6 +25,7 @@
 namespace slsfs::zookeeper
 {
 // assumes owner is main()
+// Zookeeper is responsible for consensus between multiple proxies.
 class zookeeper
 {
     net::io_context& io_context_;

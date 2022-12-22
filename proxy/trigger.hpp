@@ -63,7 +63,7 @@ class invoker : public std::enable_shared_from_this<invoker<StreamType>>
     net::io_context::strand io_strand_;
     tcp::resolver           resolver_;
 
-    StreamType        stream_;
+    std::unique_ptr<StreamType> stream_ptr_;
     std::atomic<bool> stream_is_connected_ = false;
     std::atomic<bool> stream_is_starting_  = false;
     std::atomic<bool> stream_is_writing_   = false;
@@ -80,11 +80,12 @@ class invoker : public std::enable_shared_from_this<invoker<StreamType>>
 public:
     template<typename ... Arguments>
     invoker(net::io_context& io, std::string const& url, Arguments && ... args):
-        io_context_{io}, io_strand_{io}, resolver_{io}, stream_{io, std::forward<Arguments>(args)...},
+        io_context_{io}, io_strand_{io}, resolver_{io},
+        stream_ptr_{std::make_unique<StreamType>(io, std::forward<Arguments>(args)...)},
         uriparser_{url}, httphost_ {io, uriparser_}
     {
         using namespace std::literals;
-        beast::get_lowest_layer(stream_).expires_after(300s);
+        beast::get_lowest_layer(*stream_ptr_).expires_after(300s);
     }
 
     template<typename Function>
@@ -119,7 +120,7 @@ private:
     {
         if constexpr (std::is_same_v<StreamType, ssl_type>)
         {
-            if (not SSL_set_tlsext_host_name(stream_.native_handle(), httphost_.host.c_str()))
+            if (not SSL_set_tlsext_host_name(stream_ptr_->native_handle(), httphost_.host.c_str()))
             {
                 beast::error_code ec {static_cast<int>(::ERR_get_error()), net::error::get_ssl_category()};
                 BOOST_LOG_TRIVIAL(error) << ec.message() << "\n";
@@ -142,7 +143,7 @@ private:
     void start_connect(tcp::resolver::results_type results, std::shared_ptr<http::request<http::string_body>> req)
     {
         BOOST_LOG_TRIVIAL(trace) << "start connect";
-        beast::get_lowest_layer(stream_).async_connect(
+        beast::get_lowest_layer(*stream_ptr_).async_connect(
             results,
             net::bind_executor(
                 io_strand_,
@@ -151,7 +152,7 @@ private:
                     {
                         if constexpr (std::is_same_v<StreamType, beast::ssl_stream<beast::tcp_stream>>)
                         {
-                            self->stream_.async_handshake(
+                            self->stream_ptr_->async_handshake(
                                 ssl::stream_base::client,
                                 net::bind_executor(
                                     self->io_strand_,
@@ -168,7 +169,17 @@ private:
                         self->stream_is_connected_.store(true);
                     }
                     else
+                    {
                         BOOST_LOG_TRIVIAL(error) << "start_connect error: " << ec.message();
+                        self->stream_is_connected_.store(false);
+
+                        if constexpr (std::is_same_v<StreamType, beast::ssl_stream<beast::tcp_stream>>)
+                        {
+                            std::make_unique<StreamType>(self->io_context_, basic::ssl_ctx()).swap(self->stream_ptr_);
+                            self->start_resolve(req);
+                        }
+                    }
+
                 }));
     }
 
@@ -186,7 +197,7 @@ private:
         req->prepare_payload();
 
         http::async_write(
-            stream_, *req,
+            *stream_ptr_, *req,
             net::bind_executor(
                 io_strand_,
                 [self=this->shared_from_this(), req](beast::error_code ec, std::size_t /*bytes_transferred*/) {
@@ -209,7 +220,7 @@ private:
     {
         auto res = std::make_shared<http::response<http::string_body>>();
         http::async_read(
-            stream_, buffer_, *res,
+            *stream_ptr_, buffer_, *res,
             net::bind_executor(
                 io_strand_,
                 [self=this->shared_from_this(), res](beast::error_code ec, std::size_t /*bytes_transferred*/) {
