@@ -194,17 +194,24 @@ public:
             io_context_,
             [self=shared_from_this(), pack] {
                 leveldb_pack::rawblocks rb;
-                rb.bind(self->db_, pack->header.as_string());
+                leveldb::Status status = rb.bind(self->db_, pack->header.as_string());
 
                 leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
                 resp->header = pack->header;
-                resp->header.type = leveldb_pack::msg_t::ack;
+                if (status.ok())
+                {
+                    resp->header.type = leveldb_pack::msg_t::ack;
 
-                std::vector<leveldb_pack::unit_t> buf(resp->header.datasize);
+                    std::vector<leveldb_pack::unit_t> buf(resp->header.datasize);
 
-                rb.read(pack->header.position, buf.begin(), resp->header.datasize);
+                    rb.read(pack->header.position, buf.begin(), resp->header.datasize);
 
-                resp->data.buf.swap(buf);
+                    resp->data.buf.swap(buf);
+                }
+                else
+                {
+                    resp->header.type = leveldb_pack::msg_t::err;
+                }
 
                 self->start_write_socket(resp);
             });
@@ -304,7 +311,8 @@ int main(int argc, char* argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port");
+        ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
+        ("blocksize,b", po::value<std::size_t>()->default_value(4 * 1024), "set block size (in bytes)");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -328,9 +336,12 @@ int main(int argc, char* argv[])
         });
 
     unsigned short const port = vm["listen"].as<unsigned short>();
+    std::size_t    const size = vm["blocksize"].as<std::size_t>();
+
+    leveldb_pack::rawblocks {}.fullsize() = size;
 
     tcp_server server{ioc, port, "/tmp/haressbd/db.db"};
-    BOOST_LOG_TRIVIAL(info) << "listen on " << port;
+    BOOST_LOG_TRIVIAL(info) << "listen on " << port << " block size=" << size;
 
     std::vector<std::thread> v;
     v.reserve(worker);

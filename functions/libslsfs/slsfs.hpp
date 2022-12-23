@@ -12,6 +12,7 @@
 #include "slsfs/debuglog.hpp"
 #include "slsfs/serializer.hpp"
 #include "slsfs/json-replacement.hpp"
+#include "slsfs/socket-writer.hpp"
 
 #include <kafka/KafkaConsumer.h>
 #include <kafka/KafkaProducer.h>

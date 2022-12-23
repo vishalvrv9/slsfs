@@ -4,6 +4,7 @@
 
 #include "basic.hpp"
 #include "uuid.hpp"
+#include "socket-writer.hpp"
 
 #include <boost/signals2.hpp>
 
@@ -25,8 +26,8 @@ concept IsLauncher = requires(T l)
 
 class worker : public std::enable_shared_from_this<worker>
 {
-    net::io_context::strand write_strand_;
     tcp::socket socket_;
+    socket_writer::socket_writer<pack::packet_pointer, std::vector<pack::unit_t>> writer_;
     std::atomic<bool> valid_ = true;
     std::atomic<unsigned int> count_ = 0;
     using launcher_callback = boost::signals2::signal<void (pack::packet_pointer)>;
@@ -37,8 +38,8 @@ class worker : public std::enable_shared_from_this<worker>
 public:
     template<typename Launcher> requires IsLauncher<Launcher>
     worker(net::io_context& io, tcp::socket socket, Launcher& l):
-        write_strand_{io},
-        socket_{std::move(socket)}
+        socket_{std::move(socket)},
+        writer_{io, socket_}
         {
             on_worker_ack_.connect(
                 [&l, this] (pack::packet_pointer p) {
@@ -139,18 +140,16 @@ public:
     void start_write(pack::packet_pointer pack)
     {
         BOOST_LOG_TRIVIAL(trace) << "worker start_write";
-        auto buf_pointer = pack->serialize();
-        net::async_write(
-            socket_,
-            net::buffer(buf_pointer->data(), buf_pointer->size()),
-            net::bind_executor(
-                write_strand_,
-                [self=shared_from_this(), buf_pointer] (boost::system::error_code ec, std::size_t /*length*/) {
-                    if (not ec)
-                        BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
-                    else
-                        BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
-                }));
+
+        auto next = std::make_shared<socket_writer::boost_callback>(
+            [self=shared_from_this()] (boost::system::error_code ec, std::size_t /*length*/) {
+                if (not ec)
+                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
+                else
+                    BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
+            });
+
+        writer_.start_write_socket(pack, next);
     }
 };
 

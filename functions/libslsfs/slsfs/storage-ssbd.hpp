@@ -368,26 +368,6 @@ public:
             });
 
         writer_.start_write_socket(ptr, next);
-
-//        auto buf = ptr->serialize();
-//
-//        boost::asio::async_write(
-//            socket_,
-//            boost::asio::buffer(buf->data(), buf->size()),
-//            boost::asio::bind_executor(
-//                write_strand_,
-//                [buf, this, ptr] (boost::system::error_code const& ec, std::size_t) {
-//                    if (ec)
-//                    {
-//                        std::stringstream ss;
-//                        ss << "ssbd backend: " << host_ << " have boost error: " << ec.message() << " on start_check_version_ok write " << ec << " header " << ptr->header;
-//                        log::logstring(ss.str());
-//                        return;
-//                    }
-//
-//                    start_read_loop();
-//                })
-//            );
     };
 
     void write_key(pack::key_t const& name, std::size_t partition,

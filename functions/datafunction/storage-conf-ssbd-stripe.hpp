@@ -214,20 +214,20 @@ public:
 
 
                     // replicate to other index
-//                    int next_index = write_index + 1;
-//                    if (next_index < replication_size())
-//                        start_write_key(
-//                            next_index, selected_host_index,
-//                            uuid,
-//                            version,
-//                            buffer,
-//                            input,
-//                            nullptr);
+                    int next_index = write_index + 1;
+                    if (next_index < replication_size())
+                        start_write_key(
+                            next_index, selected_host_index,
+                            uuid,
+                            version,
+                            buffer,
+                            input,
+                            nullptr);
                 });
 
 
         }
-        io_context_.post([next_ptr]() { std::invoke(*next_ptr, slsfs::base::buf{}); });
+//        io_context_.post([next_ptr]() { std::invoke(*next_ptr, slsfs::base::buf{}); });
     }
 
     struct buf_stat_t

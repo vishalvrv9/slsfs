@@ -159,7 +159,10 @@ public:
             auto reuse_worker = get_worker_from_pool(packet_ptr);
             if (!reuse_worker)
             {
-                BOOST_LOG_TRIVIAL(info) << "No available worker. Starting new one.";
+                BOOST_LOG_TRIVIAL(info) << "No available data function. Starting new one.";
+
+                // storage + ssbd hosts, announce_host_,
+
                 create_worker(fmt::format("{{ \"type\": \"wakeup\", \"host\": \"{}\", \"port\": \"{}\" }}",
                                           announce_host_, announce_port_));
                 return nullptr;

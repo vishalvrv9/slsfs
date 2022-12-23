@@ -39,16 +39,16 @@ using proxy_set = oneapi::tbb::concurrent_hash_map<std::shared_ptr<proxy_command
 
 class proxy_command : public std::enable_shared_from_this<proxy_command>
 {
-    boost::asio::io_context&        io_context_;
-    boost::asio::ip::tcp::socket    socket_;
-    boost::asio::io_context::strand write_io_strand_;
-    boost::asio::steady_timer       recv_deadline_;
+    boost::asio::io_context&     io_context_;
+    boost::asio::ip::tcp::socket socket_;
+    boost::asio::steady_timer    recv_deadline_;
 
     storage_conf_ssbd_stripe datastorage_conf_;
 //    storage_conf_ssbd datastorage_conf_;
 //    storage_conf_swift datastorage_conf_;
     static constexpr bool datastorage_conf_uses_async_ = true;
 
+    slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
@@ -88,9 +88,9 @@ public:
                   proxy_set& ps)
         : io_context_{io_context},
           socket_{io_context_},
-          write_io_strand_{io_context_},
           recv_deadline_{io_context_},
           datastorage_conf_{io_context_},
+          writer_{io_context_, socket_},
           queue_map_{qm},
           proxy_set_{ps}
     {
@@ -208,17 +208,14 @@ public:
     {
         slsfs::log::logstring("start write");
 
-        auto buf_pointer = pack->serialize();
-        boost::asio::async_write(
-            socket_,
-            boost::asio::buffer(buf_pointer->data(), buf_pointer->size()),
-            boost::asio::bind_executor(
-                write_io_strand_,
-                [self=this->shared_from_this(), buf_pointer, next] (boost::system::error_code ec, std::size_t length) {
-                    if (not ec)
-                        slsfs::log::logstring("worker sent msg");
-                    std::invoke(next, ec, length);
-                }));
+        auto next_warpper = std::make_shared<slsfs::socket_writer::boost_callback>(
+            [self=this->shared_from_this(), next=std::move(next)] (boost::system::error_code ec, std::size_t length) {
+                if (not ec)
+                    slsfs::log::logstring("worker sent msg");
+                std::invoke(next, ec, length);
+            });
+
+        writer_.start_write_socket(pack, next_warpper);
     }
 
     void start_job(slsfs::pack::packet_pointer pack)

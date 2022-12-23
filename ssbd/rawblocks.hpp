@@ -17,9 +17,9 @@ class rawblocks
 
 public:
     using versionint_t = std::uint32_t;
-    constexpr std::size_t fullsize()   { return 4 * 1024; } // byte
-    constexpr std::size_t headersize() { return sizeof(versionint_t); } // byte
-    constexpr std::size_t blocksize()  { return fullsize() - headersize(); }
+    auto fullsize()   -> std::size_t& { static std::size_t s = 4 * 1024; return s; } // byte
+    auto headersize() -> std::size_t  { return sizeof(versionint_t); } // byte
+    auto blocksize()  -> std::size_t  { return fullsize() - headersize(); }
 
     auto version() -> versionint_t
     {
@@ -42,7 +42,8 @@ public:
     template<typename OutputIterator>
     void read(std::size_t logic_position, OutputIterator ot, std::size_t size) {
         std::copy_n(std::next(buf_.begin(), logic_position + headersize()),
-                    std::min(buf_.size() - headersize() - logic_position, size), ot);
+                    std::min(buf_.size() - headersize() - logic_position, size),
+                    ot);
     }
 
     void move(std::string && newbuf) {
