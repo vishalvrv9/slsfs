@@ -19,6 +19,8 @@ namespace slsfsdf
 // Storage backend configuration for SSBD stripe
 class storage_conf_ssbd_stripe : public storage_conf_ssbd
 {
+    int replication_size_ = 3;
+
     static auto static_engine() -> std::mt19937&
     {
         static thread_local std::mt19937 mt;
@@ -42,20 +44,13 @@ class storage_conf_ssbd_stripe : public storage_conf_ssbd
 public:
     storage_conf_ssbd_stripe(boost::asio::io_context &io): storage_conf_ssbd{io} {}
 
-    void init() override
+    void init(slsfs::base::json const& config) override
     {
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.94",  "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.165", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.242", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.183", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.86",  "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.207", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.143", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.184", "12000"));
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.8",   "12000"));
+        replication_size_ = config["replication_size"].get<int>();
+        storage_conf_ssbd::init(config);
     }
 
-    constexpr int replication_size() { return 3; }
+    bool use_async() override { return true; }
 
     void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
     {
@@ -86,7 +81,7 @@ public:
     {
         auto const uuid = input.uuid_shared();
 
-        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size());
+        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
 
         start_check_version_ok(0, selected_host_index,
                                uuid, 0,
@@ -115,7 +110,7 @@ public:
                 else
                 {
                     int next_index = write_index + 1;
-                    if (next_index < replication_size())
+                    if (next_index < replication_size_)
                         start_check_version_ok(
                             next_index, selected_host_index,
                             uuid, version,
@@ -137,7 +132,7 @@ public:
         auto buffer = std::make_shared<slsfs::base::buf>();
         std::copy_n(input.data(), input.size(), std::back_inserter(*buffer));
 
-        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size());
+        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
 
         auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
         start_write_key(0, selected_host_index,
@@ -215,7 +210,7 @@ public:
 
                     // replicate to other index
                     int next_index = write_index + 1;
-                    if (next_index < replication_size())
+                    if (next_index < replication_size_)
                         start_write_key(
                             next_index, selected_host_index,
                             uuid,

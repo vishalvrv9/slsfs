@@ -74,9 +74,10 @@ class launcher
             pack::packet_header_key_compare>;
     jobmap started_jobs_;
     net::io_context::strand started_jobs_strand_, job_launch_strand_;
+
     uuid::uuid const& id_;
-    std::string announce_host_;
-    net::ip::port_type announce_port_;
+    std::string const announce_host_;
+    net::ip::port_type const announce_port_;
 
 public:
     launcher(net::io_context& io, uuid::uuid const& id, std::string const& announce, net::ip::port_type port):
@@ -162,9 +163,46 @@ public:
                 BOOST_LOG_TRIVIAL(info) << "No available data function. Starting new one.";
 
                 // storage + ssbd hosts, announce_host_,
+                /* example json config
+                {
+                    "type": "wakeup",
+                    "proxyhost": "192.168.1.1",
+                    "proxyport": "12000",
+                    "storagetype": "ssbd-basic",
+                    "storageconfig": {
+                        "hosts": [{
+                            "host": "192.168.2.1",
+                            "port": "12000"
+                        }]
+                    }
+                }
+                */
 
-                create_worker(fmt::format("{{ \"type\": \"wakeup\", \"host\": \"{}\", \"port\": \"{}\" }}",
-                                          announce_host_, announce_port_));
+                constexpr char const* jsontemplate = R"(
+                    {{
+                        "type": "wakeup",
+                        "proxyhost": "{}",
+                        "proxyport": "{}",
+                        "storagetype": "ssbd-stripe",
+                        "storageconfig": {{
+                            "hosts": [
+                                {{"host": "192.168.0.94",  "port": "12000"}},
+                                {{"host": "192.168.0.165", "port": "12000"}},
+                                {{"host": "192.168.0.242", "port": "12000"}},
+                                {{"host": "192.168.0.183", "port": "12000"}},
+                                {{"host": "192.168.0.86",  "port": "12000"}},
+                                {{"host": "192.168.0.207", "port": "12000"}},
+                                {{"host": "192.168.0.143", "port": "12000"}},
+                                {{"host": "192.168.0.184", "port": "12000"}},
+                                {{"host": "192.168.0.8",   "port": "12000"}}
+                            ],
+                            "replication_size": 3
+                        }}
+                    }}
+                )";
+
+// "moc-kvstore"
+                create_worker(fmt::format(jsontemplate, announce_host_, announce_port_));
                 return nullptr;
             }
             else

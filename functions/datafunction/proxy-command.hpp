@@ -43,17 +43,11 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     boost::asio::ip::tcp::socket socket_;
     boost::asio::steady_timer    recv_deadline_;
 
-    storage_conf_ssbd_stripe datastorage_conf_;
-//    storage_conf_ssbd datastorage_conf_;
-//    storage_conf_swift datastorage_conf_;
-    static constexpr bool datastorage_conf_uses_async_ = true;
+    std::shared_ptr<storage_conf> datastorage_conf_;
 
     slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
     queue_map& queue_map_;
     proxy_set& proxy_set_;
-
-//    boost::signals2::signal<slsfs::base::buf(slsfsdf::storage_conf*, jsre::request_parser<base::byte> const&)> storage_perform_;
-//    std::function<slsfs::base::buf(slsfsdf::storage_conf*, jsre::request_parser<base::byte> const&)> storage_perform_;
 
     void timer_reset()
     {
@@ -82,21 +76,17 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     }
 
 public:
-//    template<StorageOperationConcept StorageOperation>
     proxy_command(boost::asio::io_context& io_context,
+                  std::shared_ptr<storage_conf> conf,
                   queue_map& qm,
                   proxy_set& ps)
         : io_context_{io_context},
           socket_{io_context_},
           recv_deadline_{io_context_},
-          datastorage_conf_{io_context_},
+          datastorage_conf_{conf},
           writer_{io_context_, socket_},
           queue_map_{qm},
-          proxy_set_{ps}
-    {
-        datastorage_conf_.init();
-        datastorage_conf_.connect();
-    }
+          proxy_set_{ps} {}
 
     template<typename Endpoint>
     void start_connect(Endpoint endpoint)
@@ -178,6 +168,7 @@ public:
                         std::list<boost::asio::ip::tcp::endpoint> ep_list {ep};
                         auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(
                             self->io_context_,
+                            self->datastorage_conf_,
                             self->queue_map_,
                             self->proxy_set_);
 
@@ -239,7 +230,7 @@ public:
 
                     slsfs::jsre::request_parser<slsfs::base::byte> input {pack};
 
-                    if constexpr (datastorage_conf_uses_async_)
+                    if (self->datastorage_conf_->use_async())
                     {
                         self->start_storage_perform(
                             input,
@@ -274,7 +265,7 @@ public:
         {
         case slsfs::jsre::type_t::file:
         {
-            return slsfsdf::perform_single_request(datastorage_conf_, single_input);
+            return slsfsdf::perform_single_request(*datastorage_conf_.get(), single_input);
             break;
         }
 
@@ -304,7 +295,7 @@ public:
         {
         case slsfs::jsre::type_t::file:
         {
-            datastorage_conf_.start_perform(single_input, std::move(next));
+            datastorage_conf_->start_perform(single_input, std::move(next));
             break;
         }
 

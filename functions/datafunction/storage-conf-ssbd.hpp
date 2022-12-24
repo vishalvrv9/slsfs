@@ -17,16 +17,24 @@ protected:
 public:
     storage_conf_ssbd(boost::asio::io_context &io): io_context_{io} {}
 
-    void init() override
+    void init(slsfs::base::json const& config) override
     {
-        hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "192.168.0.165", "12000"));
-        //hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "zion08", "12000"));
-        //hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, "zion08", "12000"));
+        for (auto&& element : config["hosts"])
+        {
+            std::string const host = element["host"].get<std::string>();
+            std::string const port = element["port"].get<std::string>();
+
+            slsfs::log::logstring(fmt::format("adding {}:{}", host, port));
+
+            hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, host, port));
+        }
+
+        connect();
     }
 
-    constexpr std::size_t fullsize()   { return 4 * 1024; } // byte
-    constexpr std::size_t headersize() { return 4; } // byte
-    std::uint32_t blocksize() override { return fullsize() - headersize(); }
+    auto fullsize()   -> std::uint32_t & { static std::uint32_t s = 4 * 1024; return s; } // b$
+    auto headersize() -> std::uint32_t   { return 4; } // byte
+    auto blocksize()  -> std::uint32_t   { return fullsize() - headersize(); }
 
     auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {

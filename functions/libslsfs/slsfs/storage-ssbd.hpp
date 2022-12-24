@@ -51,8 +51,7 @@ class ssbd : public interface
 {
     boost::asio::io_context& io_context_;
     boost::asio::ip::tcp::socket socket_;
-    char const * host_;
-    char const * port_;
+    std::string const host_, port_;
     boost::asio::steady_timer timer_;
     using jobmap =
         oneapi::tbb::concurrent_hash_map<
@@ -83,7 +82,7 @@ class ssbd : public interface
 //    }
 
 public:
-    ssbd(boost::asio::io_context& io, char const * host, char const * port):
+    ssbd(boost::asio::io_context& io, std::string const& host, std::string const& port):
         io_context_{io}, socket_(io),
         host_{host}, port_{port}, timer_{io},
         writer_{io, socket_} {}

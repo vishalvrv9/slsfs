@@ -14,36 +14,21 @@ class storage_conf
 {
 protected:
     std::vector<std::shared_ptr<slsfs::storage::interface>> hostlist_;
-public:
-    virtual ~storage_conf() {}
-    virtual void init() = 0;
-    virtual auto blocksize() -> std::uint32_t = 0;
-    virtual void replication() {}
-
-    virtual void connect()
+    void connect()
     {
         for (std::shared_ptr<slsfs::storage::interface>& host : hostlist_)
             host->connect();
     }
 
+public:
+    virtual ~storage_conf() {}
+    virtual void init(slsfs::base::json const& config) = 0;
+    virtual auto blocksize() -> std::uint32_t = 0;
+    virtual bool use_async() { return false; }
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf = 0;
     virtual void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) {
         assert(false);// "to use start perform, please override this function");
     };
-
-//    static
-//    auto get_singleton() -> std::unique_ptr<storage_conf>&
-//    {
-//        // thread_local
-//        static thread_local std::unique_ptr<storage_conf> datastorage = nullptr;
-//        return datastorage;
-//    }
-//
-//    static
-//    void create_singleton(storage_conf * newvalue)
-//    {
-//        get_singleton().reset(newvalue);
-//    }
 };
 
 } // namespace slsfsdf

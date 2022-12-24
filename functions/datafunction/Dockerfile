@@ -30,8 +30,8 @@ ADD datafunction/profiles      /pre/profiles
 ADD datafunction/conanfile.txt /pre
 
 RUN mkdir /pre/build && cd /pre/build && \
-    conan install .. --profile ../profiles/release --build=missing --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl && \
-    conan install .. --profile ../profiles/debug   --build=missing --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl
+    conan install .. --profile ../profiles/release --build=missing --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl --build=libuv && \
+    conan install .. --profile ../profiles/debug   --build=missing --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl --build=libuv
 
 ADD libslsfs /action/libslsfs
 

@@ -76,12 +76,50 @@ try
     std::cin >> input;
     input = input["value"];
 
-    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, queue_map, proxys);
+    /* example json config
+    {
+        "type": "wakeup",
+        "proxyhost": "192.168.1.1",
+        "proxyport": "12000",
+        "storagetype": "ssbd-basic",
+        "storageconfig": {
+            "hosts": [{
+                "host": "192.168.2.1",
+                "port": "12000"
+            }]
+        }
+    }
+    */
+
+    std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
+
+    std::string const storagetype = input["storagetype"].get<std::string>();
+    switch (slsfs::sswitch::hash(storagetype))
+    {
+    using namespace slsfs::sswitch;
+    case "ssbd-basic"_:
+        conf = std::make_shared<slsfsdf::storage_conf_ssbd>(ioc);
+        break;
+    case "ssbd-stripe"_:
+        conf = std::make_shared<slsfsdf::storage_conf_ssbd_stripe>(ioc);
+        break;
+    case "cassandra"_:
+        conf = std::make_shared<slsfsdf::storage_conf_cass>();
+        break;
+    case "swift"_:
+        conf = std::make_shared<slsfsdf::storage_conf_swift>();
+        break;
+    }
+    conf->init(input["storageconfig"]);
+
+    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, conf, queue_map, proxys);
     proxys.emplace(proxy_command_ptr, 0);
 
-    slsfs::log::logstring("connect to host:port");
-    proxy_command_ptr->start_connect(resolver.resolve(input["host"].get<std::string>(),
-                                                      input["port"].get<std::string>()));
+    std::string const proxyhost = input["proxyhost"].get<std::string>();
+    std::string const proxyport = input["proxyport"].get<std::string>();
+
+    slsfs::log::logstring(fmt::format("connect to {}:{}", proxyhost, proxyport));
+    proxy_command_ptr->start_connect(resolver.resolve(proxyhost, proxyport));
 
     std::vector<std::thread> v;
     unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
