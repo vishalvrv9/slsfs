@@ -69,8 +69,6 @@ class invoker : public std::enable_shared_from_this<invoker<StreamType>>
     std::atomic<bool> stream_is_writing_   = false;
     oneapi::tbb::concurrent_queue<std::shared_ptr<http::request<http::string_body>>> pending_requests_;
 
-
-    beast::flat_buffer buffer_;
     Poco::URI          uriparser_;
     httphost           httphost_;
     std::size_t        retried_ = 0;
@@ -219,11 +217,12 @@ private:
     void start_read()
     {
         auto res = std::make_shared<http::response<http::string_body>>();
+        auto buffer = std::make_shared<beast::flat_buffer>();
         http::async_read(
-            *stream_ptr_, buffer_, *res,
+            *stream_ptr_, *buffer, *res,
             net::bind_executor(
                 io_strand_,
-                [self=this->shared_from_this(), res](beast::error_code ec, std::size_t /*bytes_transferred*/) {
+                [self=this->shared_from_this(), buffer, res](beast::error_code ec, std::size_t /*bytes_transferred*/) {
                     if (not ec)
                     {
                         self->on_read_(res);

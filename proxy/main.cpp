@@ -190,6 +190,7 @@ public:
                         self->start_trigger(pack);
                         break;
 
+                    case slsfs::pack::msg_t::set_timer:
                     case slsfs::pack::msg_t::proxyjoin:
                     case slsfs::pack::msg_t::err:
                     case slsfs::pack::msg_t::worker_dereg:
@@ -321,8 +322,25 @@ public:
         : id_{id},
           io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-          launcher_{io_context, id_, announce, port} {
-        start_accept();
+          launcher_{io_context, id_, announce, port} {}
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_filetoworker(Args&& ... args) {
+        launcher_.set_policy_filetoworker<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_launch(Args&& ... args) {
+        launcher_.set_policy_launch<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_keepalive(Args&& ... args) {
+        launcher_.set_policy_keepalive<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    void set_worker_config(std::string const& config) {
+        launcher_.set_worker_config(config);
     }
 
     void start_accept()
@@ -345,6 +363,39 @@ public:
     auto launcher() -> slsfs::launcher::launcher& { return launcher_; }
 };
 
+void set_policy_filetoworker(tcp_server& server, std::string const& policy)
+{
+    using namespace slsfs::basic::sswitcher;
+    switch (hash(policy))
+    {
+    case "lowest-load"_:
+        server.set_policy_filetoworker<slsfs::launcher::policy::lowest_load>();
+        break;
+    }
+}
+
+void set_policy_launch(tcp_server& server, std::string const& policy)
+{
+    using namespace slsfs::basic::sswitcher;
+    switch (hash(policy))
+    {
+    case "const-limit-launch"_:
+        server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>();
+        break;
+    }
+}
+
+void set_policy_keepalive(tcp_server& server, std::string const& policy)
+{
+    using namespace slsfs::basic::sswitcher;
+    switch (hash(policy))
+    {
+    case "const-time"_:
+        server.set_policy_keepalive<slsfs::launcher::policy::keepalive_const_time>(60 * 1000 /* ms */);
+        break;
+    }
+}
+
 int main(int argc, char* argv[])
 {
     slsfs::basic::init_log();
@@ -355,7 +406,11 @@ int main(int argc, char* argv[])
         ("help,h", "Print this help messages")
         ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
         ("init", "reset all system (clear zookeeper entries)")
-        ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect");
+        ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect")
+        ("policy-filetoworker", po::value<std::string>(), "file to worker policy name")
+        ("policy-launch",       po::value<std::string>(), "launch policy name")
+        ("policy-keepalive",    po::value<std::string>(), "keepalive policy name")
+        ("worker-config",       po::value<std::string>(), "worker config to use");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -376,7 +431,38 @@ int main(int argc, char* argv[])
     std::string const announce = vm["announce"].as<std::string>();
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
 
+    std::string worker_config = fmt::format(R"(
+        {{
+            "type": "wakeup",
+            "proxyhost": "{}",
+            "proxyport": "{}",
+            "storagetype": "ssbd-stripe",
+            "storageconfig": {{
+                "hosts": [
+                    {{"host": "192.168.0.94",  "port": "12000"}},
+                    {{"host": "192.168.0.165", "port": "12000"}},
+                    {{"host": "192.168.0.242", "port": "12000"}},
+                    {{"host": "192.168.0.183", "port": "12000"}},
+                    {{"host": "192.168.0.86",  "port": "12000"}},
+                    {{"host": "192.168.0.207", "port": "12000"}},
+                    {{"host": "192.168.0.143", "port": "12000"}},
+                    {{"host": "192.168.0.184", "port": "12000"}},
+                    {{"host": "192.168.0.8",   "port": "12000"}}
+                ],
+                "replication_size": 3
+            }}
+        }}
+    )", announce, port);
+
     tcp_server server{ioc, port, server_id, announce};
+
+    set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>());
+    set_policy_launch      (server, vm["policy-launch"]      .as<std::string>());
+    set_policy_keepalive   (server, vm["policy-keepalive"]   .as<std::string>());
+
+    server.set_worker_config(worker_config);
+
+    server.start_accept();
     BOOST_LOG_TRIVIAL(info) << server_id << " listen on " << port;
 
     std::vector<char> announce_buf;

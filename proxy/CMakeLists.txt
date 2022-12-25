@@ -36,9 +36,11 @@ add_executable(run main.cpp)
 add_executable(slsfs-client slsfs-client.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
+
 target_precompile_headers(run PRIVATE <boost/asio.hpp>)
 target_precompile_headers(run PRIVATE <fmt/core.h>)
-#target_precompile_headers(slsfs-client REUSE_FROM run)
+target_precompile_headers(run PRIVATE <nlohmann/json.hpp>)
+target_precompile_headers(slsfs-client REUSE_FROM run)
 
 target_link_libraries(run ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(slsfs-client -static ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})

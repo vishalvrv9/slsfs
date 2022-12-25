@@ -48,6 +48,7 @@ enum class msg_t: unit_t
     get = 2,
     ack = 3,
     proxyjoin = 4,
+    set_timer = 5,
 
     worker_reg = 8,
     worker_dereg = 9,
@@ -57,6 +58,8 @@ enum class msg_t: unit_t
     trigger = 14,
     trigger_reject = 15,
 };
+
+using waittime_type = std::uint32_t;
 
 template<typename Integer>
 auto hton(Integer i) -> Integer

@@ -16,6 +16,7 @@ namespace slsfsdf::server
 namespace
 {
     using boost::asio::ip::tcp;
+    using namespace std::chrono_literals;
 }
 
 using queue_map = oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
@@ -42,18 +43,18 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     boost::asio::io_context&     io_context_;
     boost::asio::ip::tcp::socket socket_;
     boost::asio::steady_timer    recv_deadline_;
+    std::chrono::milliseconds    waittime_ = 10s;
 
     std::shared_ptr<storage_conf> datastorage_conf_;
-
     slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
+
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
     void timer_reset()
     {
-        using namespace std::chrono_literals;
         slsfs::log::logstring("timer_reset");
-        recv_deadline_.expires_from_now(60s);
+        recv_deadline_.expires_from_now(waittime_);
         recv_deadline_.async_wait(
             [self=this->shared_from_this()] (boost::system::error_code ec) {
                 slsfs::log::logstring(fmt::format("timer_reset: get code: {}", ec.message()));
@@ -147,7 +148,9 @@ public:
                 {
                     pack->data.parse(length, read_buf->data());
 
-                    if (pack->header.type == slsfs::pack::msg_t::proxyjoin)
+                    switch (pack->header.type)
+                    {
+                    case slsfs::pack::msg_t::proxyjoin:
                     {
                         slsfs::log::logstring("switch proxy master");
                         std::uint32_t addr;
@@ -174,9 +177,21 @@ public:
 
                         proxy_command_ptr->start_connect(ep_list);
                         self->proxy_set_.emplace(proxy_command_ptr, 0);
+                        break;
                     }
-                    else
+
+                    case slsfs::pack::msg_t::set_timer:
+                    {
+                        slsfs::pack::waittime_type duration_in_ms = 0;
+                        std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
+                        self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
+                        slsfs::log::logstring(fmt::format("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms)));
+                        break;
+                    }
+
+                    default:
                         self->start_job(pack);
+                    }
 
                     slsfs::pack::packet_pointer ok = std::make_shared<slsfs::pack::packet>();
                     ok->header = pack->header;
@@ -234,11 +249,15 @@ public:
                     {
                         self->start_storage_perform(
                             input,
-                            [self=self->shared_from_this(), pack] (slsfs::base::buf buf) {
+                            [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
                                 pack->header.type = slsfs::pack::msg_t::worker_response;
                                 pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
                                 std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
+
                                 self->start_write(pack);
+                                auto const end = std::chrono::high_resolution_clock::now();
+                                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                                slsfs::log::logstring<slsfs::log::level::info>(fmt::format("req finish in: {}", relativetime));
                             });
                     }
                     else
@@ -247,12 +266,12 @@ public:
                         pack->header.type = slsfs::pack::msg_t::worker_response;
                         pack->data.buf.resize(v.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
                         std::memcpy(pack->data.buf.data(), v.data(), v.size());
-                        self->start_write(pack);
-                    }
-                    auto const end = std::chrono::high_resolution_clock::now();
 
-                    auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                    slsfs::log::logstring<slsfs::log::level::info>(fmt::format("req finish in: {}", relativetime));
+                        self->start_write(pack);
+                        auto const end = std::chrono::high_resolution_clock::now();
+                        auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                        slsfs::log::logstring<slsfs::log::level::info>(fmt::format("req finish in: {}", relativetime));
+                    }
                 }
             )
         );

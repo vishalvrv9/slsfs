@@ -9,8 +9,6 @@
 #include <boost/beast/version.hpp>
 #include <boost/beast/ssl.hpp>
 
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/spawn.hpp>
 #include <boost/asio.hpp>
 #include <boost/config.hpp>
 
@@ -56,6 +54,10 @@
 
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+#include <fmt/core.h>
+
+#include <nlohmann/json.hpp>
+
 #include <fstream>
 #include <charconv>
 
@@ -66,8 +68,10 @@ namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http  = boost::beast::http;   // from <boost/beast/http.hpp>
 namespace net   = boost::asio;          // from <boost/asio.hpp>
 namespace ssl   = boost::asio::ssl;
+
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
 using namespace std::string_literals;
+using json = nlohmann::json;
 
 namespace basic
 {

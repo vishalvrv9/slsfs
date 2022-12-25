@@ -79,7 +79,6 @@ public:
                         BOOST_LOG_TRIVIAL(debug) << "worker get worker_dereg" << pack->header;
                         self->valid_.store(false);
                         self->on_worker_close_(self->shared_from_this());
-                        //self->start_read_header();
                         break;
 
                     case pack::msg_t::worker_response:
@@ -93,6 +92,7 @@ public:
                         self->start_read_header();
                         break;
 
+                    case pack::msg_t::set_timer:
                     case pack::msg_t::proxyjoin:
                     case pack::msg_t::err:
                     case pack::msg_t::put:
@@ -152,6 +152,8 @@ public:
         writer_.start_write_socket(pack, next);
     }
 };
+
+using worker_ptr = std::shared_ptr<df::worker>;
 
 } // namespace df
 

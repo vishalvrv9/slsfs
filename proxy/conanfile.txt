@@ -4,6 +4,7 @@ onetbb/2021.3.0@
 poco/1.12.2@
 fmt/9.1.0@
 zlib/1.2.13@
+nlohmann_json/3.11.2@
 
 [options]
 boost:shared=False

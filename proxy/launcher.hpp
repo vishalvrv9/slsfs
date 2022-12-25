@@ -4,14 +4,12 @@
 
 #include "basic.hpp"
 #include "serializer.hpp"
-#include "worker.hpp"
-#include "uuid.hpp"
+#include "launcher-job.hpp"
+#include "launcher-policy.hpp"
 
 #include <oneapi/tbb/concurrent_unordered_set.h>
 #include <oneapi/tbb/concurrent_queue.h>
 #include <oneapi/tbb/concurrent_hash_map.h>
-
-#include <boost/signals2.hpp>
 
 #include <iterator>
 #include <atomic>
@@ -19,30 +17,6 @@
 namespace slsfs::launcher
 {
 
-// Specifies a READ or WRITE jobs managed by launcher
-class job
-{
-public:
-    enum class state : std::uint8_t
-    {
-        registered,
-        started,
-        finished
-    };
-    state state_ = state::registered;
-
-    using on_completion_callable = boost::signals2::signal<void (pack::packet_pointer)>;
-    on_completion_callable on_completion_;
-    pack::packet_pointer pack_;
-
-    boost::asio::steady_timer timer_;
-
-    template<typename Next>
-    job (net::io_context& ioc, pack::packet_pointer p, Next && next):
-        pack_{p}, timer_{ioc} { on_completion_.connect(next); }
-};
-
-using job_ptr = std::shared_ptr<job>;
 template<typename T>
 concept CanResolveZookeeper = requires(T t)
 {
@@ -56,16 +30,10 @@ class launcher
     net::io_context& io_context_;
     std::shared_ptr<trigger::invoker<beast::ssl_stream<beast::tcp_stream>>> trigger_;
 
-    oneapi::tbb::concurrent_hash_map<std::shared_ptr<df::worker>, int /* not used */> worker_set_;
-    using worker_set_accessor = decltype(worker_set_)::accessor;
+    worker_set worker_set_;
+    fileid_map fileid_to_worker_;
 
-    oneapi::tbb::concurrent_hash_map<pack::packet_header,
-                                     std::shared_ptr<df::worker>,
-                                     pack::packet_header_key_hash_compare> fileid_to_worker_;
-    using fileid_to_worker_accessor = decltype(fileid_to_worker_)::accessor;
-    using fileid_worker_pair = decltype(fileid_to_worker_)::value_type;
-
-    oneapi::tbb::concurrent_queue<job_ptr> pending_jobs_;
+    job_queue pending_jobs_;
     using jobmap =
         oneapi::tbb::concurrent_unordered_map<
             pack::packet_header,
@@ -78,9 +46,11 @@ class launcher
     uuid::uuid const& id_;
     std::string const announce_host_;
     net::ip::port_type const announce_port_;
+    launcher_policy launcher_policy_;
 
 public:
-    launcher(net::io_context& io, uuid::uuid const& id, std::string const& announce, net::ip::port_type port):
+    launcher(net::io_context& io, uuid::uuid const& id,
+             std::string const& announce, net::ip::port_type port):
         io_context_{io},
         trigger_{std::make_shared<
                      trigger::invoker<
@@ -93,7 +63,29 @@ public:
         job_launch_strand_{io},
         id_{id},
         announce_host_{announce},
-        announce_port_{port} {}
+        announce_port_{port},
+        launcher_policy_{worker_set_, fileid_to_worker_, pending_jobs_,
+                         announce_host_, announce_port_}
+        {}
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_filetoworker(Args&& ... args) {
+        launcher_policy_.filetoworker_policy_ = std::make_unique<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_launch(Args&& ... args) {
+        launcher_policy_.launch_policy_       = std::make_unique<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    template<typename PolicyType, typename ... Args>
+    void set_policy_keepalive(Args&& ... args) {
+        launcher_policy_.keepalive_policy_    = std::make_unique<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    void set_worker_config(std::string const& config) {
+        launcher_policy_.worker_config_ = config;
+    }
 
     void add_worker(tcp::socket socket, pack::packet_pointer)
     {
@@ -140,94 +132,34 @@ public:
         worker_set_.erase(worker);
     }
 
-    auto get_worker_from_pool(pack::packet_pointer /*packet_ptr*/) -> std::shared_ptr<df::worker>
-    {
-        for (auto&& worker_pair : worker_set_)
-        {
-            if (worker_pair.first->pending_jobs() <= 5 and worker_pair.first->is_valid())
-                return worker_pair.first;
-        }
-        return nullptr;
-    }
-
-    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> std::shared_ptr<df::worker>
-    {
-        fileid_to_worker_accessor it;
-        if (bool found = fileid_to_worker_.find(it, packet_ptr->header); found)
-            return it->second;
-        else
-        {
-            auto reuse_worker = get_worker_from_pool(packet_ptr);
-            if (!reuse_worker)
-            {
-                BOOST_LOG_TRIVIAL(info) << "No available data function. Starting new one.";
-
-                // storage + ssbd hosts, announce_host_,
-                /* example json config
-                {
-                    "type": "wakeup",
-                    "proxyhost": "192.168.1.1",
-                    "proxyport": "12000",
-                    "storagetype": "ssbd-basic",
-                    "storageconfig": {
-                        "hosts": [{
-                            "host": "192.168.2.1",
-                            "port": "12000"
-                        }]
-                    }
-                }
-                */
-
-                constexpr char const* jsontemplate = R"(
-                    {{
-                        "type": "wakeup",
-                        "proxyhost": "{}",
-                        "proxyport": "{}",
-                        "storagetype": "ssbd-stripe",
-                        "storageconfig": {{
-                            "hosts": [
-                                {{"host": "192.168.0.94",  "port": "12000"}},
-                                {{"host": "192.168.0.165", "port": "12000"}},
-                                {{"host": "192.168.0.242", "port": "12000"}},
-                                {{"host": "192.168.0.183", "port": "12000"}},
-                                {{"host": "192.168.0.86",  "port": "12000"}},
-                                {{"host": "192.168.0.207", "port": "12000"}},
-                                {{"host": "192.168.0.143", "port": "12000"}},
-                                {{"host": "192.168.0.184", "port": "12000"}},
-                                {{"host": "192.168.0.8",   "port": "12000"}}
-                            ],
-                            "replication_size": 3
-                        }}
-                    }}
-                )";
-
-// "moc-kvstore"
-                create_worker(fmt::format(jsontemplate, announce_host_, announce_port_));
-                return nullptr;
-            }
-            else
-            {
-                BOOST_LOG_TRIVIAL(trace) << "Reuse worker";
-                if (not fileid_to_worker_.emplace(packet_ptr->header, reuse_worker))
-                    return nullptr;
-                else
-                    return reuse_worker;
-            }
-        }
-    }
-
     void start_jobs()
     {
         job_ptr j;
         while (pending_jobs_.try_pop(j))
         {
             BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
-            std::shared_ptr<df::worker> worker_ptr = get_assigned_worker(j->pack_);
+
+            // execute the assigned policy
+            // 1. which data function to pick?
+            // 2. determine we start a new data function?
+            // 3. how long should this data function idle?
+
+            df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
 
             if (!worker_ptr)
             {
-                pending_jobs_.push(j);
-                break;
+                worker_ptr = launcher_policy_.get_available_worker(j->pack_);
+
+                // emergency start
+                if (!worker_ptr)
+                {
+                    launcher_policy_.set_worker_keepalive();
+                    create_worker(launcher_policy_.get_worker_config());
+                    pending_jobs_.push(j);
+                    break;
+                }
+
+                fileid_to_worker_.emplace(j->pack_->header, worker_ptr);
             }
 
             BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post. ";
@@ -245,6 +177,12 @@ public:
                     }
                 });
             BOOST_LOG_TRIVIAL(info) << "start job " << j->pack_->header;
+        }
+
+        if (launcher_policy_.should_start_new_worker())
+        {
+            create_worker(launcher_policy_.get_worker_config());
+            launcher_policy_.set_worker_keepalive();
         }
     }
 
