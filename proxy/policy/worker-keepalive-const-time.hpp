@@ -8,8 +8,7 @@
 namespace slsfs::launcher::policy
 {
 
-/* Resource provisioning policy interface responsible for deciding a keep alive time for workers after
-they have processed their last request */
+/* Sets a constant keep alive time for idle workers */
 class keepalive_const_time : public worker_keepalive
 {
     pack::waittime_type waittime_;

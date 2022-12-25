@@ -7,7 +7,8 @@
 namespace slsfs::launcher::policy
 {
 
-/* policy that launches a worker if  */
+/* policy that launches a worker if the number of pending jobs of each current worker
+exceeds a preset threshold  */
 class const_limit_launch : public worker_launch
 {
     int threshold_;

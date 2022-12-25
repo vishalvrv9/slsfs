@@ -11,7 +11,7 @@
 namespace slsfs::launcher::policy
 {
 
-/* Resource provisioning interface policy responsible for assigning files to workers */
+/* Assigns new files to the worker with the lowest amount of assigned files */
 class lowest_load : public worker_filetoworker
 {
 public:
