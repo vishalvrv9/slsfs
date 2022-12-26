@@ -33,7 +33,7 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 endif()
 
 add_executable(run main.cpp)
-add_executable(slsfs-client slsfs-client.cpp)
+add_executable(slsfs-client clients/slsfs-client.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 

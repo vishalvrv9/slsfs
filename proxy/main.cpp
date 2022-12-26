@@ -232,8 +232,6 @@ public:
                             self->start_write(resp);
                             self->start_read_header();
                         });
-//                    self->start_write(pack);
-//                    self->start_read_header();
                 }
                 else
                     BOOST_LOG_TRIVIAL(error) << "start_trigger: " << ec.message();
