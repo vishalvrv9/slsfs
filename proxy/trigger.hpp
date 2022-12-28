@@ -23,14 +23,11 @@ namespace slsfs::trigger
 
 struct httphost
 {
-    net::io_context::strand write_strand_;
-
     std::string host;
     std::string port;
     std::string target;
 
-    httphost(net::io_context& io, Poco::URI const& uriparser):
-        write_strand_{io},
+    httphost(Poco::URI const& uriparser):
         host {uriparser.getHost()},
         port {std::to_string(uriparser.getPort())},
         target {uriparser.getPathEtc()} { }
@@ -80,7 +77,7 @@ public:
     invoker(net::io_context& io, std::string const& url, Arguments && ... args):
         io_context_{io}, io_strand_{io}, resolver_{io},
         stream_ptr_{std::make_unique<StreamType>(io, std::forward<Arguments>(args)...)},
-        uriparser_{url}, httphost_ {io, uriparser_}
+        uriparser_{url}, httphost_ {uriparser_}
     {
         using namespace std::literals;
         beast::get_lowest_layer(*stream_ptr_).expires_after(300s);
@@ -98,19 +95,20 @@ public:
         req->body() = body;
         req->method(http::verb::post);
 
-        //            if (beast::get_lowest_layer(stream_).socket().is_open())
-        if (stream_is_connected_)
-            start_write(req);
-        else
-        {
-            if (stream_is_starting_)
-                pending_requests_.push(req);
-            else
-            {
-                stream_is_starting_.store(true);
-                start_resolve(req);
-            }
-        }
+        start_resolve(req);
+//        //            if (beast::get_lowest_layer(stream_).socket().is_open())
+//        if (stream_is_connected_)
+//            start_write(req);
+//        else
+//        {
+//            if (stream_is_starting_)
+//                pending_requests_.push(req);
+//            else
+//            {
+//                stream_is_starting_.store(true);
+//                start_resolve(req);
+//            }
+//        }
     }
 
 private:
@@ -242,6 +240,17 @@ private:
                 }));
     }
 };
+
+auto make_trigger(net::io_context& io) -> std::shared_ptr<invoker<beast::ssl_stream<beast::tcp_stream>>>
+{
+    return std::make_shared<
+               invoker<
+                   beast::ssl_stream<
+                       beast::tcp_stream>>>(
+                           io,
+                           "https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction?blocking=false&result=false",
+                           basic::ssl_ctx());
+}
 
 } // namespace trigger
 

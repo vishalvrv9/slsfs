@@ -28,7 +28,6 @@ concept CanResolveZookeeper = requires(T t)
 class launcher
 {
     net::io_context& io_context_;
-    std::shared_ptr<trigger::invoker<beast::ssl_stream<beast::tcp_stream>>> trigger_;
 
     worker_set worker_set_;
     fileid_map fileid_to_worker_;
@@ -52,13 +51,6 @@ public:
     launcher(net::io_context& io, uuid::uuid const& id,
              std::string const& announce, net::ip::port_type port):
         io_context_{io},
-        trigger_{std::make_shared<
-                     trigger::invoker<
-                         beast::ssl_stream<
-                             beast::tcp_stream>>>(
-                                 io_context_,
-                                 "https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction?blocking=false&result=false",
-                                 basic::ssl_ctx())},
         started_jobs_strand_{io},
         job_launch_strand_{io},
         id_{id},
@@ -123,6 +115,12 @@ public:
                         return;
                     job_ptr j = started_jobs_[pack->header];
                     //BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " get ack. cancel job timer";
+                    if (!j)
+                    {
+                        BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";
+                        return;
+                    }
+
                     j->state_ = job::state::started;
                     j->timer_.cancel();
                 }));
@@ -192,7 +190,7 @@ public:
             net::bind_executor(
                 job_launch_strand_,
                 [this, body] {
-                    trigger_->start_post(body);
+                    trigger::make_trigger(io_context_)->start_post(body);
                 }));
     }
 

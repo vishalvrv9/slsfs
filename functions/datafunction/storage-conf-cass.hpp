@@ -15,7 +15,7 @@ public:
     {
         std::string const host = config["host"].get<std::string>();
         hostlist_.push_back(std::make_shared<slsfs::storage::cassandra>(host.c_str()));
-        connect();
+        storage_conf::init(config);
     }
 
     virtual std::uint32_t blocksize() override { return 4096; } // byte

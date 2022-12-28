@@ -14,10 +14,11 @@ namespace slsfsdf
 class storage_conf_swift : public storage_conf
 {
 public:
-    virtual void init(slsfs::base::json const&) override
+    void init(slsfs::base::json const& config) override
     {
-        hostlist_.push_back(std::make_shared<slsfs::storage::swiftkv>("moc-kvstore"));
-        connect();
+        std::string const container = config["container"].get<std::string>();
+        hostlist_.push_back(std::make_shared<slsfs::storage::swiftkv>(container));
+        storage_conf::init(config);
     }
 
     virtual std::uint32_t blocksize() override { return 4096; } // byte

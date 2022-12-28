@@ -1,0 +1,9 @@
+{
+    "type": "wakeup",
+    "proxyhost": "%1%",
+    "proxyport": "%2%",
+    "storagetype": "swift",
+    "storageconfig": {
+        "container": "moc-kvstore"
+    }
+}

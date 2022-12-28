@@ -9,6 +9,7 @@
 #include <boost/log/trivial.hpp>
 #include <boost/asio.hpp>
 #include <boost/signals2.hpp>
+#include <boost/format.hpp>
 
 #include <oneapi/tbb/concurrent_unordered_map.h>
 #include <oneapi/tbb/concurrent_queue.h>
@@ -21,6 +22,8 @@
 #include <list>
 #include <thread>
 #include <vector>
+#include <fstream>
+#include <string>
 
 using slsfs::net::ip::tcp;
 namespace net = slsfs::net;
@@ -361,9 +364,10 @@ public:
     auto launcher() -> slsfs::launcher::launcher& { return launcher_; }
 };
 
-void set_policy_filetoworker(tcp_server& server, std::string const& policy)
+void set_policy_filetoworker(tcp_server& server, std::string const& policy, [[maybe_unused]] std::string const& args)
 {
     using namespace slsfs::basic::sswitcher;
+
     switch (hash(policy))
     {
     case "lowest-load"_:
@@ -372,24 +376,24 @@ void set_policy_filetoworker(tcp_server& server, std::string const& policy)
     }
 }
 
-void set_policy_launch(tcp_server& server, std::string const& policy)
+void set_policy_launch(tcp_server& server, std::string const& policy, std::string const& args)
 {
     using namespace slsfs::basic::sswitcher;
     switch (hash(policy))
     {
     case "const-limit-launch"_:
-        server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>();
+        server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
         break;
     }
 }
 
-void set_policy_keepalive(tcp_server& server, std::string const& policy)
+void set_policy_keepalive(tcp_server& server, std::string const& policy, std::string const& args)
 {
     using namespace slsfs::basic::sswitcher;
     switch (hash(policy))
     {
     case "const-time"_:
-        server.set_policy_keepalive<slsfs::launcher::policy::keepalive_const_time>(60 * 1000 /* ms */);
+        server.set_policy_keepalive<slsfs::launcher::policy::keepalive_const_time>(std::stoi(args) /* ms */);
         break;
     }
 }
@@ -405,10 +409,13 @@ int main(int argc, char* argv[])
         ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
         ("init", "reset all system (clear zookeeper entries)")
         ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect")
-        ("policy-filetoworker", po::value<std::string>(), "file to worker policy name")
-        ("policy-launch",       po::value<std::string>(), "launch policy name")
-        ("policy-keepalive",    po::value<std::string>(), "keepalive policy name")
-        ("worker-config",       po::value<std::string>(), "worker config to use");
+        ("policy-filetoworker",      po::value<std::string>(), "file to worker policy name")
+        ("policy-filetoworker-args", po::value<std::string>()->default_value(""), "file to worker policy name extra args")
+        ("policy-launch",            po::value<std::string>(),                    "launch policy name")
+        ("policy-launch-args",       po::value<std::string>()->default_value(""), "launch policy name extra args")
+        ("policy-keepalive",         po::value<std::string>(),                    "keepalive policy name")
+        ("policy-keepalive-args",    po::value<std::string>()->default_value(""), "keepalive policy name extra args")
+        ("worker-config",            po::value<std::string>(),                    "worker config json file path to use");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -423,40 +430,34 @@ int main(int argc, char* argv[])
     }
 
     int const worker = std::thread::hardware_concurrency();
-    //int const worker = 0;
     net::io_context ioc {worker};
     unsigned short const port  = vm["listen"].as<unsigned short>();
     std::string const announce = vm["announce"].as<std::string>();
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
 
-    std::string worker_config = fmt::format(R"(
-        {{
-            "type": "wakeup",
-            "proxyhost": "{}",
-            "proxyport": "{}",
-            "storagetype": "ssbd-stripe",
-            "storageconfig": {{
-                "hosts": [
-                    {{"host": "192.168.0.94",  "port": "12000"}},
-                    {{"host": "192.168.0.165", "port": "12000"}},
-                    {{"host": "192.168.0.242", "port": "12000"}},
-                    {{"host": "192.168.0.183", "port": "12000"}},
-                    {{"host": "192.168.0.86",  "port": "12000"}},
-                    {{"host": "192.168.0.207", "port": "12000"}},
-                    {{"host": "192.168.0.143", "port": "12000"}},
-                    {{"host": "192.168.0.184", "port": "12000"}},
-                    {{"host": "192.168.0.8",   "port": "12000"}}
-                ],
-                "replication_size": 3
-            }}
-        }}
-    )", announce, port);
+    std::string worker_config;
+    {
+        std::ifstream worker_configuration(vm["worker-config"].as<std::string>());
+
+        if (!worker_configuration.is_open())
+        {
+            BOOST_LOG_TRIVIAL(fatal) << "config " <<  vm["worker-config"].as<std::string>() << "not found";
+            return 1;
+        }
+
+        std::stringstream template_config;
+        template_config << worker_configuration.rdbuf();
+        worker_config = (boost::format(template_config.str()) % announce % port).str();
+    }
+
+//    std::string worker_config = vm["worker-config"].as<std::string>();
+//    std::cout << worker_config << std::endl;
 
     tcp_server server{ioc, port, server_id, announce};
 
-    set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>());
-    set_policy_launch      (server, vm["policy-launch"]      .as<std::string>());
-    set_policy_keepalive   (server, vm["policy-keepalive"]   .as<std::string>());
+    set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>(), vm["policy-filetoworker-args"].as<std::string>());
+    set_policy_launch      (server, vm["policy-launch"]      .as<std::string>(), vm["policy-launch-args"]      .as<std::string>());
+    set_policy_keepalive   (server, vm["policy-keepalive"]   .as<std::string>(), vm["policy-keepalive-args"]   .as<std::string>());
 
     server.set_worker_config(worker_config);
 

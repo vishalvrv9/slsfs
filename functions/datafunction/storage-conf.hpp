@@ -22,7 +22,7 @@ protected:
 
 public:
     virtual ~storage_conf() {}
-    virtual void init(slsfs::base::json const& config) = 0;
+    virtual void init(slsfs::base::json const& config) { connect(); }
     virtual auto blocksize() -> std::uint32_t = 0;
     virtual bool use_async() { return false; }
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf = 0;

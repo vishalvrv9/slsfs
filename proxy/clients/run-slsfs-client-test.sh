@@ -13,7 +13,6 @@ wait < <(jobs -p);
 echo starting;
 
 for h in "${hosts[@]}"; do
-    printf -v FORWARD_ARGS %q "1000 1 4096"
-    ssh "$h" "/home/ubuntu/slsfs-client $FORWARD_ARGS" &
+    ssh "$h" "bash -c '/home/ubuntu/slsfs-client 1000 1 4096 /tmp/result.txt'" &
 done
 wait < <(jobs -p);

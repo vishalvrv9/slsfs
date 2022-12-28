@@ -25,6 +25,7 @@ RUN mkdir /zookeeper-cpp/build && cd /zookeeper-cpp/build && \
     cmake --build . && ninja install
 
 ADD . /final
+ADD backend /backend
 
 ARG debug
 

@@ -4,6 +4,8 @@
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
+#include <absl/random/random.h>
+#include <absl/random/zipf_distribution.h>
 
 #include <algorithm>
 #include <iostream>
@@ -50,15 +52,10 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 }
 
-auto genname() -> std::uint8_t
-{
-    static std::mt19937 engine(19937);
-    static std::uniform_int_distribution<std::uint8_t> dist(0, 255);
-
-    return dist(engine);
-}
-
-void readtest (int const times, int const bufsize, std::function<int(int)> genpos, std::string const memo = "")
+void readtest (int const times, int const bufsize,
+               std::function<slsfs::pack::key_t(void)> genname,
+               std::function<int(int)> genpos,
+               std::string const memo = "")
 {
     boost::asio::io_context io_context;
     tcp::socket s(io_context);
@@ -73,12 +70,7 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
         ptr->header.type = slsfs::pack::msg_t::trigger;
-        ptr->header.key = slsfs::pack::key_t{
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8};
-
+        ptr->header.key = genname();
         //std::string const payload = fmt::format("{{\"operation\": \"read\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {} }}", genpos(i), buf.size());
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
@@ -94,6 +86,7 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
         //std::copy(payload.begin(), payload.end(), std::back_inserter(ptr->data.buf));
 
         ptr->header.gen();
+        BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
         auto sendbuf = ptr->serialize();
         records.push_back(record([&]() {
             boost::asio::write(s, boost::asio::buffer(sendbuf->data(), sendbuf->size()));
@@ -114,9 +107,10 @@ void readtest (int const times, int const bufsize, std::function<int(int)> genpo
     stats(records.begin(), records.end(), fmt::format("read {}", memo));
 }
 
-void writetest (int const times, int const bufsize, std::function<int(int)> genpos, std::string const memo = "")
+void writetest (int const times, int const bufsize,
+                std::function<slsfs::pack::key_t(void)> genname,
+                std::function<int(int)> genpos, std::string const memo = "")
 {
-    throw std::runtime_error("no runnung desu");
     boost::asio::io_context io_context;
     tcp::socket s(io_context);
     tcp::resolver resolver(io_context);
@@ -130,11 +124,7 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
         ptr->header.type = slsfs::pack::msg_t::trigger;
-        ptr->header.key = slsfs::pack::key_t{
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8,
-            7, 8, 7, 8, 7, 8, 7, 8};
+        ptr->header.key = genname();
         //std::string const payload = fmt::format("{{ \"operation\": \"write\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {}, \"data\": \"{}\" }}", genpos(i), buf.size(), buf);
 
         slsfs::jsre::request r;
@@ -154,6 +144,7 @@ void writetest (int const times, int const bufsize, std::function<int(int)> genp
         //std::copy(payload.begin(), payload.end(), std::back_inserter(ptr->data.buf));
 
         ptr->header.gen();
+        BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
         auto buf = ptr->serialize();
 
         records.push_back(record([&]() {
@@ -180,18 +171,37 @@ int main(int argc, char *argv[])
 
     if (argc < 4)
     {
-        BOOST_LOG_TRIVIAL(fatal) << "usage: ./client [times] [# of client]";
+        BOOST_LOG_TRIVIAL(fatal) << "usage: ./client [times] [# of client] bufsize resultfile";
         return -1;
     }
 
     int const times   = std::stoi(argv[1]);
     int const clients = std::stoi(argv[2]);
     int const bufsize = std::stoi(argv[3]);
+    std::string resultfile = argv[4];
+
+    std::mt19937 engine(19937);
+
+    absl::zipf_distribution namedist(256*256, /*alpha=*/ 1.2);
+
+    auto genname =
+        [&engine, &namedist]() {
+            int n = namedist(engine);
+            slsfs::pack::unit_t n1 = n / 256;
+            slsfs::pack::unit_t n2 = n % 256;
+            return slsfs::pack::key_t {
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, n1, n2
+            };
+        };
 
     {
         std::vector<std::thread> v;
         for (int i = 0; i < clients; i++)
             v.emplace_back(writetest, times, bufsize,
+                           genname,
                            [bufsize](int i) { return i*bufsize; }, "seq");
 
         for (std::thread& th : v)
@@ -199,11 +209,11 @@ int main(int argc, char *argv[])
     }
 
     {
-        std::mt19937 engine(19937);
         std::uniform_int_distribution<> dist(0, 1000);
         std::vector<std::thread> v;
         for (int i = 0; i < clients; i++)
             v.emplace_back(readtest, times, bufsize,
+                           genname,
                            [&engine, &dist](int) { return dist(engine); }, "rand read");
 
         for (std::thread& th : v)

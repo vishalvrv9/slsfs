@@ -29,7 +29,7 @@ public:
             hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, host, port));
         }
 
-        connect();
+        storage_conf::init(config);
     }
 
     auto fullsize()   -> std::uint32_t & { static std::uint32_t s = 4 * 1024; return s; } // b$
