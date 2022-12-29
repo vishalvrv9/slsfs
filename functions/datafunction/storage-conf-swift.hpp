@@ -21,7 +21,6 @@ public:
         storage_conf::init(config);
     }
 
-    virtual std::uint32_t blocksize() override { return 4096; } // byte
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {
         slsfs::base::buf response;

@@ -8,6 +8,7 @@
 #include "scope-exit.hpp"
 #include "debuglog.hpp"
 
+#include <fmt/core.h>
 #include <cassandra.h>
 #include <vector>
 
@@ -19,8 +20,12 @@ class cassandra : public interface
     CassCluster* cluster_ = nullptr;
     CassSession* session_ = nullptr;
     CassFuture*  connect_future_ = nullptr;
+
+    std::string tablename_;
+
 public:
-    cassandra(char const * hosts)
+    cassandra(char const * hosts, std::string const& tablename):
+        tablename_{tablename}
     {
         cluster_ = cass_cluster_new();
         session_ = cass_session_new();
@@ -66,62 +71,19 @@ public:
                              error_message);
             }
 
-            //SCOPE_DEFER([&result]() { cass_result_free(result); });
-            //std::cerr << "addr=:" << result << std::endl;
-            //std::cerr << "row count in query:" << cass_result_row_count(result) << std::endl;
-
             std::invoke(callback, result);
         }
     }
 
-//    auto read_block(std::uint32_t const offset) -> base::buf override
-//    {
-//        char const* query = "SELECT value FROM functionkv.tableA WHERE key=?";
-//
-//        CassStatement* statement = cass_statement_new(query, 1);
-//        SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
-//
-//        cass_statement_bind_int32(statement, 0, offset);
-//
-//        base::buf buf;
-//        run_query(statement,
-//                  [&buf] (CassResult const* result) {
-//                      CassRow const * row = cass_result_first_row(result);
-//                      if (row)
-//                      {
-//                          CassValue const * value = cass_row_get_column_by_name(row, "value");
-//
-//                          char const * block = nullptr;
-//                          std::size_t block_length;
-//                          cass_value_get_string(value, &block, &block_length);
-//                          std::string s(block, block_length);
-//
-//                          buf = base::decode(s);
-//                      }
-//                  });
-//        return buf;
-//    }
-//
-//    void write_block(std::uint32_t const offset, base::buf const& buffer) override
-//    {
-//        char const* query = "INSERT INTO functionkv.tableA (key, value) VALUES (?, ?);";
-//
-//        CassStatement* statement = cass_statement_new(query, 2);
-//        SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
-//
-//        std::string v = base::encode(buffer);
-//        cass_statement_bind_int32(statement, 0, offset);
-//        cass_statement_bind_string(statement, 1, v.c_str());
-//
-//        run_query(statement, [] (CassResult const* result) {});
-//    }
-
     auto read_key(pack::key_t const& namepack, std::size_t partition, std::size_t location, std::size_t size) -> base::buf override
     {
         std::string const name = uuid::encode_base64(namepack);
-        char const* query = "SELECT value FROM sp3.tableA3 WHERE key=?";
+        std::string query = fmt::format("SELECT value FROM {} WHERE key=?", tablename_);
 
-        CassStatement* statement = cass_statement_new(query, 1);
+        log::logstring(query);
+
+
+        CassStatement* statement = cass_statement_new(query.c_str(), 1);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
 
         std::string const casskey = name + "-" + std::to_string(partition);
@@ -130,7 +92,6 @@ public:
         base::buf buf;
         run_query(statement,
                   [&buf] (CassResult const* result) {
-                      //std::cerr << "row count:" << cass_result_row_count(result) << std::endl;
                       CassRow const * row = cass_result_first_row(result);
                       if (row)
                       {
@@ -145,11 +106,6 @@ public:
                       }
                   });
 
-        //std::stringstream ss;
-        //for (std::uint8_t i : buf)
-        //    ss << i << " ";
-        //log::logstring<log::level::info>(ss.str());
-
         std::size_t minsize = std::min(buf.size(), size);
         base::buf selected(minsize);
         std::copy_n(std::next(buf.begin(), location), minsize, selected.begin());
@@ -159,9 +115,12 @@ public:
     void write_key(pack::key_t const& namepack, std::size_t partition, base::buf const& buffer, std::size_t location, std::uint32_t version) override
     {
         std::string const name = uuid::encode_base64(namepack);
-        char const* query = "INSERT INTO sp3.tableA3 (key, value) VALUES (?, ?);";
 
-        CassStatement* statement = cass_statement_new(query, 2);
+        std::string query = fmt::format("INSERT INTO {} (key, value) VALUES (?, ?);", tablename_);
+
+        log::logstring(query);
+
+        CassStatement* statement = cass_statement_new(query.c_str(), 2);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
 
         std::string const casskey = name + "-" + std::to_string(partition);
@@ -175,11 +134,9 @@ public:
     void append_list_key(pack::key_t const& namepack, base::buf const& buffer) override
     {
         std::string const name = uuid::encode_base64(namepack);
-        //std::string const name = pack::to_string(namepack);
-        // CREATE TABLE functionkv.tableC (key text, value list<text>, PRIMARY KEY (key));
-        char const* query = "UPDATE sp3.tableA3 SET value = value + ? WHERE key=?;";
+        std::string query = fmt::format("UPDATE {} SET value = value + ? WHERE key=?;", tablename_);
 
-        CassStatement* statement = cass_statement_new(query, 2);
+        CassStatement* statement = cass_statement_new(query.c_str(), 2);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
 
         std::string const buffer_encoded = base::encode(buffer);
@@ -197,9 +154,9 @@ public:
     void merge_list_key(pack::key_t const& namepack, std::function<void(std::vector<base::buf> const&)> reduce) override
     {
         std::string const name = uuid::encode_base64(namepack);
-        char const* query = "SELECT value FROM sp3.tableA3 WHERE key=?";
+        std::string query = fmt::format("SELECT value FROM {} WHERE key=?", tablename_);
 
-        CassStatement* statement = cass_statement_new(query, 1);
+        CassStatement* statement = cass_statement_new(query.c_str(), 1);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
 
         cass_statement_bind_string(statement, 0, name.c_str());

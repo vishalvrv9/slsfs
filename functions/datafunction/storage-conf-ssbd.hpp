@@ -32,9 +32,8 @@ public:
         storage_conf::init(config);
     }
 
-    auto fullsize()   -> std::uint32_t & { static std::uint32_t s = 4 * 1024; return s; } // b$
     auto headersize() -> std::uint32_t   { return 4; } // byte
-    auto blocksize()  -> std::uint32_t   { return fullsize() - headersize(); }
+    auto blocksize()  -> std::uint32_t   { return fullsize_ - headersize(); }
 
     auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {

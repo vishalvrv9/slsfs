@@ -4,6 +4,8 @@
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
+#include <boost/program_options.hpp>
+#include <boost/filesystem.hpp>
 #include <absl/random/random.h>
 #include <absl/random/zipf_distribution.h>
 
@@ -52,10 +54,11 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 }
 
-void readtest (int const times, int const bufsize,
+auto readtest (int const times, int const bufsize,
                std::function<slsfs::pack::key_t(void)> genname,
                std::function<int(int)> genpos,
                std::string const memo = "")
+    -> std::pair<std::list<double>, std::chrono::nanoseconds>
 {
     boost::asio::io_context io_context;
     tcp::socket s(io_context);
@@ -65,13 +68,13 @@ void readtest (int const times, int const bufsize,
     std::string const buf(bufsize, 'A');
     std::list<double> records;
 
+    auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < times; i++)
     {
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
         ptr->header.type = slsfs::pack::msg_t::trigger;
         ptr->header.key = genname();
-        //std::string const payload = fmt::format("{{\"operation\": \"read\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {} }}", genpos(i), buf.size());
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
         r.operation = slsfs::jsre::operation_t::read;
@@ -82,8 +85,6 @@ void readtest (int const times, int const bufsize,
 
         ptr->data.buf.resize(sizeof (r));
         std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-
-        //std::copy(payload.begin(), payload.end(), std::back_inserter(ptr->data.buf));
 
         ptr->header.gen();
         BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
@@ -100,16 +101,20 @@ void readtest (int const times, int const bufsize,
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-//            BOOST_LOG_TRIVIAL(trace) << data ;
+            BOOST_LOG_TRIVIAL(debug) << data ;
         }));
     }
 
+    auto end = std::chrono::high_resolution_clock::now();
     stats(records.begin(), records.end(), fmt::format("read {}", memo));
+
+    return {records, end - start};
 }
 
-void writetest (int const times, int const bufsize,
+auto writetest (int const times, int const bufsize,
                 std::function<slsfs::pack::key_t(void)> genname,
                 std::function<int(int)> genpos, std::string const memo = "")
+    -> std::pair<std::list<double>, std::chrono::nanoseconds>
 {
     boost::asio::io_context io_context;
     tcp::socket s(io_context);
@@ -119,13 +124,14 @@ void writetest (int const times, int const bufsize,
     std::string const buf(bufsize, 'A');
 
     std::list<double> records;
+
+    auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < times; i++)
     {
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
         ptr->header.type = slsfs::pack::msg_t::trigger;
         ptr->header.key = genname();
-        //std::string const payload = fmt::format("{{ \"operation\": \"write\", \"filename\": \"/embl1.txt\", \"type\": \"file\", \"position\": {}, \"size\": {}, \"data\": \"{}\" }}", genpos(i), buf.size(), buf);
 
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
@@ -139,9 +145,6 @@ void writetest (int const times, int const bufsize,
         ptr->data.buf.resize(sizeof (r) + buf.size());
         std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
         std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
-
-        //= std::string("{\"operation\": \"write\", \"filename\": \"/helloworld.txt\", \"type\": \"file\", \"position\": 0, \"size\": ") + buf.size() + ", \"data\": \"" + buf + "\"}";
-        //std::copy(payload.begin(), payload.end(), std::back_inserter(ptr->data.buf));
 
         ptr->header.gen();
         BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
@@ -159,30 +162,104 @@ void writetest (int const times, int const bufsize,
 
             std::string data(resp->header.datasize, '\0');
             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            //BOOST_LOG_TRIVIAL(debug) << data ;
+            BOOST_LOG_TRIVIAL(debug) << data ;
        }));
     }
+
+    auto end = std::chrono::high_resolution_clock::now();
     stats(records.begin(), records.end(), fmt::format("write {}", memo));
+    return {records, end - start};
+}
+
+template<typename TestFunc>
+void start_test(std::string const testname, boost::program_options::variables_map& vm, TestFunc && testfunc)
+{
+    int const total_times   = vm["total-times"].as<int>();
+    int const total_clients = vm["total-clients"].as<int>();
+    int const bufsize       = vm["bufsize"].as<int>();
+    double const zipf_alpha = vm["zipf-alpha"].as<double>();
+    int const file_range    = vm["file-range"].as<int>();
+    std::string const resultfile = vm["result"].as<std::string>();
+    std::string const result_filename = resultfile + "-" + testname + ".csv";
+
+    std::vector<std::future<std::pair<std::list<double>, std::chrono::nanoseconds>>> results;
+    for (int i = 0; i < total_clients; i++)
+        results.emplace_back(std::invoke(testfunc));
+
+    boost::filesystem::remove(result_filename);
+    std::ofstream out_csv {result_filename, std::ios_base::app};
+
+    out_csv << std::fixed << testname;
+    for (int i = 0; i < total_clients; i++)
+        out_csv << ",client" << i;
+
+    out_csv << "\n";
+    out_csv << "bufsize=" << bufsize << ";zipf-alpha=" << zipf_alpha << ";file-range=" << file_range;
+
+    std::vector<std::list<double>> gathered_results;
+    std::vector<std::chrono::nanoseconds> gathered_durations;
+
+    for (auto it = results.begin(); it != results.end(); ++it)
+    {
+        auto && [result, duration] = it->get();
+        gathered_results.push_back(result);
+        gathered_durations.push_back(duration);
+    }
+
+    for (int row = 0; row < total_times; row++)
+    {
+        if (row <= gathered_durations.size() && row != 0)
+            out_csv << *std::next(gathered_durations.begin(), row-1);
+
+        for (std::list<double>& list : gathered_results)
+        {
+            auto it = list.begin();
+            out_csv << "," << *std::next(it, row);
+        }
+        out_csv << "\n";
+    }
 }
 
 int main(int argc, char *argv[])
 {
     slsfs::basic::init_log();
 
-    if (argc < 4)
-    {
-        BOOST_LOG_TRIVIAL(fatal) << "usage: ./client [times] [# of client] bufsize resultfile";
-        return -1;
-    }
+#ifdef NDEBUG
+    boost::log::core::get()->set_filter(
+        boost::log::trivial::severity >= boost::log::trivial::info);
+#else
+    boost::log::core::get()->set_filter(
+        boost::log::trivial::severity >= boost::log::trivial::trace);
+#endif // NDEBUG
 
-    int const times   = std::stoi(argv[1]);
-    int const clients = std::stoi(argv[2]);
-    int const bufsize = std::stoi(argv[3]);
-    std::string resultfile = argv[4];
+    namespace po = boost::program_options;
+    po::options_description desc{"Options"};
+    desc.add_options()
+        ("help,h", "Print this help messages")
+        ("total-times",   po::value<int>()->default_value(10000), "each client run # total times")
+        ("total-clients", po::value<int>()->default_value(1), "# of clients")
+        ("bufsize",       po::value<int>()->default_value(4096), "Size of the read/write buffer")
+        ("zipf-alpha",    po::value<double>()->default_value(1.2), "set the alpha value of zipf dist")
+        ("file-range",    po::value<int>()->default_value(256*256), "set the total different number of files")
+        ("result",        po::value<std::string>(), "save result to this file");
+
+    po::positional_options_description pos_po;
+    po::variables_map vm;
+    po::store(po::command_line_parser(argc, argv)
+              .options(desc)
+              .positional(pos_po).run(), vm);
+    po::notify(vm);
 
     std::mt19937 engine(19937);
 
-    absl::zipf_distribution namedist(256*256, /*alpha=*/ 1.2);
+    int const total_times   = vm["total-times"].as<int>();
+    int const total_clients = vm["total-clients"].as<int>();
+    int const bufsize       = vm["bufsize"].as<int>();
+    double const zipf_alpha = vm["zipf-alpha"].as<double>();
+    int const file_range    = vm["file-range"].as<int>();
+    std::string const resultfile = vm["result"].as<std::string>();
+
+    absl::zipf_distribution namedist(file_range, zipf_alpha);
 
     auto genname =
         [&engine, &namedist]() {
@@ -197,27 +274,31 @@ int main(int argc, char *argv[])
             };
         };
 
-    {
-        std::vector<std::thread> v;
-        for (int i = 0; i < clients; i++)
-            v.emplace_back(writetest, times, bufsize,
-                           genname,
-                           [bufsize](int i) { return i*bufsize; }, "seq");
-
-        for (std::thread& th : v)
-            th.join();
-    }
+    start_test(
+        "write",
+        vm,
+        [&]() {
+            return std::async(
+                std::launch::async,
+                writetest, total_times, bufsize,
+                genname,
+                [bufsize](int i) { return i*bufsize; },
+                "seq");
+        });
 
     {
         std::uniform_int_distribution<> dist(0, 1000);
-        std::vector<std::thread> v;
-        for (int i = 0; i < clients; i++)
-            v.emplace_back(readtest, times, bufsize,
-                           genname,
-                           [&engine, &dist](int) { return dist(engine); }, "rand read");
-
-        for (std::thread& th : v)
-            th.join();
+        start_test(
+            "read",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    readtest, total_times, bufsize,
+                    genname,
+                    [&engine, &dist](int) { return dist(engine); },
+                    "rand");
+            });
     }
 
     return EXIT_SUCCESS;

@@ -13,7 +13,7 @@ docker run --privileged -it \
            --policy-launch-args 50 \
            --policy-keepalive const-time \
            --policy-keepalive-args $((60 * 1000)) \
-           --worker-config /backend/swift.json
+           --worker-config /backend/ssbd-basic.json
 #           --worker-config "{{
 #    "type": "wakeup",
 #    "proxyhost": "192.168.0.224",

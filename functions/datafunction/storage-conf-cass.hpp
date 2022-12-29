@@ -11,15 +11,17 @@ namespace slsfsdf
 class storage_conf_cass : public storage_conf
 {
 public:
-    virtual void init(slsfs::base::json const& config) override
+    void init(slsfs::base::json const& config) override
     {
         std::string const host = config["host"].get<std::string>();
-        hostlist_.push_back(std::make_shared<slsfs::storage::cassandra>(host.c_str()));
+        std::string const tablename = config["tablename"].get<std::string>();
+
+        hostlist_.push_back(std::make_shared<slsfs::storage::cassandra>(host.c_str(), tablename));
+
         storage_conf::init(config);
     }
 
-    virtual std::uint32_t blocksize() override { return 4096; } // byte
-    virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
+    auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {
         slsfs::base::buf response;
         switch (input.operation())

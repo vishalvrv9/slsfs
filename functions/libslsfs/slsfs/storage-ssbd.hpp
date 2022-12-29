@@ -186,12 +186,15 @@ public:
 
                 resp->data.parse(transferred_size, bodybuf->data());
                 jobmap_accessor it;
-                bool found = outstanding_jobs_.find(it, resp->header);
-
-                std::stringstream ss;
-                ss << resp->header;
-                log::logstring(fmt::format("async read body executing with header {}", ss.str()));
+                bool found [[maybe_unused]] =
+                    outstanding_jobs_.find(it, resp->header);
                 assert(found);
+
+                {
+                    std::stringstream ss;
+                    ss << resp->header;
+                    log::logstring(fmt::format("async read body executing with header {}", ss.str()));
+                }
 
                 it->second->run(resp);
 

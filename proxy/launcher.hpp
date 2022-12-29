@@ -100,7 +100,7 @@ public:
                     job_ptr j = started_jobs_[pack->header];
                     j->on_completion_(pack);
                     j->state_ = job::state::finished;
-                    BOOST_LOG_TRIVIAL(info) << "job " << j->pack_->header << " complete";
+                    BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
                 }));
     }
 
@@ -174,7 +174,7 @@ public:
                         pending_jobs_.push(j);
                     }
                 });
-            BOOST_LOG_TRIVIAL(info) << "start job " << j->pack_->header;
+            BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
         }
 
         if (launcher_policy_.should_start_new_worker())

@@ -13,6 +13,8 @@ namespace slsfsdf
 class storage_conf
 {
 protected:
+    std::uint32_t fullsize_ = 4096;
+
     std::vector<std::shared_ptr<slsfs::storage::interface>> hostlist_;
     void connect()
     {
@@ -22,8 +24,15 @@ protected:
 
 public:
     virtual ~storage_conf() {}
-    virtual void init(slsfs::base::json const& config) { connect(); }
-    virtual auto blocksize() -> std::uint32_t = 0;
+    virtual void init(slsfs::base::json const& config)
+    {
+        if (config.contains("blocksize"))
+            fullsize_ = config["blocksize"].get<std::uint32_t>();
+
+        connect();
+    }
+
+    virtual auto blocksize() -> std::uint32_t { return fullsize_; }
     virtual bool use_async() { return false; }
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf = 0;
     virtual void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) {
