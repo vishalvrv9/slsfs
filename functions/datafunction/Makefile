@@ -1,10 +1,31 @@
-.PHONY: exec-debug exec function function-debug test_swift
+.PHONY: exec* function*
 
 function-debug: *.cpp *.hpp exec-debug
-	./deploy.sh
+	./deploy-native.sh
 
 function: *.cpp *.hpp exec
+	./deploy-native.sh
+
+function-debug-actionloop: *.cpp *.hpp exec-debug-actionloop
 	./deploy.sh
+
+function-actionloop: *.cpp *.hpp exec-actionloop
+	./deploy.sh
+
+exec-debug-actionloop: *.cpp *.hpp
+	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
+                                   --build-arg debug=true \
+							       --build-arg actionloop=true \
+                                   -f Dockerfile .. && \
+    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
+    chmod +x exec
+
+exec-actionloop: *.cpp *.hpp
+	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
+                                   --build-arg actionloop=true \
+                                   -f Dockerfile .. && \
+    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
+    chmod +x exec
 
 exec-debug: *.cpp *.hpp
 	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
@@ -19,12 +40,9 @@ exec: *.cpp *.hpp
     docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
     chmod +x exec
 
-test_swift: *.cpp *.hpp
-	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
-                                   --build-arg debug=true \
-                                   -f Dockerfile .. && \
-    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/test_swift > test_swift && \
-    chmod +x test_swift
-
-deploy:
-	wsk -i action update hare1039/slsfs-actionproxy --docker 'openwhisk/actionloop-base:nightly'
+#test_swift: *.cpp *.hpp
+#	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
+#                                   --build-arg debug=true \
+#                                   -f Dockerfile .. && \
+#    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/test_swift > test_swift && \
+#    chmod +x test_swift

@@ -34,29 +34,15 @@ RUN mkdir /pre/build && cd /pre/build && \
     conan install .. --profile ../profiles/debug   --build=missing --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl --build=libuv
 
 ADD libslsfs /action/libslsfs
-
 ADD datafunction /action/
 
 ARG debug
+ARG actionloop
 
 RUN --mount=type=cache,target=/action/build mkdir -p /action/build && \
     cd /action/build && \
     bash -c 'if [[ -z "$debug" ]]; then conan install .. --profile ../profiles/release --build missing; else conan install .. --profile ../profiles/debug --build missing; fi' && \
-    bash -c 'if [[ -z "$debug" ]]; then cmake .. -DCMAKE_BUILD_TYPE=Release; else cmake .. -DCMAKE_BUILD_TYPE=Debug; fi' && \
+    bash -c 'if [[ -z "$debug" ]]; then cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_AS_ACTIONLOOP=$actionloop; else cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_AS_ACTIONLOOP=$actionloop; fi' && \
     cmake --build . && \
     cp /action/build/bin/exec /action/ && \
     cp /action/build/bin/test_swift /action/
-#
-#FROM hare1039/dockerskeleton:latest
-#
-#COPY --from=builder /action/exec /action/exec
-#COPY --from=builder /action/test_swift /action/test_swift
-#
-#ENV FLASK_PROXY_PORT 8080
-#
-##    # Exporting AWS credentials
-##    RUN export AWS_ACCESS_KEY_ID=994dde2d21f24b498455a14611d9dfbd && \
-##        export AWS_SECRET_ACCESS_KEY=3b3817d6435f4590b252bc99ba95c8d4
-#
-#
-#CMD ["/bin/bash", "-c", "cd actionProxy && AWS_ACCESS_KEY_ID=994dde2d21f24b498455a14611d9dfbd AWS_SECRET_ACCESS_KEY=3b3817d6435f4590b252bc99ba95c8d4 python -u actionproxy.py"]

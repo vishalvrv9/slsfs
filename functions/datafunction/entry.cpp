@@ -74,7 +74,10 @@ try
     json input;
 
     std::cin >> input;
+
+#ifdef AS_ACTIONLOOP
     input = input["value"];
+#endif
 
     /* example json config
     {

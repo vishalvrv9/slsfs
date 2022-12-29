@@ -5,11 +5,15 @@ set(HAVE_FLAG_SEARCH_PATHS_FIRST 0)
 
 project(exec)
 
-if(NOT CMAKE_BUILD_TYPE)
+if (NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -DAS_ACTIONLOOP -DBOOST_THREAD_PROVIDES_EXECUTORS -DBOOST_THREAD_USES_MOVE -DZKPP_FUTURE_USE_BOOST")
+if (BUILD_AS_ACTIONLOOP)
+    set(CMAKE_CXX_FLAGS "-DAS_ACTIONLOOP")
+endif()
+
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -DBOOST_THREAD_PROVIDES_EXECUTORS -DBOOST_THREAD_USES_MOVE -DZKPP_FUTURE_USE_BOOST")
 set(CMAKE_CXX_FLAGS_DEBUG "-ggdb -Wextra -Werror -Wno-unused-parameter")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3 -DNDEBUG")
 set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
@@ -35,7 +39,7 @@ include_directories(/minio-cpp-build/vcpkg_installed/x64-linux/include)
 link_directories(/minio-cpp-build/vcpkg_installed/x64-linux/lib)
 
 add_executable(exec entry.cpp)
-add_executable(test_swift test_swift.cpp)
+#add_executable(test_swift test_swift.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 target_precompile_headers(exec PRIVATE <boost/asio.hpp>)
@@ -46,4 +50,4 @@ target_precompile_headers(exec PRIVATE <oneapi/tbb/concurrent_hash_map.h>)
 set(CUSTOM_LIBRARIES "-ltbb -ltbbmalloc -lminiocpp -lcurlpp -lpugixml -linih")
 
 target_link_libraries(exec       ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
-target_link_libraries(test_swift ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+#target_link_libraries(test_swift ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})

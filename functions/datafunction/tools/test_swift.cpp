@@ -7,7 +7,6 @@
 #include <iostream>
 #include <chrono>
 
-
 #include <filesystem>
 
 using namespace std;
@@ -57,6 +56,6 @@ int main(int argc, char const *argv[])
 
     // cout << slsfs::base::to_string(swift_client.read_key(key, data.size(), 0, data.size())) << endl;
     // swift_client.get_list_key(key);
-    
+
     return 0;
 }

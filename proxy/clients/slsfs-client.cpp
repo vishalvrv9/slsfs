@@ -34,7 +34,8 @@ auto record(Function &&f) -> long int
 }
 
 template<typename Iterator>
-void stats(Iterator start, Iterator end, std::string const memo = "")
+auto stats(Iterator start, Iterator end, std::string const memo = "")
+    -> std::tuple<std::map<int, int>, int, int>
 {
     int const size = std::distance(start, end);
 
@@ -52,6 +53,8 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
     BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
     for (auto && [time, count] : dist)
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
+
+    return {dist, mean, std::sqrt(var)};
 }
 
 auto readtest (int const times, int const bufsize,
@@ -183,6 +186,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
     std::string const result_filename = resultfile + "-" + testname + ".csv";
 
     std::vector<std::future<std::pair<std::list<double>, std::chrono::nanoseconds>>> results;
+    std::list<double> fullstat;
     for (int i = 0; i < total_clients; i++)
         results.emplace_back(std::invoke(testfunc));
 
@@ -190,11 +194,12 @@ void start_test(std::string const testname, boost::program_options::variables_ma
     std::ofstream out_csv {result_filename, std::ios_base::app};
 
     out_csv << std::fixed << testname;
+    out_csv << ",summary,";
+
     for (int i = 0; i < total_clients; i++)
         out_csv << ",client" << i;
 
     out_csv << "\n";
-    out_csv << "bufsize=" << bufsize << ";zipf-alpha=" << zipf_alpha << ";file-range=" << file_range;
 
     std::vector<std::list<double>> gathered_results;
     std::vector<std::chrono::nanoseconds> gathered_durations;
@@ -204,12 +209,53 @@ void start_test(std::string const testname, boost::program_options::variables_ma
         auto && [result, duration] = it->get();
         gathered_results.push_back(result);
         gathered_durations.push_back(duration);
+
+        fullstat.insert(fullstat.end(), std::next(result.begin()), result.end());
     }
 
-    for (int row = 0; row < total_times; row++)
+    auto [dist, avg, stdev] = stats(fullstat.begin(), fullstat.end());
+
+    for (unsigned int row = 0; row < total_times; row++)
     {
         if (row <= gathered_durations.size() && row != 0)
             out_csv << *std::next(gathered_durations.begin(), row-1);
+
+        switch (row)
+        {
+        case 0:
+            out_csv << ",,";
+            break;
+        case 1:
+            out_csv << ",avg," << avg;
+            break;
+        case 2:
+            out_csv << ",stdev," << stdev;
+            break;
+        case 3:
+            out_csv << ",bufsize," << bufsize;
+            break;
+        case 4:
+            out_csv << ",zipf-alpha," << zipf_alpha;
+            break;
+        case 5:
+            out_csv << ",file-range," << file_range;
+            break;
+
+        case 6:
+            out_csv << ",,";
+            break;
+
+        case 7:
+            out_csv << ",dist(ms) bucket,";
+            break;
+
+        default:
+            if (0 <= row - 8 && row - 8 < dist.size())
+                out_csv << "," << std::next(dist.begin(), row - 8)->first
+                        << "," << std::next(dist.begin(), row - 8)->second;
+            else
+                out_csv << ",,";
+        }
 
         for (std::list<double>& list : gathered_results)
         {
@@ -253,7 +299,6 @@ int main(int argc, char *argv[])
     std::mt19937 engine(19937);
 
     int const total_times   = vm["total-times"].as<int>();
-    int const total_clients = vm["total-clients"].as<int>();
     int const bufsize       = vm["bufsize"].as<int>();
     double const zipf_alpha = vm["zipf-alpha"].as<double>();
     int const file_range    = vm["file-range"].as<int>();

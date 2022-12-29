@@ -11,6 +11,7 @@ hosts=(ow-invoker-1 ow-invoker-2 ow-invoker-3 ow-invoker-4 ow-invoker-5 ow-invok
 hosts=(ow-invoker-1);
 
 TESTNAME="ssbd-basic-1-host"
+echo "testname: $TESTNAME"
 
 for h in "${hosts[@]}"; do
     scp /tmp/slsfs-client "$h": &
@@ -38,3 +39,6 @@ for h in "${hosts[@]}"; do
     scp "$h:/tmp/$TESTNAME*" result-$TESTNAME/
 done
 wait < <(jobs -p);
+
+echo "finish test $TESTNAME"
+echo "use ./upload.sh $TESTNAME result-$TESTNAME/ to upload"
