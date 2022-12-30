@@ -7,7 +7,6 @@
 #include "launcher-job.hpp"
 #include "launcher-policy.hpp"
 
-#include <oneapi/tbb/concurrent_unordered_set.h>
 #include <oneapi/tbb/concurrent_queue.h>
 #include <oneapi/tbb/concurrent_hash_map.h>
 
@@ -34,12 +33,13 @@ class launcher
 
     job_queue pending_jobs_;
     using jobmap =
-        oneapi::tbb::concurrent_unordered_map<
+        oneapi::tbb::concurrent_hash_map<
             pack::packet_header,
             job_ptr,
-            pack::packet_header_key_hash,
-            pack::packet_header_key_compare>;
+            pack::packet_header_key_hash_compare>;
+    using started_jobs_accessor = jobmap::accessor;
     jobmap started_jobs_;
+
     net::io_context::strand started_jobs_strand_, job_launch_strand_;
 
     uuid::uuid const& id_;
@@ -84,6 +84,8 @@ public:
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
 
+//        add proxy count
+
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
 
@@ -97,10 +99,15 @@ public:
             net::bind_executor(
                 started_jobs_strand_,
                 [this, pack] () {
-                    job_ptr j = started_jobs_[pack->header];
+                    started_jobs_accessor it;
+                    if (bool found = started_jobs_.find(it, pack->header); not found)
+                        return;
+
+                    job_ptr j = it->second;
                     j->on_completion_(pack);
                     j->state_ = job::state::finished;
                     BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
+                    started_jobs_.erase(it);
                 }));
     }
 
@@ -113,8 +120,13 @@ public:
                     BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
                     if (pack->empty())
                         return;
-                    job_ptr j = started_jobs_[pack->header];
-                    //BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " get ack. cancel job timer";
+
+                    started_jobs_accessor it;
+                    if (bool found = started_jobs_.find(it, pack->header); not found)
+                        return;
+
+                    job_ptr j = it->second;
+
                     if (!j)
                     {
                         BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";

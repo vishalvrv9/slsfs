@@ -215,7 +215,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
 
     auto [dist, avg, stdev] = stats(fullstat.begin(), fullstat.end());
 
-    for (unsigned int row = 0; row < total_times; row++)
+    for (unsigned int row = 0; row < static_cast<unsigned int>(total_times); row++)
     {
         if (row <= gathered_durations.size() && row != 0)
             out_csv << *std::next(gathered_durations.begin(), row-1);
@@ -250,11 +250,15 @@ void start_test(std::string const testname, boost::program_options::variables_ma
             break;
 
         default:
-            if (0 <= row - 8 && row - 8 < dist.size())
-                out_csv << "," << std::next(dist.begin(), row - 8)->first
-                        << "," << std::next(dist.begin(), row - 8)->second;
+        {
+            int distindex = static_cast<int>(row) - 8;
+            if (0 <= distindex && static_cast<unsigned int>(distindex) < dist.size())
+                out_csv << "," << std::next(dist.begin(), distindex)->first
+                        << "," << std::next(dist.begin(), distindex)->second;
             else
                 out_csv << ",,";
+        }
+
         }
 
         for (std::list<double>& list : gathered_results)

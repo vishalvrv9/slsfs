@@ -19,8 +19,8 @@ ssh ow-invoker-16 docker restart invoker15 &
 
 strip exec;
 zip -r hello.zip exec
-wsk -i action update slsfs-datafunction --native hello.zip --concurrency 500;
-wsk -i action update slsfs-metadatafunction --native hello.zip --concurrency 500;
+wsk -i action update slsfs-datafunction --native hello.zip;
+wsk -i action update slsfs-metadatafunction --native hello.zip;
 
 rm -f hello.zip;
 
