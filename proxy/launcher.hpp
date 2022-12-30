@@ -40,8 +40,6 @@ class launcher
     using started_jobs_accessor = jobmap::accessor;
     jobmap started_jobs_;
 
-    net::io_context::strand started_jobs_strand_, job_launch_strand_;
-
     uuid::uuid const& id_;
     std::string const announce_host_;
     net::ip::port_type const announce_port_;
@@ -51,14 +49,11 @@ public:
     launcher(net::io_context& io, uuid::uuid const& id,
              std::string const& announce, net::ip::port_type port):
         io_context_{io},
-        started_jobs_strand_{io},
-        job_launch_strand_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
         launcher_policy_{worker_set_, fileid_to_worker_, pending_jobs_,
-                         announce_host_, announce_port_}
-        {}
+                         announce_host_, announce_port_} {}
 
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
@@ -96,46 +91,42 @@ public:
     void on_worker_response(pack::packet_pointer pack)
     {
         net::post(
-            net::bind_executor(
-                started_jobs_strand_,
-                [this, pack] () {
-                    started_jobs_accessor it;
-                    if (bool found = started_jobs_.find(it, pack->header); not found)
-                        return;
+            [this, pack] () {
+                started_jobs_accessor it;
+                if (bool found = started_jobs_.find(it, pack->header); not found)
+                    return;
 
-                    job_ptr j = it->second;
-                    j->on_completion_(pack);
-                    j->state_ = job::state::finished;
-                    BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
-                    started_jobs_.erase(it);
-                }));
+                job_ptr j = it->second;
+                j->on_completion_(pack);
+                j->state_ = job::state::finished;
+                BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
+                started_jobs_.erase(it);
+            });
     }
 
     void on_worker_ack(pack::packet_pointer pack)
     {
         net::post(
-            net::bind_executor(
-                started_jobs_strand_,
-                [this, pack] () {
-                    BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
-                    if (pack->empty())
-                        return;
+            [this, pack] () {
+                BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
+                if (pack->empty())
+                    return;
 
-                    started_jobs_accessor it;
-                    if (bool found = started_jobs_.find(it, pack->header); not found)
-                        return;
+                started_jobs_accessor it;
+                if (bool found = started_jobs_.find(it, pack->header); not found)
+                    return;
 
-                    job_ptr j = it->second;
+                job_ptr j = it->second;
 
-                    if (!j)
-                    {
-                        BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";
-                        return;
-                    }
+                if (!j)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";
+                    return;
+                }
 
-                    j->state_ = job::state::started;
-                    j->timer_.cancel();
-                }));
+                j->state_ = job::state::started;
+                j->timer_.cancel();
+            });
     }
 
     void on_worker_close(std::shared_ptr<df::worker> worker) {
@@ -196,14 +187,8 @@ public:
         }
     }
 
-    void create_worker(std::string const& body)
-    {
-        net::post(
-            net::bind_executor(
-                job_launch_strand_,
-                [this, body] {
-                    trigger::make_trigger(io_context_)->start_post(body);
-                }));
+    void create_worker(std::string const& body) {
+        trigger::make_trigger(io_context_)->start_post(body);
     }
 
     template<typename Callback>
