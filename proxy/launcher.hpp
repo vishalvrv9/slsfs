@@ -84,7 +84,7 @@ public:
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
 
-//        add proxy count
+        BOOST_LOG_TRIVIAL(info) << "active worker count: " << worker_set_.size();
 
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
