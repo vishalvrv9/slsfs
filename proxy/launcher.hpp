@@ -79,7 +79,7 @@ public:
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
 
-//        add proxy count
+        BOOST_LOG_TRIVIAL(info) << "worker set size: " << worker_set_.size();
 
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
@@ -135,6 +135,12 @@ public:
 
     void start_jobs()
     {
+        if (launcher_policy_.should_start_new_worker())
+        {
+            create_worker(launcher_policy_.get_worker_config());
+            launcher_policy_.set_worker_keepalive();
+        }
+
         job_ptr j;
         while (pending_jobs_.try_pop(j))
         {
@@ -154,8 +160,8 @@ public:
                 // emergency start
                 if (!worker_ptr)
                 {
-                    launcher_policy_.set_worker_keepalive();
                     create_worker(launcher_policy_.get_worker_config());
+                    launcher_policy_.set_worker_keepalive();
                     pending_jobs_.push(j);
                     break;
                 }
@@ -178,12 +184,6 @@ public:
                     }
                 });
             BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
-        }
-
-        if (launcher_policy_.should_start_new_worker())
-        {
-            create_worker(launcher_policy_.get_worker_config());
-            launcher_policy_.set_worker_keepalive();
         }
     }
 
