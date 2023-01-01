@@ -1,0 +1,12 @@
+{
+    "type": "wakeup",
+    "proxyhost": "192.168.0.224",
+    "proxyport": "12001",
+    "blocksize": 4096,
+    "storagetype": "ssbd-basic",
+    "storageconfig": {
+        "hosts": [
+            {"host": "192.168.0.94", "port": "12000"}
+        ]
+    }
+}

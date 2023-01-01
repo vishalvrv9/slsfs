@@ -32,15 +32,6 @@ class launcher
     fileid_map fileid_to_worker_;
 
     job_queue pending_jobs_;
-    using jobmap =
-        oneapi::tbb::concurrent_hash_map<
-            pack::packet_header,
-            job_ptr,
-            pack::packet_header_key_hash_compare>;
-    using started_jobs_accessor = jobmap::accessor;
-    jobmap started_jobs_;
-
-    net::io_context::strand started_jobs_strand_, job_launch_strand_;
 
     uuid::uuid const& id_;
     std::string const announce_host_;
@@ -51,14 +42,11 @@ public:
     launcher(net::io_context& io, uuid::uuid const& id,
              std::string const& announce, net::ip::port_type port):
         io_context_{io},
-        started_jobs_strand_{io},
-        job_launch_strand_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
         launcher_policy_{worker_set_, fileid_to_worker_, pending_jobs_,
-                         announce_host_, announce_port_}
-        {}
+                         announce_host_, announce_port_} {}
 
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
@@ -93,57 +81,29 @@ public:
         start_jobs();
     }
 
-    void on_worker_response(pack::packet_pointer pack)
+    void on_worker_reschedule(job_ptr job)
     {
-        net::post(
-            net::bind_executor(
-                started_jobs_strand_,
-                [this, pack] () {
-                    started_jobs_accessor it;
-                    if (bool found = started_jobs_.find(it, pack->header); not found)
-                        return;
-
-                    job_ptr j = it->second;
-                    j->on_completion_(pack);
-                    j->state_ = job::state::finished;
-                    BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
-                    started_jobs_.erase(it);
-                }));
+        BOOST_LOG_TRIVIAL(debug) << "job " << job->pack_->header << " reschedule";
+        pending_jobs_.push(job);
+        fileid_to_worker_.erase(job->pack_->header);
     }
 
-    void on_worker_ack(pack::packet_pointer pack)
+    void on_worker_close(df::worker_ptr worker)
     {
-        net::post(
-            net::bind_executor(
-                started_jobs_strand_,
-                [this, pack] () {
-                    BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
-                    if (pack->empty())
-                        return;
-
-                    started_jobs_accessor it;
-                    if (bool found = started_jobs_.find(it, pack->header); not found)
-                        return;
-
-                    job_ptr j = it->second;
-
-                    if (!j)
-                    {
-                        BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";
-                        return;
-                    }
-
-                    j->state_ = job::state::started;
-                    j->timer_.cancel();
-                }));
-    }
-
-    void on_worker_close(std::shared_ptr<df::worker> worker) {
+        BOOST_LOG_TRIVIAL(info) << "on_worker_close: " << worker.get();
         worker_set_.erase(worker);
+        start_jobs();
     }
 
     void start_jobs()
     {
+        if (launcher_policy_.should_start_new_worker())
+        {
+            create_worker(launcher_policy_.get_worker_config());
+            launcher_policy_.set_worker_keepalive();
+        }
+
+        BOOST_LOG_TRIVIAL(debug) << "pending job count=" << pending_jobs_.unsafe_size();
         job_ptr j;
         while (pending_jobs_.try_pop(j))
         {
@@ -156,15 +116,14 @@ public:
 
             df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
 
-            if (!worker_ptr)
+            if (!worker_ptr || not worker_ptr->is_valid())
             {
                 worker_ptr = launcher_policy_.get_available_worker(j->pack_);
 
-                // emergency start
-                if (!worker_ptr)
+                // no avaliable worker. Reassign
+                if (!worker_ptr || not worker_ptr->is_valid())
                 {
-                    launcher_policy_.set_worker_keepalive();
-                    create_worker(launcher_policy_.get_worker_config());
+                    BOOST_LOG_TRIVIAL(error) << "no avaliable worker. Reschedule";
                     pending_jobs_.push(j);
                     break;
                 }
@@ -173,8 +132,7 @@ public:
             }
 
             BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post. ";
-            started_jobs_.emplace(j->pack_->header, j);
-            worker_ptr->start_write(j->pack_);
+            worker_ptr->start_write(j);
 
             using namespace std::chrono_literals;
             j->timer_.expires_from_now(2s);
@@ -188,32 +146,19 @@ public:
                 });
             BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
         }
-
-        if (launcher_policy_.should_start_new_worker())
-        {
-            create_worker(launcher_policy_.get_worker_config());
-            launcher_policy_.set_worker_keepalive();
-        }
     }
 
-    void create_worker(std::string const& body)
-    {
-        net::post(
-            net::bind_executor(
-                job_launch_strand_,
-                [this, body] {
-                    trigger::make_trigger(io_context_)->start_post(body);
-                }));
+    void create_worker(std::string const& body) {
+        trigger::make_trigger(io_context_)->start_post(body);
     }
 
     template<typename Callback>
     void start_trigger_post(std::string const& body, pack::packet_pointer original_pack, Callback next)
     {
         pack::packet_pointer pack = std::make_shared<pack::packet>();
-        pack->header = original_pack->header;
-//        pack->header.gen();
+        pack->header      = original_pack->header;
         pack->header.type = pack::msg_t::worker_push_request;
-        pack->data.buf = std::vector<pack::unit_t>(body.size());
+        pack->data.buf    = std::vector<pack::unit_t>(body.size());
         std::memcpy(pack->data.buf.data(), body.data(), body.size());
 
         auto j = std::make_shared<job>(io_context_, pack, next);
@@ -251,6 +196,7 @@ public:
         std::copy(ip.begin(), ip.end(), p->data.buf.begin());
         std::memcpy(p->data.buf.data() + ip.size(), &port, sizeof(port));
 
+        // may change to job ptr
         pair.second->start_write(p);
     }
 };
