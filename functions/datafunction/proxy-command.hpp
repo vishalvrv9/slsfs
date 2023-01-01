@@ -61,15 +61,7 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
                 if (not ec)
                 {
                     slsfs::log::logstring<slsfs::log::level::info>("timer_reset: read header timeout");
-
-                    slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
-                    pack->header.type = slsfs::pack::msg_t::worker_dereg;
-                    self->start_write(
-                        pack,
-                        [self=self->shared_from_this()] (boost::system::error_code ec, std::size_t length) {
-                            self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
-                            slsfs::log::logstring("timer_reset: send shutdown");
-                        });
+                    self->close();
                 }
                 else
                     slsfs::log::logstring("timer_reset: closed");
@@ -88,6 +80,18 @@ public:
           writer_{io_context_, socket_},
           queue_map_{qm},
           proxy_set_{ps} {}
+
+    void close()
+    {
+        slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
+        pack->header.type = slsfs::pack::msg_t::worker_dereg;
+        start_write(
+            pack,
+            [self=shared_from_this()] (boost::system::error_code ec, std::size_t length) {
+                self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
+                slsfs::log::logstring("timer_reset: send shutdown");
+            });
+    }
 
     template<typename Endpoint>
     void start_connect(Endpoint endpoint)

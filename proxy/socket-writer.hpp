@@ -49,6 +49,7 @@ class socket_writer
                         if (ec)
                         {
                             is_writing_.store(false);
+                            BOOST_LOG_TRIVIAL(error) << "socket writer get error: " << ec.message();
                             return;
                         }
 

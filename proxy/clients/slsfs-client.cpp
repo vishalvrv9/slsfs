@@ -50,9 +50,9 @@ auto stats(Iterator start, Iterator end, std::string const memo = "")
     }
 
     var /= size;
-    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
+    BOOST_LOG_TRIVIAL(debug) << fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
     for (auto && [time, count] : dist)
-        BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
+        BOOST_LOG_TRIVIAL(debug) << fmt::format("{0} {1}: {2}", memo, time, count);
 
     return {dist, mean, std::sqrt(var)};
 }
@@ -204,6 +204,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
     std::vector<std::list<double>> gathered_results;
     std::vector<std::chrono::nanoseconds> gathered_durations;
 
+    BOOST_LOG_TRIVIAL(info) << "Start. save: " << result_filename;
     for (auto it = results.begin(); it != results.end(); ++it)
     {
         auto && [result, duration] = it->get();
@@ -214,7 +215,6 @@ void start_test(std::string const testname, boost::program_options::variables_ma
     }
 
     auto [dist, avg, stdev] = stats(fullstat.begin(), fullstat.end());
-
     for (unsigned int row = 0; row < static_cast<unsigned int>(total_times); row++)
     {
         if (row <= gathered_durations.size() && row != 0)
@@ -268,6 +268,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
         }
         out_csv << "\n";
     }
+    BOOST_LOG_TRIVIAL(info) << "written result to " << result_filename;
 }
 
 int main(int argc, char *argv[])

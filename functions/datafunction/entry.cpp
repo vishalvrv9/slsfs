@@ -122,14 +122,25 @@ try
     std::string const proxyport = input["proxyport"].get<std::string>();
 
     slsfs::log::logstring(fmt::format("connect to {}:{}", proxyhost, proxyport));
+
+    boost::asio::steady_timer function_timeout{ioc};
+    {
+        using namespace std::chrono_literals;
+        function_timeout.expires_from_now(295s);
+        function_timeout.async_wait(
+            [proxy_command_ptr] (boost::system::error_code ec) {
+                slsfs::log::logstring(fmt::format("time to die: get code: {}", ec.message()));
+                proxy_command_ptr->close();
+            });
+    }
+
     proxy_command_ptr->start_connect(resolver.resolve(proxyhost, proxyport));
 
     std::vector<std::thread> v;
     unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
     v.reserve(worker);
     for(unsigned int i = 0; i < worker; i++)
-        v.emplace_back(
-            [&ioc] { ioc.run(); });
+        v.emplace_back([&ioc] { ioc.run(); });
 
     json output;
     output["original-request"] = input;

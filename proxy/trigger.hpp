@@ -90,7 +90,7 @@ public:
 
     void start_post(std::string const &body)
     {
-        BOOST_LOG_TRIVIAL(trace) << "in post";
+        BOOST_LOG_TRIVIAL(trace) << "trigger start post";
         auto req = httphost_.gen_request();
         req->body() = body;
         req->method(http::verb::post);

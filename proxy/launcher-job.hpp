@@ -4,11 +4,14 @@
 
 #include "basic.hpp"
 #include "serializer.hpp"
-#include "worker.hpp"
 #include "uuid.hpp"
 
 #include <boost/signals2.hpp>
 #include <boost/asio.hpp>
+
+#include <oneapi/tbb/concurrent_queue.h>
+#include <oneapi/tbb/concurrent_hash_map.h>
+
 #include <iterator>
 #include <atomic>
 
@@ -40,6 +43,11 @@ public:
 
 using job_ptr = std::shared_ptr<job>;
 using job_queue = oneapi::tbb::concurrent_queue<job_ptr>;
+using job_map =
+    oneapi::tbb::concurrent_hash_map<
+        pack::packet_header,
+        job_ptr,
+        pack::packet_header_full_key_hash_compare>;
 
 } // namespace slsfs::launcher
 

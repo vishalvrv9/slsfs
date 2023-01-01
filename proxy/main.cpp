@@ -113,11 +113,12 @@ public:
 };
 
 using topics =
-    oneapi::tbb::concurrent_unordered_map<
+    oneapi::tbb::concurrent_hash_map<
         slsfs::pack::packet_header,
         bucket,
-        slsfs::pack::packet_header_key_hash,
-        slsfs::pack::packet_header_key_compare>;
+        slsfs::pack::packet_header_full_key_hash_compare>;
+
+using topics_accessor = topics::accessor;
 
 class tcp_connection : public std::enable_shared_from_this<tcp_connection>
 {
@@ -141,9 +142,10 @@ public:
 
     auto get_bucket(slsfs::pack::packet_header &h) -> bucket&
     {
-        if (not topics_.contains(h))
-            topics_.emplace(h, io_context_);
-        return topics_.at(h);
+        topics_accessor it;
+        if (bool found = topics_.find(it, h); not found)
+            topics_.emplace(it, h, io_context_);
+        return it->second;
     }
 
     void start_read_header()

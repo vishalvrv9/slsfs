@@ -5,6 +5,7 @@
 #include "basic.hpp"
 #include "uuid.hpp"
 #include "socket-writer.hpp"
+#include "launcher-job.hpp"
 
 #include <boost/signals2.hpp>
 
@@ -19,9 +20,8 @@ using worker_ptr = std::shared_ptr<worker>;
 template<typename T>
 concept IsLauncher = requires(T l)
 {
-    { l.on_worker_response(std::declval<pack::packet_pointer>()) } -> std::convertible_to<void>;
-    { l.on_worker_ack     (std::declval<pack::packet_pointer>()) } -> std::convertible_to<void>;
-    { l.on_worker_close   (std::declval<worker_ptr>())           } -> std::convertible_to<void>;
+    { l.on_worker_reschedule (std::declval<launcher::job_ptr>())    } -> std::convertible_to<void>;
+    { l.on_worker_close      (std::declval<worker_ptr>())           } -> std::convertible_to<void>;
 };
 
 class worker : public std::enable_shared_from_this<worker>
@@ -30,9 +30,10 @@ class worker : public std::enable_shared_from_this<worker>
     socket_writer::socket_writer<pack::packet_pointer, std::vector<pack::unit_t>> writer_;
     std::atomic<bool> valid_ = true;
     std::atomic<unsigned int> count_ = 0;
-    using launcher_callback = boost::signals2::signal<void (pack::packet_pointer)>;
-    launcher_callback on_worker_ack_;
-    launcher_callback on_worker_response_;
+
+    launcher::job_map started_jobs_;
+
+    boost::signals2::signal<void (launcher::job_ptr)> on_worker_reschedule_;
     boost::signals2::signal<void (worker_ptr)> on_worker_close_;
 
 public:
@@ -41,24 +42,23 @@ public:
         socket_{std::move(socket)},
         writer_{io, socket_}
         {
-            on_worker_ack_.connect(
-                [&l, this] (pack::packet_pointer p) {
-                    count_++;
-                    l.on_worker_ack(p);
-                });
-            on_worker_response_.connect(
-                [&l, this] (pack::packet_pointer p) {
-                    count_--;
-                    l.on_worker_response(p);
-                });
-            on_worker_close_.connect(
-                [&l, this] (worker_ptr p) {
-                    l.on_worker_close(p);
-                });
+            on_worker_reschedule_.connect([&l] (launcher::job_ptr job) { l.on_worker_reschedule(job); });
+            on_worker_close_.connect([&l] (worker_ptr p) { l.on_worker_close(p); });
         }
 
     bool is_valid() { return valid_; }
     int  pending_jobs() { return count_.load(); }
+
+    void close()
+    {
+        boost::system::error_code ec;
+        valid_.store(false);
+        socket_.shutdown(tcp::socket::shutdown_both, ec);
+        BOOST_LOG_TRIVIAL(info) << "on_worker_close: " << this;
+        for (auto && [uuid, job] : started_jobs_)
+            on_worker_reschedule_(job);
+        on_worker_close_(shared_from_this());
+    }
 
     void start_read_header()
     {
@@ -68,7 +68,13 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf] (boost::system::error_code ec, std::size_t /*length*/) {
-                if (not ec)
+                if (ec)
+                {
+                    if (ec != boost::asio::error::eof)
+                        BOOST_LOG_TRIVIAL(error) << "worker start_read_header err: " << ec.message();
+                    self->close();
+                }
+                else
                 {
                     pack::packet_pointer pack = std::make_shared<pack::packet>();
                     pack->header.parse(read_buf->data());
@@ -76,9 +82,8 @@ public:
                     switch (pack->header.type)
                     {
                     case pack::msg_t::worker_dereg:
+                        self->close();
                         BOOST_LOG_TRIVIAL(debug) << "worker get worker_dereg" << pack->header;
-                        self->valid_.store(false);
-                        self->on_worker_close_(self->shared_from_this());
                         break;
 
                     case pack::msg_t::worker_response:
@@ -88,7 +93,7 @@ public:
 
                     case pack::msg_t::ack:
                         BOOST_LOG_TRIVIAL(debug) << "worker get ack " << pack->header;
-                        self->on_worker_ack_(pack);
+                        self->on_worker_ack(pack);
                         self->start_read_header();
                         break;
 
@@ -108,12 +113,6 @@ public:
                     }
                     }
                 }
-                else
-                {
-                    if (ec != boost::asio::error::eof)
-                        BOOST_LOG_TRIVIAL(error) << "worker start_read_header err: " << ec.message();
-                    self->valid_ = false;
-                }
             });
     }
 
@@ -125,28 +124,95 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "worker start_read_body: " << ec.message();
+                else
                 {
                     pack->data.parse(length, read_buf->data());
                     BOOST_LOG_TRIVIAL(trace) << "worker start self->registered_job_";
-                    self->on_worker_response_(pack);
+                    self->on_worker_response(pack);
                     self->start_read_header();
                 }
-                else
-                    BOOST_LOG_TRIVIAL(error) << "worker start_read_body: " << ec.message();
             });
+    }
+
+    void on_worker_ack(pack::packet_pointer pack)
+    {
+        net::post(
+            [self=shared_from_this(), pack] () {
+                self->count_++;
+                BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
+                if (pack->empty())
+                    return;
+
+                launcher::job_map::accessor it;
+                if (bool found = self->started_jobs_.find(it, pack->header); not found)
+                    return;
+
+                launcher::job_ptr job = it->second;
+
+                if (!job)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "get an unknown job: " << pack->header << ". Skip this request";
+                    return;
+                }
+
+                job->state_ = launcher::job::state::started;
+                job->timer_.cancel();
+            });
+    }
+
+    void on_worker_response(pack::packet_pointer pack)
+    {
+        net::post(
+            [self=shared_from_this(), pack] () {
+                self->count_--;
+                launcher::job_map::accessor it;
+                if (bool found = self->started_jobs_.find(it, pack->header); not found)
+                    return;
+
+                launcher::job_ptr j = it->second;
+                j->on_completion_(pack);
+                j->state_ = launcher::job::state::finished;
+                BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
+                self->started_jobs_.erase(it);
+            });
+    }
+
+    void start_write(launcher::job_ptr job)
+    {
+        BOOST_LOG_TRIVIAL(trace) << "worker start_write";
+        started_jobs_.emplace(job->pack_->header, job);
+
+        auto next = std::make_shared<socket_writer::boost_callback>(
+            [self=shared_from_this(), job] (boost::system::error_code ec, std::size_t /*length*/) {
+                if (ec)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
+                    self->close();
+                    //self->on_worker_reschedule_(job);
+                }
+                else
+                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
+            });
+
+        writer_.start_write_socket(job->pack_, next);
     }
 
     void start_write(pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "worker start_write";
+        BOOST_LOG_TRIVIAL(trace) << "worker start_write with pack";
 
         auto next = std::make_shared<socket_writer::boost_callback>(
-            [self=shared_from_this()] (boost::system::error_code ec, std::size_t /*length*/) {
-                if (not ec)
-                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
-                else
+            [self=shared_from_this(), pack] (boost::system::error_code ec, std::size_t /*length*/) {
+                if (ec)
+                {
                     BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
+                    self->close();
+                    self->socket_.shutdown(tcp::socket::shutdown_send, ec);
+                }
+                else
+                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
             });
 
         writer_.start_write_socket(pack, next);
