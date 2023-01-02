@@ -57,14 +57,13 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
         recv_deadline_.expires_from_now(waittime_);
         recv_deadline_.async_wait(
             [self=this->shared_from_this()] (boost::system::error_code ec) {
-                slsfs::log::logstring(fmt::format("timer_reset: get code: {}", ec.message()));
-                if (not ec)
+                if (ec)
+                    slsfs::log::logstring(fmt::format("timer_reset: {}", ec.message()));
+                else
                 {
-                    slsfs::log::logstring<slsfs::log::level::info>("timer_reset: read header timeout");
+                    slsfs::log::logstring<slsfs::log::level::info>("timer_reset: read header timeout. close connection()");
                     self->close();
                 }
-                else
-                    slsfs::log::logstring("timer_reset: closed");
         });
     }
 

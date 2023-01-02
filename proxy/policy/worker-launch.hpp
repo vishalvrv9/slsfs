@@ -1,6 +1,6 @@
 #pragma once
-#ifndef POLICY_WORKER_LAUNCH__
-#define POLICY_WORKER_LAUNCH__
+#ifndef POLICY_WORKER_LAUNCH_HPP__
+#define POLICY_WORKER_LAUNCH_HPP__
 
 #include "base-types.hpp"
 
@@ -18,4 +18,4 @@ public:
 
 } // namespace slsfs::launcher::policy
 
-#endif // POLICY_WORKER_LAUNCH__
+#endif // POLICY_WORKER_LAUNCH_HPP__

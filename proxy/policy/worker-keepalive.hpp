@@ -1,6 +1,6 @@
 #pragma once
-#ifndef POLICY_WORKER_KEEPALIVE__
-#define POLICY_WORKER_KEEPALIVE__
+#ifndef POLICY_WORKER_KEEPALIVE_HPP__
+#define POLICY_WORKER_KEEPALIVE_HPP__
 
 #include "base-types.hpp"
 
@@ -34,4 +34,4 @@ public:
 
 } // namespace slsfs::launcher::policy
 
-#endif // POLICY_WORKER_KEEPALIVE__
+#endif // POLICY_WORKER_KEEPALIVE_HPP__

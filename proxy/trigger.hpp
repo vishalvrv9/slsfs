@@ -225,7 +225,7 @@ private:
                     {
                         self->on_read_(res);
                         self->on_read_.disconnect_all_slots();
-                        BOOST_LOG_TRIVIAL(info) << "read resp: " << res->body();
+                        BOOST_LOG_TRIVIAL(info) << "openwhisk response: " << res->body();
 
                         self->stream_is_connected_.store(true);
                         self->stream_is_writing_.store(false);

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef POLICY_WORKER_KEEPALIVE_CONST_TIME
-#define POLICY_WORKER_KEEPALIVE_CONST_TIME
+#ifndef POLICY_WORKER_KEEPALIVE_CONST_TIME_HPP__
+#define POLICY_WORKER_KEEPALIVE_CONST_TIME_HPP__
 
 #include "base-types.hpp"
 #include "worker-keepalive.hpp"
@@ -23,4 +23,4 @@ public:
 
 } // namespace slsfs::launcher::policy
 
-#endif // POLICY_WORKER_KEEPALIVE_CONST_TIME
+#endif // POLICY_WORKER_KEEPALIVE_CONST_TIME_HPP__
