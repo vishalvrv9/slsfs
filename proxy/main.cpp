@@ -3,6 +3,7 @@
 #include "trigger.hpp"
 #include "launcher.hpp"
 #include "zookeeper.hpp"
+#include "socket-writer.hpp"
 #include "uuid.hpp"
 
 #include <boost/program_options.hpp>
@@ -126,7 +127,7 @@ class tcp_connection : public std::enable_shared_from_this<tcp_connection>
     net::io_context& io_context_;
     topics& topics_;
     tcp::socket socket_;
-    net::io_context::strand write_io_strand_;
+    slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
     slsfs::launcher::launcher& launcher_;
 
 public:
@@ -136,7 +137,7 @@ public:
         io_context_{io},
         topics_{s},
         socket_{std::move(socket)},
-        write_io_strand_{io},
+        writer_{io, socket_},
         launcher_{l} {}
 
     auto socket() -> tcp::socket& { return socket_; }
@@ -299,17 +300,15 @@ public:
 
     void start_write(slsfs::pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "write";
-        auto buf_pointer = pack->serialize();
-        net::async_write(
-            socket_,
-            net::buffer(buf_pointer->data(), buf_pointer->size()),
-            net::bind_executor(
-                write_io_strand_,
-                [self=shared_from_this(), buf_pointer] (boost::system::error_code ec, std::size_t /*length*/) {
-                    if (not ec)
-                        BOOST_LOG_TRIVIAL(debug) << "sent msg";
-                }));
+        auto next = std::make_shared<slsfs::socket_writer::boost_callback>(
+            [self=shared_from_this()] (boost::system::error_code ec, std::size_t /*length*/) {
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "tcp conn start write error: " << ec.message();
+                else
+                    BOOST_LOG_TRIVIAL(debug) << "tcp conn worker wrote msg";
+            });
+
+        writer_.start_write_socket(pack, next);
     }
 };
 
