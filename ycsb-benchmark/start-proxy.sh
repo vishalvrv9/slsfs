@@ -9,8 +9,8 @@ docker run --privileged -it \
            --announce 192.168.0.224 \
            --init \
            --policy-filetoworker lowest-load \
-           --policy-launch const-limit-launch \
-           --policy-launch-args 50 \
+           --policy-launch prestart-one \
+           --policy-launch-args $((280 * 1000)):50 \
            --policy-keepalive const-time \
            --policy-keepalive-args $((60 * 1000)) \
            --worker-config /backend/ssbd-basic.json

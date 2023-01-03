@@ -27,6 +27,16 @@ using fileid_map =
 using fileid_to_worker_accessor = fileid_map::accessor;
 using fileid_worker_pair        = fileid_map::value_type;
 
+namespace policy
+{
+
+struct update_interface
+{
+protected:
+};
+
+} // policy
+
 } // namespace slsfs::launcher
 
 #endif // POLICY_BASE_TYPES_HPP__

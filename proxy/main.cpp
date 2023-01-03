@@ -24,6 +24,7 @@
 #include <vector>
 #include <fstream>
 #include <string>
+#include <regex>
 
 using slsfs::net::ip::tcp;
 namespace net = slsfs::net;
@@ -288,7 +289,7 @@ public:
 
                 self->get_bucket(pack->header).get_connect(
                     [self=self->shared_from_this()](slsfs::pack::packet_pointer pack) {
-                        BOOST_LOG_TRIVIAL(trace) << "run signaled wri   te";
+                        BOOST_LOG_TRIVIAL(trace) << "run signaled write";
                         self->start_write(pack);
                     });
 
@@ -386,6 +387,20 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
     case "const-limit-launch"_:
         server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
         break;
+    case "prestart-one"_:
+    {
+        std::regex pattern("(\\d+):(\\d+)");
+        std::smatch match;
+        if (std::regex_search(args, match, pattern))
+        {
+            int no_older_than = std::stoi(match[1]);
+            int threshold     = std::stoi(match[2]);
+            server.set_policy_launch<slsfs::launcher::policy::prestart_one>(no_older_than, threshold);
+        }
+        else
+            throw std::runtime_error("unable to parse args; should be no_older_than(ms):threshold");
+        break;
+    }
     }
 }
 
@@ -396,6 +411,9 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
     {
     case "const-time"_:
         server.set_policy_keepalive<slsfs::launcher::policy::keepalive_const_time>(std::stoi(args) /* ms */);
+        break;
+    case "moving-interval"_:
+        server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval>(std::stoi(args) /* ms */);
         break;
     }
 }

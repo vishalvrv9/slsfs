@@ -30,7 +30,6 @@ class launcher
 
     worker_set worker_set_;
     fileid_map fileid_to_worker_;
-
     job_queue pending_jobs_;
 
     uuid::uuid const& id_;
@@ -90,7 +89,7 @@ public:
 
     void on_worker_close(df::worker_ptr worker)
     {
-        BOOST_LOG_TRIVIAL(info) << "on_worker_close: " << worker.get();
+        BOOST_LOG_TRIVIAL(info) << "worker close: " << worker.get();
         worker_set_.erase(worker);
         start_jobs();
     }
@@ -98,12 +97,10 @@ public:
     void start_jobs()
     {
         if (launcher_policy_.should_start_new_worker())
-        {
             create_worker(launcher_policy_.get_worker_config());
-            launcher_policy_.set_worker_keepalive();
-        }
 
         BOOST_LOG_TRIVIAL(debug) << "pending job count=" << pending_jobs_.unsafe_size();
+
         job_ptr j;
         while (pending_jobs_.try_pop(j))
         {
@@ -115,15 +112,14 @@ public:
             // 3. how long should this data function idle?
 
             df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
-
             if (!worker_ptr || not worker_ptr->is_valid())
             {
                 worker_ptr = launcher_policy_.get_available_worker(j->pack_);
 
-                // no avaliable worker. Reassign
+                // no available worker. Re-scheduling request
                 if (!worker_ptr || not worker_ptr->is_valid())
                 {
-                    BOOST_LOG_TRIVIAL(error) << "no avaliable worker. Reschedule";
+                    BOOST_LOG_TRIVIAL(error) << "No available worker. Re-scheduling request";
                     pending_jobs_.push(j);
                     break;
                 }
@@ -203,13 +199,4 @@ public:
 
 } // namespace launcher
 
-
 #endif // LAUNCHER_HPP__
-
-//        if (get_available_worker() == nullptr)
-//        {
-//            BOOST_LOG_TRIVIAL(debug) << "starting function as new worker";
-//            create_worker(body);
-//            trigger_->register_on_read(
-//                [next](std::shared_ptr<http::response<http::string_body>> /*resp*/) {});
-//        }

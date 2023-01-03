@@ -9,8 +9,10 @@
 
 #include "worker-keepalive.hpp"
 #include "worker-keepalive-const-time.hpp"
+#include "worker-keepalive-moving-interval.hpp"
 
 #include "worker-launch-const-limit-launch.hpp"
+#include "worker-launch-prestart-one.hpp"
 #include "worker-launch.hpp"
 
 #endif // POLICY_ALL_HPP__

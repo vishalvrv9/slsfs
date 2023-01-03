@@ -29,12 +29,15 @@ class worker : public std::enable_shared_from_this<worker>
     tcp::socket socket_;
     socket_writer::socket_writer<pack::packet_pointer, std::vector<pack::unit_t>> writer_;
     std::atomic<bool> valid_ = true;
-    std::atomic<unsigned int> count_ = 0;
 
     launcher::job_map started_jobs_;
 
     boost::signals2::signal<void (launcher::job_ptr)> on_worker_reschedule_;
     boost::signals2::signal<void (worker_ptr)> on_worker_close_;
+
+public:
+    // stat; may need to move to policy
+    std::chrono::high_resolution_clock::time_point started_ = std::chrono::high_resolution_clock::now();
 
 public:
     template<typename Launcher> requires IsLauncher<Launcher>
@@ -47,7 +50,7 @@ public:
         }
 
     bool is_valid() { return valid_; }
-    int  pending_jobs() { return count_.load(); }
+    int  pending_jobs() { return started_jobs_.size(); }
 
     void close()
     {
@@ -140,7 +143,6 @@ public:
     {
         net::post(
             [self=shared_from_this(), pack] () {
-                self->count_++;
                 BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
                 if (pack->empty())
                     return;
@@ -166,7 +168,6 @@ public:
     {
         net::post(
             [self=shared_from_this(), pack] () {
-                self->count_--;
                 launcher::job_map::accessor it;
                 if (bool found = self->started_jobs_.find(it, pack->header); not found)
                     return;
