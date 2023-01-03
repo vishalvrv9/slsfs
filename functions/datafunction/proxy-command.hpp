@@ -200,6 +200,12 @@ public:
                     ok->header = pack->header;
                     ok->header.type = slsfs::pack::msg_t::ack;
 
+                    {
+                        std::stringstream ss;
+                        ss << pack->header;
+                        slsfs::log::logstring<slsfs::log::level::error>(fmt::format("return: {}", ss.str()));
+                    }
+
                     self->start_write(ok);
                     self->start_listen_commands();
                 }

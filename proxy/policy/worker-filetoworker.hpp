@@ -2,13 +2,13 @@
 #ifndef POLICY_WORKER_FILETOWORKER_HPP__
 #define POLICY_WORKER_FILETOWORKER_HPP__
 
-#include "base-types.hpp"
+#include "../launcher-base-types.hpp"
 
 namespace slsfs::launcher::policy
 {
 
 /* Resource provisioning interface policy responsible for assigning files to workers */
-class worker_filetoworker
+class worker_filetoworker : public info
 {
 public:
     virtual

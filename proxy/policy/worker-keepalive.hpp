@@ -2,14 +2,14 @@
 #ifndef POLICY_WORKER_KEEPALIVE_HPP__
 #define POLICY_WORKER_KEEPALIVE_HPP__
 
-#include "base-types.hpp"
+#include "../launcher-base-types.hpp"
 
 namespace slsfs::launcher::policy
 {
 
 /* Resource provisioning policy interface responsible for deciding a keep alive time for workers after
 they have processed their last request */
-class worker_keepalive
+class worker_keepalive : public info
 {
 protected:
     void send_worker_keepalive(df::worker_ptr worker, pack::waittime_type duration_in_ms)

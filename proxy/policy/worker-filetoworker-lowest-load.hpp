@@ -2,8 +2,6 @@
 #ifndef POLICY_WORKER_FILETOWORKER_LOWEST_LOAD_HPP__
 #define POLICY_WORKER_FILETOWORKER_LOWEST_LOAD_HPP__
 
-#include "base-types.hpp"
-
 #include "worker-filetoworker.hpp"
 
 #include <limits>

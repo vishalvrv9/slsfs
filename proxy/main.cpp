@@ -428,6 +428,7 @@ int main(int argc, char* argv[])
         ("help,h", "Print this help messages")
         ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
         ("init", "reset all system (clear zookeeper entries)")
+        ("thread", po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
         ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect")
         ("policy-filetoworker",      po::value<std::string>(), "file to worker policy name")
         ("policy-filetoworker-args", po::value<std::string>()->default_value(""), "file to worker policy name extra args")
@@ -449,7 +450,7 @@ int main(int argc, char* argv[])
         return EXIT_FAILURE;
     }
 
-    int const worker = std::thread::hardware_concurrency();
+    int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
     unsigned short const port  = vm["listen"].as<unsigned short>();
     std::string const announce = vm["announce"].as<std::string>();

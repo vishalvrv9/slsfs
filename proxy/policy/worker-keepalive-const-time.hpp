@@ -2,7 +2,6 @@
 #ifndef POLICY_WORKER_KEEPALIVE_CONST_TIME_HPP__
 #define POLICY_WORKER_KEEPALIVE_CONST_TIME_HPP__
 
-#include "base-types.hpp"
 #include "worker-keepalive.hpp"
 
 namespace slsfs::launcher::policy

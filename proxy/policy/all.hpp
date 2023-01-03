@@ -2,8 +2,6 @@
 #ifndef POLICY_ALL_HPP__
 #define POLICY_ALL_HPP__
 
-#include "base-types.hpp"
-
 #include "worker-filetoworker.hpp"
 #include "worker-filetoworker-lowest-load.hpp"
 

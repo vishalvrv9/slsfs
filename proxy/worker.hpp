@@ -58,8 +58,8 @@ public:
         valid_.store(false);
         socket_.shutdown(tcp::socket::shutdown_both, ec);
         BOOST_LOG_TRIVIAL(info) << "on_worker_close: " << this;
-        for (auto && [uuid, job] : started_jobs_)
-            on_worker_reschedule_(job);
+        for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
+            on_worker_reschedule_(unsafe_iterator->second); // job
         on_worker_close_(shared_from_this());
     }
 

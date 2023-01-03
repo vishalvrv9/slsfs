@@ -53,8 +53,9 @@ public:
 
     void set_worker_keepalive()
     {
-       for (auto&& [worker_ptr, _notused] : worker_set_)
-           keepalive_policy_->set_worker_keepalive(worker_ptr);
+        for (auto [worker_ptr, _unused] : worker_set_)
+            if (worker_ptr->is_valid())
+                keepalive_policy_->set_worker_keepalive(worker_ptr);
     }
 
     auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr
@@ -63,6 +64,14 @@ public:
         if (bool found = fileid_to_worker_.find(it, packet_ptr->header); found)
             return it->second;
         return nullptr;
+    }
+
+    // methods for updates; defined in base_types.hpp
+    void started_a_new_job(df::worker_ptr worker_ptr)
+    {
+        keepalive_policy_->started_a_new_job(worker_ptr);
+        launch_policy_->started_a_new_job(worker_ptr);
+        filetoworker_policy_->started_a_new_job(worker_ptr);
     }
 };
 

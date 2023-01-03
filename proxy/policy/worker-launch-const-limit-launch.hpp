@@ -19,7 +19,7 @@ public:
     bool should_start_new_worker (job_queue& /*pending_jobs*/,
                                   worker_set& ws) override
     {
-        for (auto&& [worker_ptr, _notused] : ws)
+        for (auto [worker_ptr, _notused] : ws)
             if (worker_ptr->pending_jobs() <= threshold_ and worker_ptr->is_valid())
                 return false; // have an underload worker
         return true;

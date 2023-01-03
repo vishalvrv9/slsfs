@@ -25,15 +25,18 @@ public:
 
     bool should_start_new_worker (job_queue& pending_jobs, worker_set& ws) override
     {
-        if (const_limit_launch::should_start_new_worker(pending_jobs, ws))
-            return true;
+//        if (const_limit_launch::should_start_new_worker(pending_jobs, ws))
+//            return true;
 
         for (auto&& [worker_ptr, _notused] : ws)
         {
-            BOOST_LOG_TRIVIAL(info) << std::chrono::high_resolution_clock::now() - worker_ptr->started_ << " less then " << no_older_than_;
+            //BOOST_LOG_TRIVIAL(info) << std::chrono::high_resolution_clock::now() - worker_ptr->started_ << " less then " << no_older_than_;
             if (worker_ptr->is_valid() &&
                 std::chrono::high_resolution_clock::now() - worker_ptr->started_ < no_older_than_)
+            {
+                worker_ptr->started_ = std::chrono::high_resolution_clock::now();
                 return false; // found one worker that is still young
+            }
         }
 
         return true;

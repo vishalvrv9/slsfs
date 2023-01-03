@@ -1,10 +1,10 @@
 #pragma once
-#ifndef POLICY_BASE_TYPES_HPP__
-#define POLICY_BASE_TYPES_HPP__
+#ifndef LAUNCHER_BASE_TYPES_HPP__
+#define LAUNCHER_BASE_TYPES_HPP__
 
-#include "../worker.hpp"
-#include "../worker-config.hpp"
-#include "../launcher-job.hpp"
+#include "worker.hpp"
+#include "worker-config.hpp"
+#include "launcher-job.hpp"
 
 #include <oneapi/tbb/concurrent_queue.h>
 #include <oneapi/tbb/concurrent_hash_map.h>
@@ -30,13 +30,15 @@ using fileid_worker_pair        = fileid_map::value_type;
 namespace policy
 {
 
-struct update_interface
+struct info
 {
 protected:
+public:
+    virtual void started_a_new_job(df::worker_ptr) {}
 };
 
 } // policy
 
 } // namespace slsfs::launcher
 
-#endif // POLICY_BASE_TYPES_HPP__
+#endif // LAUNCHER_BASE_TYPES_HPP__

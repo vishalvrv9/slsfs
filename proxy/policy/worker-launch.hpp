@@ -2,13 +2,13 @@
 #ifndef POLICY_WORKER_LAUNCH_HPP__
 #define POLICY_WORKER_LAUNCH_HPP__
 
-#include "base-types.hpp"
+#include "../launcher-base-types.hpp"
 
 namespace slsfs::launcher::policy
 {
 
 /* Resource provisioning policy interface responsible for starting and managing the pool of workers */
-class worker_launch
+class worker_launch : public info
 {
 public:
     virtual

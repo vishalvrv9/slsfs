@@ -201,11 +201,11 @@ auto packet_header_key_hash(packet_header const& k) -> std::size_t
 {
     std::size_t seed = 0x1b873593;
     hash::range(seed, k.key.begin(), k.key.end());
-    hash::range(seed, k.random_salt.begin(), k.random_salt.end());
+//    hash::range(seed, k.random_salt.begin(), k.random_salt.end());
     return seed;
 }
 
-    bool packet_header_key_compare(packet_header const& key1, packet_header const& key2) {
+bool packet_header_key_compare(packet_header const& key1, packet_header const& key2) {
     return (std::tie(key1.key) == std::tie(key2.key));
 };
 

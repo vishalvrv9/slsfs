@@ -27,6 +27,7 @@ concept CanResolveZookeeper = requires(T t)
 class launcher
 {
     net::io_context& io_context_;
+    net::io_context::strand check_start_strand_;
 
     worker_set worker_set_;
     fileid_map fileid_to_worker_;
@@ -37,15 +38,32 @@ class launcher
     net::ip::port_type const announce_port_;
     launcher_policy launcher_policy_;
 
+    void start_execute_policy()
+    {
+        using namespace std::chrono_literals;
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        timer->expires_from_now(1s);
+        timer->async_wait(
+            [this, timer] (boost::system::error_code ec) {
+                if (ec && ec != net::error::operation_aborted)
+                {
+                    launcher_policy_.set_worker_keepalive();
+                    start_execute_policy();
+                }
+            });
+    }
+
 public:
     launcher(net::io_context& io, uuid::uuid const& id,
              std::string const& announce, net::ip::port_type port):
-        io_context_{io},
+        io_context_{io}, check_start_strand_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
         launcher_policy_{worker_set_, fileid_to_worker_, pending_jobs_,
-                         announce_host_, announce_port_} {}
+                         announce_host_, announce_port_} {
+        start_execute_policy();
+    }
 
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
@@ -96,8 +114,14 @@ public:
 
     void start_jobs()
     {
-        if (launcher_policy_.should_start_new_worker())
-            create_worker(launcher_policy_.get_worker_config());
+        net::post(
+            io_context_,
+            net::bind_executor(
+                check_start_strand_,
+                [this] () {
+                    if (launcher_policy_.should_start_new_worker())
+                        create_worker(launcher_policy_.get_worker_config());
+                }));
 
         BOOST_LOG_TRIVIAL(debug) << "pending job count=" << pending_jobs_.unsafe_size();
 
@@ -127,14 +151,18 @@ public:
                 fileid_to_worker_.emplace(j->pack_->header, worker_ptr);
             }
 
-            BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post. ";
+            BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
+
+            // async launch stat calculator
+            net::post(io_context_, [this, worker_ptr] { launcher_policy_.started_a_new_job(worker_ptr); });
+
             worker_ptr->start_write(j);
 
             using namespace std::chrono_literals;
             j->timer_.expires_from_now(2s);
             j->timer_.async_wait(
                 [this, j] (boost::system::error_code ec) {
-                    if (ec && ec != boost::asio::error::operation_aborted)
+                    if (ec && ec != net::error::operation_aborted)
                     {
                         BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << j->pack_->header;
                         pending_jobs_.push(j);

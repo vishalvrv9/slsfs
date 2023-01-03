@@ -43,10 +43,10 @@ add_executable(exec entry.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 target_precompile_headers(exec PRIVATE <boost/asio.hpp>)
+target_precompile_headers(exec PRIVATE <boost/signals2.hpp>)
 target_precompile_headers(exec PRIVATE <fmt/core.h>)
 target_precompile_headers(exec PRIVATE <oneapi/tbb/concurrent_hash_map.h>)
 
-#set(CUSTOM_LIBRARIES "-ltbb -ltbbmalloc -laws-cpp-sdk-s3 -laws-cpp-sdk-core -laws-crt-cpp -laws-c-mqtt -laws-c-s3 -laws-c-auth -laws-c-event-stream -laws-checksums -laws-c-http -laws-c-io -laws-c-compression -laws-c-cal -laws-c-sdkutils -ls2n -laws-c-common")
 set(CUSTOM_LIBRARIES "-ltbb -ltbbmalloc -lminiocpp -lcurlpp -lpugixml -linih")
 
 target_link_libraries(exec       ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
