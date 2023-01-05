@@ -126,7 +126,8 @@ try
     boost::asio::steady_timer function_timeout{ioc};
     {
         using namespace std::chrono_literals;
-        function_timeout.expires_from_now(295s);
+        function_timeout.expires_from_now(298s);
+///        function_timeout.expires_from_now(20s);
         function_timeout.async_wait(
             [proxy_command_ptr] (boost::system::error_code ec) {
                 slsfs::log::logstring(fmt::format("time to die: get code: {}", ec.message()));

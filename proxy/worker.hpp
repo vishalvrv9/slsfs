@@ -20,8 +20,9 @@ using worker_ptr = std::shared_ptr<worker>;
 template<typename T>
 concept IsLauncher = requires(T l)
 {
-    { l.on_worker_reschedule (std::declval<launcher::job_ptr>())    } -> std::convertible_to<void>;
-    { l.on_worker_close      (std::declval<worker_ptr>())           } -> std::convertible_to<void>;
+    { l.on_worker_reschedule     (std::declval<launcher::job_ptr>())} -> std::convertible_to<void>;
+    { l.on_worker_close          (std::declval<worker_ptr>())       } -> std::convertible_to<void>;
+    { l.on_worker_finished_a_job (std::declval<worker*>())          } -> std::convertible_to<void>;
 };
 
 class worker : public std::enable_shared_from_this<worker>
@@ -34,6 +35,7 @@ class worker : public std::enable_shared_from_this<worker>
 
     boost::signals2::signal<void (launcher::job_ptr)> on_worker_reschedule_;
     boost::signals2::signal<void (worker_ptr)> on_worker_close_;
+    boost::signals2::signal<void (worker*)> on_worker_finished_a_job_;
 
 public:
     // stat; may need to move to policy
@@ -45,8 +47,9 @@ public:
         socket_{std::move(socket)},
         writer_{io, socket_}
         {
-            on_worker_reschedule_.connect([&l] (launcher::job_ptr job) { l.on_worker_reschedule(job); });
-            on_worker_close_.connect([&l] (worker_ptr p) { l.on_worker_close(p); });
+            on_worker_reschedule_    .connect([&l] (launcher::job_ptr job) { l.on_worker_reschedule(job); });
+            on_worker_close_         .connect([&l] (worker_ptr p) { l.on_worker_close(p); });
+            on_worker_finished_a_job_.connect([&l] (worker* p) { l.on_worker_finished_a_job(p); });
         }
 
     bool is_valid() { return valid_; }
@@ -57,7 +60,7 @@ public:
         boost::system::error_code ec;
         valid_.store(false);
         socket_.shutdown(tcp::socket::shutdown_both, ec);
-        BOOST_LOG_TRIVIAL(info) << "on_worker_close: " << this;
+        BOOST_LOG_TRIVIAL(info) << "worker " << this << " closed";
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
         on_worker_close_(shared_from_this());
@@ -173,10 +176,12 @@ public:
                     return;
 
                 launcher::job_ptr j = it->second;
-                j->on_completion_(pack);
-                j->state_ = launcher::job::state::finished;
-                BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
                 self->started_jobs_.erase(it);
+
+                j->state_ = launcher::job::state::finished;
+                j->on_completion_(pack);
+                BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
+                self->on_worker_finished_a_job_(self.get());
             });
     }
 

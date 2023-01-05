@@ -218,6 +218,7 @@ public:
                 if (*it == uuid_)
                     return;
 
+                using namespace std::string_literals;
                 zk::future<zk::get_result> resp = client_.get("/slsfs/proxy/"s + it->encode_base64());
                 zk::stat const& stat = resp.get().stat();
 
@@ -231,6 +232,8 @@ public:
     {
         try
         {
+            using namespace std::string_literals;
+
             client_.erase("/slsfs/proxy/"s + child).get();
         } catch (...) {}
     }

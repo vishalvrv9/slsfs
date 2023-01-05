@@ -20,7 +20,7 @@ public:
 
         int job = std::numeric_limits<int>::max();
 
-        for (auto&& [worker_ptr, _notused] : current_workers)
+        for (auto [worker_ptr, _notused] : current_workers)
             if (worker_ptr->is_valid() && worker_ptr->pending_jobs() < job)
             {
                 best = worker_ptr;

@@ -60,6 +60,7 @@
 
 #include <fstream>
 #include <charconv>
+#include <chrono>
 
 namespace slsfs
 {
@@ -70,16 +71,20 @@ namespace net   = boost::asio;          // from <boost/asio.hpp>
 namespace ssl   = boost::asio::ssl;
 
 using tcp = boost::asio::ip::tcp;       // from <boost/asio/ip/tcp.hpp>
-using namespace std::string_literals;
 using json = nlohmann::json;
 
 namespace basic
 {
 
 // Report a failure
-void fail(beast::error_code ec, char const* what)
-{
+void fail(beast::error_code ec, char const* what) {
     BOOST_LOG_TRIVIAL(error) << what << ": " << ec.message() << "\n";
+}
+
+using time_point = std::chrono::high_resolution_clock::time_point;
+
+auto now() -> time_point {
+    return std::chrono::high_resolution_clock::now();
 }
 
 void init_log()

@@ -44,5 +44,4 @@ RUN --mount=type=cache,target=/action/build mkdir -p /action/build && \
     bash -c 'if [[ -z "$debug" ]]; then conan install .. --profile ../profiles/release --build missing; else conan install .. --profile ../profiles/debug --build missing; fi' && \
     bash -c 'if [[ -z "$debug" ]]; then cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_AS_ACTIONLOOP=$actionloop; else cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_AS_ACTIONLOOP=$actionloop; fi' && \
     cmake --build . && \
-    cp /action/build/bin/exec /action/ && \
-    cp /action/build/bin/test_swift /action/
+    cp /action/build/bin/exec /action/

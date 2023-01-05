@@ -3,6 +3,7 @@
 #define POLICY_WORKER_LAUNCH_CONST_LIMIT_LAUNCH_HPP__
 
 #include "worker-launch.hpp"
+#include <boost/log/trivial.hpp>
 
 namespace slsfs::launcher::policy
 {
@@ -11,6 +12,7 @@ namespace slsfs::launcher::policy
 exceeds a preset threshold  */
 class const_limit_launch : public worker_launch
 {
+protected:
     int threshold_;
 public:
     const_limit_launch(): const_limit_launch(3) {}

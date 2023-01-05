@@ -57,66 +57,10 @@ auto stats(Iterator start, Iterator end, std::string const memo = "")
     return {dist, mean, std::sqrt(var)};
 }
 
-auto readtest (int const times, int const bufsize,
-               std::function<slsfs::pack::key_t(void)> genname,
-               std::function<int(int)> genpos,
-               std::string const memo = "")
-    -> std::pair<std::list<double>, std::chrono::nanoseconds>
-{
-    boost::asio::io_context io_context;
-    tcp::socket s(io_context);
-    tcp::resolver resolver(io_context);
-    boost::asio::connect(s, resolver.resolve("192.168.0.224", "12001"));
-
-    std::string const buf(bufsize, 'A');
-    std::list<double> records;
-
-    auto start = std::chrono::high_resolution_clock::now();
-    for (int i = 0; i < times; i++)
-    {
-        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-
-        ptr->header.type = slsfs::pack::msg_t::trigger;
-        ptr->header.key = genname();
-        slsfs::jsre::request r;
-        r.type = slsfs::jsre::type_t::file;
-        r.operation = slsfs::jsre::operation_t::read;
-        r.uuid = ptr->header.key;
-        r.position = genpos(i);
-        r.size = buf.size();
-        r.to_network_format();
-
-        ptr->data.buf.resize(sizeof (r));
-        std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-
-        ptr->header.gen();
-        BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
-        auto sendbuf = ptr->serialize();
-        records.push_back(record([&]() {
-            boost::asio::write(s, boost::asio::buffer(sendbuf->data(), sendbuf->size()));
-
-            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
-            boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
-
-            resp->header.parse(headerbuf.data());
-            BOOST_LOG_TRIVIAL(debug) << "read resp: " << resp->header;
-
-            std::string data(resp->header.datasize, '\0');
-            boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-            BOOST_LOG_TRIVIAL(debug) << data ;
-        }));
-    }
-
-    auto end = std::chrono::high_resolution_clock::now();
-    stats(records.begin(), records.end(), fmt::format("read {}", memo));
-
-    return {records, end - start};
-}
-
-auto writetest (int const times, int const bufsize,
-                std::function<slsfs::pack::key_t(void)> genname,
-                std::function<int(int)> genpos, std::string const memo = "")
+auto iotest (int const times, int const bufsize,
+             std::vector<int> rwdist,
+             std::function<slsfs::pack::key_t(void)> genname,
+             std::function<int(int)> genpos, std::string const memo = "")
     -> std::pair<std::list<double>, std::chrono::nanoseconds>
 {
     boost::asio::io_context io_context;
@@ -127,6 +71,8 @@ auto writetest (int const times, int const bufsize,
     std::string const buf(bufsize, 'A');
 
     std::list<double> records;
+    std::uniform_int_distribution<> dist(0, rwdist.size()-1);
+    std::mt19937 engine(std::random_device{}());
 
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < times; i++)
@@ -138,17 +84,26 @@ auto writetest (int const times, int const bufsize,
 
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
-        r.operation = slsfs::jsre::operation_t::write;
+        if (rwdist.at(dist(engine)))
+            r.operation = slsfs::jsre::operation_t::read;
+        else
+            r.operation = slsfs::jsre::operation_t::write;
         r.uuid = ptr->header.key;
         r.position = genpos(i);
         r.size = buf.size();
-
         r.to_network_format();
 
-        ptr->data.buf.resize(sizeof (r) + buf.size());
-        std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-        std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
-
+        if (r.operation == slsfs::jsre::operation_t::read)
+        {
+            ptr->data.buf.resize(sizeof (r));
+            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
+        }
+        else
+        {
+            ptr->data.buf.resize(sizeof (r) + buf.size());
+            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
+            std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
+        }
         ptr->header.gen();
         BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
         auto buf = ptr->serialize();
@@ -287,12 +242,13 @@ int main(int argc, char *argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("total-times",   po::value<int>()->default_value(10000), "each client run # total times")
-        ("total-clients", po::value<int>()->default_value(1), "# of clients")
-        ("bufsize",       po::value<int>()->default_value(4096), "Size of the read/write buffer")
-        ("zipf-alpha",    po::value<double>()->default_value(1.2), "set the alpha value of zipf dist")
+        ("total-times",   po::value<int>()->default_value(10000),   "each client run # total times")
+        ("total-clients", po::value<int>()->default_value(1),       "# of clients")
+        ("bufsize",       po::value<int>()->default_value(4096),    "Size of the read/write buffer")
+        ("zipf-alpha",    po::value<double>()->default_value(1.2),  "set the alpha value of zipf dist")
         ("file-range",    po::value<int>()->default_value(256*256), "set the total different number of files")
-        ("result",        po::value<std::string>(), "save result to this file");
+        ("test-name",     po::value<std::string>(),                 "oneof [fill, 50-50, 95-5, 100-0, 0-100]; format: read-write")
+        ("result",        po::value<std::string>()->default_value("/dev/null"), "save result to this file");
 
     po::positional_options_description pos_po;
     po::variables_map vm;
@@ -307,6 +263,8 @@ int main(int argc, char *argv[])
     int const bufsize       = vm["bufsize"].as<int>();
     double const zipf_alpha = vm["zipf-alpha"].as<double>();
     int const file_range    = vm["file-range"].as<int>();
+
+    std::string const test_name  = vm["test-name"].as<std::string>();
     std::string const resultfile = vm["result"].as<std::string>();
 
     absl::zipf_distribution namedist(file_range, zipf_alpha);
@@ -324,31 +282,95 @@ int main(int argc, char *argv[])
             };
         };
 
-    start_test(
-        "write",
-        vm,
-        [&]() {
-            return std::async(
-                std::launch::async,
-                writetest, total_times, bufsize,
-                genname,
-                [bufsize](int i) { return i*bufsize; },
-                "seq");
-        });
+    int counter = 0;
+    auto allname =
+        [&counter] () {
+            int n = counter++;
+            slsfs::pack::unit_t n1 = n / 256;
+            slsfs::pack::unit_t n2 = n % 256;
+            return slsfs::pack::key_t {
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, n1, n2
+            };
+        };
 
+    using namespace slsfs::basic::sswitcher;
+    switch (slsfs::basic::sswitcher::hash(test_name))
     {
-        std::uniform_int_distribution<> dist(0, 1000);
+    case "fill"_:
         start_test(
-            "read",
+            "fill",
             vm,
             [&]() {
                 return std::async(
                     std::launch::async,
-                    readtest, total_times, bufsize,
+                    iotest, file_range, bufsize,
+                    std::vector<int> {1},
+                    allname,
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    case "50-50"_:
+        start_test(
+            "50-50",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, bufsize,
+                    std::vector<int> {0, 1},
                     genname,
-                    [&engine, &dist](int) { return dist(engine); },
-                    "rand");
-            });
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    case "95-5"_:
+        start_test(
+            "95-5",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, bufsize,
+                    std::vector<int>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
+                    genname,
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    case "100-0"_:
+        start_test(
+            "100-0",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, bufsize,
+                    std::vector<int> {0},
+                    genname,
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    case "0-100"_:
+        start_test(
+            "0-100",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, bufsize,
+                    std::vector<int> {1},
+                    genname,
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    default:
+        BOOST_LOG_TRIVIAL(error) << "unknown test name << " << test_name;
     }
 
     return EXIT_SUCCESS;

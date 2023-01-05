@@ -197,40 +197,62 @@ struct packet_header
     bool is_trigger() { return random_salt.back() == 0; } // change
 };
 
-struct packet_header_key_hash
+auto packet_header_key_hash(packet_header const& k) -> std::size_t
 {
-    auto operator() (packet_header const& k) const -> std::size_t
-    {
-        std::size_t seed = 0x1b873593;
-        hash::range(seed, k.key.begin(), k.key.end());
-        hash::range(seed, k.random_salt.begin(), k.random_salt.end());
-        return seed;
-    }
-};
+    std::size_t seed = 0x1b873593;
+    hash::range(seed, k.key.begin(), k.key.end());
+//    hash::range(seed, k.random_salt.begin(), k.random_salt.end());
+    return seed;
+}
 
-struct packet_header_key_compare
-{
-    bool operator() (packet_header const& key1, packet_header const& key2) const
-    {
-        return (std::tie(key1.key, key1.random_salt) ==
-                std::tie(key2.key, key2.random_salt));
-    }
+bool packet_header_key_compare(packet_header const& key1, packet_header const& key2) {
+    return (std::tie(key1.key) == std::tie(key2.key));
 };
 
 struct packet_header_key_hash_compare
 {
     static
-    auto hash (packet_header const& key) -> std::size_t
-    {
-        return packet_header_key_hash{}(key);
+    auto hash (packet_header const& key) -> std::size_t {
+        return packet_header_key_hash(key);
     }
 
     static
-    bool equal (packet_header const& key1, packet_header const& key2)
-    {
-        return packet_header_key_compare{}(key1, key2);
+    bool equal (packet_header const& key1, packet_header const& key2) {
+        return packet_header_key_compare(key1, key2);
     }
 };
+
+auto packet_header_full_key_hash(packet_header const& k) -> std::size_t
+{
+    std::size_t seed = 0x1b873593;
+    hash::range(seed, k.key.begin(), k.key.end());
+    hash::range(seed, k.random_salt.begin(), k.random_salt.end());
+    hash::range(seed, k.sequence.begin(), k.sequence.end());
+    return seed;
+};
+
+bool packet_header_full_key_compare(packet_header const& key1, packet_header const& key2)
+{
+    return (std::tie(key1.key, key1.random_salt, key1.sequence) ==
+            std::tie(key2.key, key2.random_salt, key2.sequence));
+}
+
+struct packet_header_full_key_hash_compare
+{
+    static
+    auto hash (packet_header const& key) -> std::size_t {
+        return packet_header_full_key_hash(key);
+    }
+
+    static
+    bool equal (packet_header const& key1, packet_header const& key2) {
+        return packet_header_full_key_compare(key1, key2);
+    }
+};
+
+bool operator == (packet_header const& key1, packet_header const& key2) {
+    return packet_header_full_key_compare(key1, key2);
+}
 
 auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&
 {

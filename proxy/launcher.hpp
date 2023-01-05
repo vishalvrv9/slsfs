@@ -44,24 +44,33 @@ class launcher
         auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
         timer->expires_from_now(1s);
         timer->async_wait(
-            [this, timer] (boost::system::error_code ec) {
-                if (ec && ec != net::error::operation_aborted)
+            [this, timer] (boost::system::error_code error) {
+                switch (error.value())
                 {
-                    launcher_policy_.set_worker_keepalive();
+                case boost::system::errc::success: // timer timeout
                     start_execute_policy();
+                    launcher_policy_.execute();
+                    break;
+                case boost::system::errc::operation_canceled: // timer canceled
+                    BOOST_LOG_TRIVIAL(error) << "getting an operation_aborted error on launcher start_execute_policy()";
+                    break;
+                default:
+                    BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message() << " on launcher start_execute_policy()";
                 }
             });
     }
 
 public:
     launcher(net::io_context& io, uuid::uuid const& id,
-             std::string const& announce, net::ip::port_type port):
+             std::string const& announce, net::ip::port_type port,
+             std::string const& save_report):
         io_context_{io}, check_start_strand_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
-        launcher_policy_{worker_set_, fileid_to_worker_, pending_jobs_,
-                         announce_host_, announce_port_} {
+        launcher_policy_{io, worker_set_, fileid_to_worker_, pending_jobs_,
+                         announce_host_, announce_port_,
+                         save_report} {
         start_execute_policy();
     }
 
@@ -94,6 +103,7 @@ public:
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
 
+        launcher_policy_.registered_a_new_worker(worker_ptr.get());
         worker_ptr->start_read_header();
         start_jobs();
     }
@@ -107,13 +117,22 @@ public:
 
     void on_worker_close(df::worker_ptr worker)
     {
-        BOOST_LOG_TRIVIAL(info) << "worker close: " << worker.get();
+        BOOST_LOG_TRIVIAL(debug) << "worker close: " << worker.get();
         worker_set_.erase(worker);
         start_jobs();
     }
 
+    void on_worker_finished_a_job(df::worker* worker) {
+        launcher_policy_.finished_a_job(worker);
+    }
+
     void start_jobs()
     {
+        // execute the assigned policy
+        // 1. which data function to pick?
+        // 2. determine we start a new data function?
+        // 3. how long should this data function idle?
+
         net::post(
             io_context_,
             net::bind_executor(
@@ -129,11 +148,6 @@ public:
         while (pending_jobs_.try_pop(j))
         {
             BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
-
-            // execute the assigned policy
-            // 1. which data function to pick?
-            // 2. determine we start a new data function?
-            // 3. how long should this data function idle?
 
             df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
             if (!worker_ptr || not worker_ptr->is_valid())
@@ -154,7 +168,7 @@ public:
             BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
 
             // async launch stat calculator
-            net::post(io_context_, [this, worker_ptr] { launcher_policy_.started_a_new_job(worker_ptr); });
+            launcher_policy_.started_a_new_job(worker_ptr.get());
 
             worker_ptr->start_write(j);
 
@@ -172,7 +186,9 @@ public:
         }
     }
 
-    void create_worker(std::string const& body) {
+    void create_worker(std::string const& body)
+    {
+        launcher_policy_.starting_a_new_worker();
         trigger::make_trigger(io_context_)->start_post(body);
     }
 

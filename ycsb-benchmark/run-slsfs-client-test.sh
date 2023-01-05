@@ -7,10 +7,18 @@ docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /t
 
 chmod +x /tmp/slsfs-client
 
-hosts=(ow-invoker-1 ow-invoker-2 ow-invoker-3 ow-invoker-4 ow-invoker-5 ow-invoker-6 ow-invoker-7 ow-invoker-8 ow-invoker-9 ow-invoker-10 ow-invoker-11 ow-invoker-12 ow-invoker-13 ow-invoker-14 ow-invoker-15);
+hosts=(ow-invoker-1 ow-invoker-2 ow-invoker-3 ow-invoker-4 ow-invoker-5 ow-invoker-6 ow-invoker-7 ow-invoker-8 ow-invoker-9 ow-invoker-10 ow-invoker-11 ow-invoker-12 ow-invoker-13 ow-invoker-14 ow-invoker-15 ow-invoker-16);
+hosts=(ow-invoker-1 ow-invoker-2 ow-invoker-3 ow-invoker-4 ow-invoker-5 ow-invoker-6 ow-invoker-7 ow-invoker-8);
+#hosts=(ow-invoker-1 ow-invoker-2 ow-invoker-3 ow-invoker-4);
+#hosts=(ow-invoker-1 ow-invoker-2);
 #hosts=(ow-invoker-1);
 
-TESTNAME="ssbd-basic-15-host-8-threads"
+EACH_CLIENT_ISSUE=2000
+TOTAL_CLIENT=8
+BUFSIZE=4092
+CLIENT_TESTNAME=95-5
+
+TESTNAME="ssbd-stripe_random+adaptive-max-load+const-time_testname+${CLIENT_TESTNAME}_host+${#hosts[@]}_thread+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
 
 for h in "${hosts[@]}"; do
@@ -29,7 +37,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times 1000 --total-clients 8 --bufsize 4096 --result /tmp/$h-$TESTNAME'" &
+    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 
@@ -38,14 +46,12 @@ mkdir -p result-$TESTNAME;
 for h in "${hosts[@]}"; do
     scp "$h:/tmp/$h-$TESTNAME*" result-$TESTNAME/
 done
+cp /tmp/proxy-report.json result-$TESTNAME/
 wait < <(jobs -p);
 
 cd "result-$TESTNAME/"
-python3 ../csv-merge.py $TESTNAME-write.csv *-write.csv
-../upload.sh $TESTNAME-write $TESTNAME-write.csv
-
-python3 ../csv-merge.py $TESTNAME-read.csv *-read.csv
-../upload.sh $TESTNAME-read  $TESTNAME-read.csv
+python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
+../upload.sh $TESTNAME ${TESTNAME}_summary.csv
 
 #echo "finish test $TESTNAME"
 #echo "use ./upload.sh $TESTNAME result-$TESTNAME/ to upload"

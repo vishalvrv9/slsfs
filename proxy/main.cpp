@@ -205,7 +205,7 @@ public:
                     case slsfs::pack::msg_t::worker_response:
                     case slsfs::pack::msg_t::trigger_reject:
                     {
-                        BOOST_LOG_TRIVIAL(error) << "packet error " << pack->header;
+                        BOOST_LOG_TRIVIAL(error) << "packet error " << pack->header << " from endpoint: " << self->socket_.remote_endpoint();
                         slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
                         resp->header = pack->header;
                         resp->header.type = slsfs::pack::msg_t::err;
@@ -321,11 +321,11 @@ class tcp_server
     slsfs::launcher::launcher launcher_;
 
 public:
-    tcp_server(net::io_context& io_context, net::ip::port_type port, slsfs::uuid::uuid & id, std::string const& announce)
+    tcp_server(net::io_context& io_context, net::ip::port_type port, slsfs::uuid::uuid & id, std::string const& announce, std::string const& save_report)
         : id_{id},
           io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-          launcher_{io_context, id_, announce, port} {}
+          launcher_{io_context, id_, announce, port, save_report} {}
 
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
@@ -375,6 +375,14 @@ void set_policy_filetoworker(tcp_server& server, std::string const& policy, [[ma
     case "lowest-load"_:
         server.set_policy_filetoworker<slsfs::launcher::policy::lowest_load>();
         break;
+
+    case "random-assign"_:
+        server.set_policy_filetoworker<slsfs::launcher::policy::random_assign>();
+        break;
+
+    default:
+        using namespace std::string_literals;
+        throw std::runtime_error("unknown filetoworker policy: "s + policy);
     }
 }
 
@@ -388,18 +396,26 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
         break;
     case "prestart-one"_:
     {
+        server.set_policy_launch<slsfs::launcher::policy::prestart_one>(std::stoi(args));
+        break;
+    }
+    case "adaptive-max-load"_:
+    {
         std::regex pattern("(\\d+):(\\d+)");
         std::smatch match;
         if (std::regex_search(args, match, pattern))
         {
-            int no_older_than = std::stoi(match[1]);
-            int threshold     = std::stoi(match[2]);
-            server.set_policy_launch<slsfs::launcher::policy::prestart_one>(no_older_than, threshold);
+            int const max_latency      = std::stoi(match[1]);
+            int const min_process_rate = std::stoi(match[2]);
+            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate);
         }
         else
-            throw std::runtime_error("unable to parse args; should be no_older_than(ms):threshold");
+            throw std::runtime_error("unable to parse args; should be max_latency:min_process");
         break;
     }
+    default:
+        using namespace std::string_literals;
+        throw std::runtime_error("unknown launch policy: "s + policy);
     }
 }
 
@@ -414,6 +430,9 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
     case "moving-interval"_:
         server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval>(std::stoi(args) /* ms */);
         break;
+    default:
+        using namespace std::string_literals;
+        throw std::runtime_error("unknown keepalive policy: "s + policy);
     }
 }
 
@@ -427,8 +446,9 @@ int main(int argc, char* argv[])
         ("help,h", "Print this help messages")
         ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
         ("init", "reset all system (clear zookeeper entries)")
-        ("thread", po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
+        ("thread",   po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
         ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect")
+        ("report",   po::value<std::string>()->default_value("/dev/null"), "path to save report every seconds")
         ("policy-filetoworker",      po::value<std::string>(), "file to worker policy name")
         ("policy-filetoworker-args", po::value<std::string>()->default_value(""), "file to worker policy name extra args")
         ("policy-launch",            po::value<std::string>(),                    "launch policy name")
@@ -453,6 +473,7 @@ int main(int argc, char* argv[])
     net::io_context ioc {worker};
     unsigned short const port  = vm["listen"].as<unsigned short>();
     std::string const announce = vm["announce"].as<std::string>();
+    std::string const save_report = vm["report"].as<std::string>();
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
 
     std::string worker_config;
@@ -473,7 +494,7 @@ int main(int argc, char* argv[])
 //    std::string worker_config = vm["worker-config"].as<std::string>();
 //    std::cout << worker_config << std::endl;
 
-    tcp_server server{ioc, port, server_id, announce};
+    tcp_server server{ioc, port, server_id, announce, save_report};
 
     set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>(), vm["policy-filetoworker-args"].as<std::string>());
     set_policy_launch      (server, vm["policy-launch"]      .as<std::string>(), vm["policy-launch-args"]      .as<std::string>());

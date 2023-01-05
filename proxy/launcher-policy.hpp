@@ -6,7 +6,6 @@
 #include "serializer.hpp"
 #include "worker.hpp"
 #include "uuid.hpp"
-#include "worker-config.hpp"
 #include "policy/all.hpp"
 
 #include <oneapi/tbb/concurrent_unordered_set.h>
@@ -21,11 +20,13 @@ namespace slsfs::launcher
 
 class launcher_policy
 {
+    net::io_context& io_context_;
     worker_set& worker_set_;
     fileid_map& fileid_to_worker_;
     oneapi::tbb::concurrent_queue<job_ptr>& pending_jobs_;
     std::string const announce_host_;
-    boost::asio::ip::port_type const announce_port_;
+    net::ip::port_type const announce_port_;
+    reporter reporter_;
 
 public:
     std::string worker_config_;
@@ -34,10 +35,12 @@ public:
     std::unique_ptr<policy::worker_keepalive>    keepalive_policy_    = nullptr;
 
 public:
-    launcher_policy(worker_set& ws, fileid_map& fileid, oneapi::tbb::concurrent_queue<job_ptr>& pending_jobs,
-                    std::string const& host, boost::asio::ip::port_type const port):
-        worker_set_{ws}, fileid_to_worker_{fileid}, pending_jobs_{pending_jobs},
-        announce_host_{host}, announce_port_{port} {}
+    launcher_policy(net::io_context& ioc, worker_set& ws, fileid_map& fileid, oneapi::tbb::concurrent_queue<job_ptr>& pending_jobs,
+                    std::string const& host, boost::asio::ip::port_type const port,
+                    std::string const& save_report):
+        io_context_{ioc}, worker_set_{ws}, fileid_to_worker_{fileid}, pending_jobs_{pending_jobs},
+        announce_host_{host}, announce_port_{port},
+        reporter_{save_report} {}
 
     auto get_available_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr {
         return filetoworker_policy_->get_available_worker(packet_ptr, worker_set_);
@@ -67,11 +70,77 @@ public:
     }
 
     // methods for updates; defined in base_types.hpp
-    void started_a_new_job(df::worker_ptr worker_ptr)
+    void execute()
     {
-        keepalive_policy_->started_a_new_job(worker_ptr);
-        launch_policy_->started_a_new_job(worker_ptr);
-        filetoworker_policy_->started_a_new_job(worker_ptr);
+        net::post(
+            io_context_,
+            [this](){
+                keepalive_policy_   ->execute();
+                set_worker_keepalive();
+                launch_policy_      ->execute();
+                filetoworker_policy_->execute();
+                reporter_.execute();
+            });
+    }
+
+    void started_a_new_job(df::worker* worker_ptr)
+    {
+        net::post(
+            io_context_,
+            [this, worker_ptr] () {
+                keepalive_policy_   ->started_a_new_job(worker_ptr);
+                launch_policy_      ->started_a_new_job(worker_ptr);
+                filetoworker_policy_->started_a_new_job(worker_ptr);
+                reporter_.started_a_new_job(worker_ptr);
+            });
+    }
+
+    void finished_a_job(df::worker* worker_ptr)
+    {
+        net::post(
+            io_context_,
+            [this, worker_ptr] () {
+                keepalive_policy_   ->finished_a_job(worker_ptr);
+                launch_policy_      ->finished_a_job(worker_ptr);
+                filetoworker_policy_->finished_a_job(worker_ptr);
+                reporter_.finished_a_job(worker_ptr);
+            });
+    }
+
+    void starting_a_new_worker()
+    {
+        net::post(
+            io_context_,
+            [this] () {
+                keepalive_policy_   ->starting_a_new_worker();
+                launch_policy_      ->starting_a_new_worker();
+                filetoworker_policy_->starting_a_new_worker();
+                reporter_.starting_a_new_worker();
+            });
+    }
+
+    void registered_a_new_worker(df::worker* worker_ptr)
+    {
+        net::post(
+            io_context_,
+            [this, worker_ptr] () {
+                keepalive_policy_   ->registered_a_new_worker(worker_ptr);
+                launch_policy_      ->registered_a_new_worker(worker_ptr);
+                filetoworker_policy_->registered_a_new_worker(worker_ptr);
+                reporter_.registered_a_new_worker(worker_ptr);
+            });
+    }
+
+    void deregistered_a_worker(df::worker* worker_ptr)
+    {
+        net::post(
+            io_context_,
+            [this, worker_ptr] () {
+                keepalive_policy_   ->deregistered_a_worker(worker_ptr);
+                launch_policy_      ->deregistered_a_worker(worker_ptr);
+                filetoworker_policy_->deregistered_a_worker(worker_ptr);
+                reporter_.deregistered_a_worker(worker_ptr);
+            });
     }
 };
 
