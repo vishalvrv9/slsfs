@@ -28,7 +28,7 @@ protected:
 public:
     virtual
     void set_worker_keepalive(df::worker_ptr worker) {
-        send_worker_keepalive(worker, 2000);
+        send_worker_keepalive(worker, 10000);
     }
 };
 
