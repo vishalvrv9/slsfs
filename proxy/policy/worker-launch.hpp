@@ -11,10 +11,14 @@ namespace slsfs::launcher::policy
 /* Resource provisioning policy interface responsible for starting and managing the pool of workers */
 class worker_launch : public info
 {
-    unsigned int const max_outstanding_starting_request_ = 7;
+protected:
+    unsigned int const max_outstanding_starting_request_;
     std::atomic<unsigned int> counter_ = 0;
 
 public:
+    worker_launch(unsigned int max_outstanding_starting_request):
+        max_outstanding_starting_request_{max_outstanding_starting_request} {}
+
     void starting_a_new_worker() override {
         counter_.fetch_add(1, std::memory_order_relaxed);
     }
@@ -31,7 +35,6 @@ public:
     bool should_start_new_worker(launcher::job_queue& pending_jobs, worker_set& current_workers)
     {
         using namespace std::chrono_literals;
-        pending_jobs.unsafe_size();
         if (reaches_max_pending_start_worker_requests())
             return false;
 

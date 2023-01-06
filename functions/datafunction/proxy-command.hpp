@@ -43,7 +43,11 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     boost::asio::io_context&     io_context_;
     boost::asio::ip::tcp::socket socket_;
     boost::asio::steady_timer    recv_deadline_;
-    std::chrono::milliseconds    waittime_ = 10s;
+
+    using time_point = std::chrono::time_point<std::chrono::steady_clock>;
+    static auto now() -> time_point { return std::chrono::steady_clock::now(); }
+    time_point                last_update_ = now();
+    std::chrono::milliseconds waittime_ = 10s;
 
     std::shared_ptr<storage_conf> datastorage_conf_;
     slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
@@ -54,7 +58,8 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     void timer_reset()
     {
         slsfs::log::logstring("timer_reset");
-        recv_deadline_.expires_from_now(waittime_);
+        recv_deadline_.cancel();
+        recv_deadline_.expires_at(last_update_ + waittime_);
         recv_deadline_.async_wait(
             [self=this->shared_from_this()] (boost::system::error_code ec) {
                 if (ec)
@@ -111,6 +116,7 @@ public:
 
                     self->start_write(ptr);
                     self->start_listen_commands();
+                    self->timer_reset();
                 }
             });
     }
@@ -118,7 +124,6 @@ public:
     void start_listen_commands()
     {
         slsfs::log::logstring("start_listen_commands called");
-        timer_reset();
         auto readbuf = std::make_shared<std::array<slsfs::pack::unit_t, slsfs::pack::packet_header::bytesize>>();
 
         boost::asio::async_read(
@@ -129,10 +134,14 @@ public:
                 if (not ec)
                 {
                     slsfs::log::logstring("start_listen_commands cancel timer");
-                    self->recv_deadline_.cancel();
+
                     slsfs::log::logstring<slsfs::log::level::debug>("get cmd");
                     slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
                     pack->header.parse(readbuf->data());
+
+                    if (pack->header.type != slsfs::pack::msg_t::set_timer)
+                        self->recv_deadline_.cancel();
+
                     self->start_listen_commands_body(pack);
                 }
                 else
@@ -207,6 +216,9 @@ public:
                     }
 
                     self->start_write(ok);
+                    if (pack->header.type != slsfs::pack::msg_t::set_timer)
+                        self->last_update_ = now();
+                    self->timer_reset();
                     self->start_listen_commands();
                 }
                 else

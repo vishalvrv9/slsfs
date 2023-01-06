@@ -34,7 +34,8 @@ class adaptive_max_load : public const_limit_launch
     using process_rate_accessor = decltype(process_rate_)::accessor;
 
 public:
-    adaptive_max_load(int max_latency, int minimum_process_rate_in_seconds):
+    adaptive_max_load(int max_latency, int minimum_process_rate_in_seconds, unsigned int max_outstanding_starting_request):
+        const_limit_launch(300, max_outstanding_starting_request),
         interval_{max_latency * 1ms},
         minimum_process_rate_{minimum_process_rate_in_seconds / 1000.0} {}
 
@@ -70,8 +71,10 @@ public:
 
     bool should_start_new_worker (job_queue& pending_jobs, worker_set& ws) override
     {
+        BOOST_LOG_TRIVIAL(info) << "should_start_new_worker " << counter_.load() << " " << max_outstanding_starting_request_ << " " << worker_launch::should_start_new_worker(pending_jobs, ws);
         if (reaches_max_pending_start_worker_requests())
             return false;
+
 
         if (worker_launch::should_start_new_worker(pending_jobs, ws))
             return true;

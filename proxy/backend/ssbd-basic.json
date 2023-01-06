@@ -2,7 +2,7 @@
     "type": "wakeup",
     "proxyhost": "%1%",
     "proxyport": "%2%",
-    "blocksize": 4096,
+    "blocksize":  %3%,
     "storagetype": "ssbd-basic",
     "storageconfig": {
         "hosts": [

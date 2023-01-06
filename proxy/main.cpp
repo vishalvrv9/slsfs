@@ -237,8 +237,8 @@ public:
                         *read_buf, pack,
                         [self, pack] (slsfs::pack::packet_pointer resp) {
                             self->start_write(resp);
-                            self->start_read_header();
                         });
+                    self->start_read_header();
                 }
                 else
                     BOOST_LOG_TRIVIAL(error) << "start_trigger: " << ec.message();
@@ -401,13 +401,14 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
     }
     case "adaptive-max-load"_:
     {
-        std::regex pattern("(\\d+):(\\d+)");
+        std::regex pattern("(\\d+):(\\d+):(\\d+)");
         std::smatch match;
         if (std::regex_search(args, match, pattern))
         {
             int const max_latency      = std::stoi(match[1]);
             int const min_process_rate = std::stoi(match[2]);
-            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate);
+            unsigned int const max_outstanding_starting_request = std::stoi(match[3]);
+            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate, max_outstanding_starting_request);
         }
         else
             throw std::runtime_error("unable to parse args; should be max_latency:min_process");
@@ -455,7 +456,8 @@ int main(int argc, char* argv[])
         ("policy-launch-args",       po::value<std::string>()->default_value(""), "launch policy name extra args")
         ("policy-keepalive",         po::value<std::string>(),                    "keepalive policy name")
         ("policy-keepalive-args",    po::value<std::string>()->default_value(""), "keepalive policy name extra args")
-        ("worker-config",            po::value<std::string>(),                    "worker config json file path to use");
+        ("worker-config",            po::value<std::string>(),                    "worker config json file path to use")
+        ("blocksize",                po::value<int>()->default_value(4096),       "worker config blocksize");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -474,6 +476,7 @@ int main(int argc, char* argv[])
     unsigned short const port  = vm["listen"].as<unsigned short>();
     std::string const announce = vm["announce"].as<std::string>();
     std::string const save_report = vm["report"].as<std::string>();
+    int const blocksize = vm["blocksize"].as<int>();
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
 
     std::string worker_config;
@@ -488,7 +491,7 @@ int main(int argc, char* argv[])
 
         std::stringstream template_config;
         template_config << worker_configuration.rdbuf();
-        worker_config = (boost::format(template_config.str()) % announce % port).str();
+        worker_config = (boost::format(template_config.str()) % announce % port % blocksize).str();
     }
 
 //    std::string worker_config = vm["worker-config"].as<std::string>();

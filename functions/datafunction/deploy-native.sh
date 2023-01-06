@@ -18,10 +18,12 @@ ssh ow-invoker-15 docker restart invoker14 &
 ssh ow-invoker-16 docker restart invoker15 &
 
 strip exec;
-zip -r hello.zip exec
-wsk -i action update slsfs-datafunction --native hello.zip;
-wsk -i action update slsfs-metadatafunction --native hello.zip;
+zip -r hello.zip exec;
 
-rm -f hello.zip;
+for i in $(seq 0 15); do
+    wsk -i action update slsfs-datafunction-$i --native hello.zip
+done
 
 wait
+
+rm -f hello.zip;

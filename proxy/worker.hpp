@@ -25,6 +25,8 @@ concept IsLauncher = requires(T l)
     { l.on_worker_finished_a_job (std::declval<worker*>())          } -> std::convertible_to<void>;
 };
 
+using worker_id = std::size_t;
+
 class worker : public std::enable_shared_from_this<worker>
 {
     tcp::socket socket_;
@@ -38,8 +40,9 @@ class worker : public std::enable_shared_from_this<worker>
     boost::signals2::signal<void (worker*)> on_worker_finished_a_job_;
 
 public:
-    // stat; may need to move to policy
-    std::chrono::high_resolution_clock::time_point started_ = std::chrono::high_resolution_clock::now();
+    basic::time_point started_ = basic::now();
+    uuid::uuid const id_ = uuid::gen_uuid();
+    worker_id  const worker_id_ = uuid::hash(id_);
 
 public:
     template<typename Launcher> requires IsLauncher<Launcher>
@@ -60,7 +63,7 @@ public:
         boost::system::error_code ec;
         valid_.store(false);
         socket_.shutdown(tcp::socket::shutdown_both, ec);
-        BOOST_LOG_TRIVIAL(info) << "worker " << this << " closed";
+        BOOST_LOG_TRIVIAL(info) << "worker " << worker_id_ << " closed";
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
         on_worker_close_(shared_from_this());

@@ -16,7 +16,9 @@ protected:
     int threshold_;
 public:
     const_limit_launch(): const_limit_launch(3) {}
-    const_limit_launch(int threshold): threshold_{threshold} {}
+    const_limit_launch(int threshold): worker_launch(10), threshold_{threshold} {}
+    const_limit_launch(int threshold, unsigned int max_outstanding_starting_request):
+        worker_launch(max_outstanding_starting_request), threshold_{threshold} {}
 
     bool should_start_new_worker (job_queue& /*pending_jobs*/,
                                   worker_set& ws) override

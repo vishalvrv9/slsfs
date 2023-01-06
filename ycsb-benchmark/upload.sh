@@ -1,7 +1,8 @@
 
-testname="$1";
-datafile="$2";
-ID=1fAcBZKe6ansCEEXjMR0L2ogVUrz11oPMHduwDDuOxB4
+ID="$1"
+testname="$2";
+datafile="$3";
+
 
 tbx services google sheets sheet create \
     -id $ID \

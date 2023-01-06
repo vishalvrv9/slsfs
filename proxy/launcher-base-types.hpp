@@ -64,7 +64,7 @@ class reporter : public policy::info
         worker_info(std::chrono::nanoseconds duration): start_duration{duration} {}
     };
 
-    oneapi::tbb::concurrent_hash_map<df::worker*, worker_info> worker_info_map_;
+    oneapi::tbb::concurrent_hash_map<df::worker_id, worker_info> worker_info_map_;
     using worker_info_map_accessor = decltype(worker_info_map_)::accessor;
 
 public:
@@ -81,8 +81,11 @@ public:
         {
             json dfstat;
             dfstat["start_duration"] = info.start_duration.count();
-            dfstat["duration"]       = std::max((info.end_time - info.start_time).count(),
-                                                (basic::now()  - info.start_time).count());
+            int duration = (info.end_time - info.start_time).count();
+            if (duration == 0)
+                duration = (basic::now()  - info.start_time).count();
+
+            dfstat["duration"] = duration;
             dfstat["finished_job_count"] = info.finished_job_count.load();
             report["df"].push_back(dfstat);
         }
@@ -92,7 +95,7 @@ public:
     void finished_a_job(df::worker* ptr) override
     {
         worker_info_map_accessor it;
-        if (worker_info_map_.find(it, ptr))
+        if (worker_info_map_.find(it, ptr->worker_id_))
             it->second.finished_job_count.fetch_add(1, std::memory_order_relaxed);
     }
 
@@ -107,13 +110,13 @@ public:
 
         started_worker_.fetch_add(1, std::memory_order_relaxed);
 
-        worker_info_map_.emplace(ptr, basic::now() - started_time);
+        worker_info_map_.emplace(ptr->worker_id_, basic::now() - started_time);
     }
 
     void deregistered_a_worker(df::worker * ptr) override
     {
         worker_info_map_accessor it;
-        if (worker_info_map_.find(it, ptr))
+        if (worker_info_map_.find(it, ptr->worker_id_))
             it->second.end_time = basic::now();
     }
 };

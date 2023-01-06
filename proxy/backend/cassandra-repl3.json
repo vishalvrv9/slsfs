@@ -2,7 +2,7 @@
     "type": "wakeup",
     "proxyhost": "%1%",
     "proxyport": "%2%",
-    "blocksize": 4096,
+    "blocksize":  %3%,
     "storagetype": "cassandra",
     "storageconfig": {
         "host": "192.168.0.94",

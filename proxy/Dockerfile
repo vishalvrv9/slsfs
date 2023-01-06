@@ -33,6 +33,6 @@ RUN --mount=type=cache,target=/final/build \
     cd /final && \
     bash -c 'if [[ -z "$debug" ]]; then make release; else make debug; fi' && \
     cp /final/build/bin/* /bin && \
-    chmod +x /bin/run && chmod +x /bin/slsfs-client
+    chmod +x /bin/run
 
 ENTRYPOINT ["/bin/run"]

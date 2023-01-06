@@ -42,9 +42,9 @@ class keepalive_moving_interval : public worker_keepalive
 {
     private:
         pack::waittime_type default_wait_time_;
-        std::map<df::worker*, SMA<500>> wait_times_;
+        std::map<df::worker_id, SMA<20>> wait_times_;
         // std::map<df::worker*, long> average_count_;
-        std::map<df::worker*, std::chrono::high_resolution_clock::time_point> last_request_;
+        std::map<df::worker_id, std::chrono::high_resolution_clock::time_point> last_request_;
 
         // Simple moving average: this will keep track of all time intervals between requests since
         // the first request recorded
@@ -79,63 +79,74 @@ class keepalive_moving_interval : public worker_keepalive
         // setting the worker keep alive
         void set_worker_keepalive(df::worker_ptr worker_ptr_shared) override
         {
-            df::worker* worker_ptr = worker_ptr_shared.get();
+            df::worker_id worker_ptr = worker_ptr_shared->worker_id_;
 
             pack::waittime_type keep_alive;
 
             if (wait_times_[worker_ptr].get_sma() < 1) {
-                keep_alive = default_wait_time_; 
+                keep_alive = default_wait_time_;
             }
             else {
-                keep_alive = wait_times_[worker_ptr].get_sma() +
-            (100 / wait_times_[worker_ptr].get_sma());
+                if (wait_times_[worker_ptr].get_sma() > 100) {
+                    keep_alive = wait_times_[worker_ptr].get_sma() +
+                    (0.5 * wait_times_[worker_ptr].get_sma());
+                }
+                else {
+                    keep_alive = wait_times_[worker_ptr].get_sma() + 
+                    (100 / wait_times_[worker_ptr].get_sma());
+                }
             }
 
-            BOOST_LOG_TRIVIAL(info) << "SMA policy = " << keep_alive;
+            BOOST_LOG_TRIVIAL(info) << "SMA sent = " << keep_alive;
             send_worker_keepalive(worker_ptr_shared, keep_alive);
         }
 
         // Updating the policy
         void started_a_new_job(df::worker* worker_ptr) override
         {
-            if (last_request_.count(worker_ptr) == 0)
+            df::worker_id worker_id = worker_ptr->worker_id_;
+            if (last_request_.count(worker_id) == 0)
             {
-                wait_times_[worker_ptr] = SMA<500>();
-                last_request_[worker_ptr] = std::chrono::high_resolution_clock::now();
+                wait_times_[worker_id] = SMA<20>();
+                wait_times_[worker_id](default_wait_time_);
+                last_request_[worker_id] = std::chrono::high_resolution_clock::now();
                 return;
             }
 
             auto const current_request_time = std::chrono::high_resolution_clock::now();
-            auto const last_request_time = last_request_[worker_ptr];
-            last_request_[worker_ptr] = current_request_time;
+            auto const last_request_time = last_request_[worker_id];
+            last_request_[worker_id] = current_request_time;
 
-            [[maybe_unused]]
             auto request_interval = std::chrono::duration_cast<std::chrono::milliseconds>(
                 current_request_time - last_request_time).count();
 
-            wait_times_[worker_ptr](request_interval);
+
+            if (request_interval > 10){
+                BOOST_LOG_TRIVIAL(info) << "request interval = " << request_interval;
+                BOOST_LOG_TRIVIAL(info) << "SMA update = " << wait_times_[worker_id](request_interval);
+            }
 
             // pack::waittime_type new_average;
-            // if (average_count_[worker_ptr] == 1){
+            // if (average_count_[worker_id] == 1){
             //     new_average = request_interval;
             // }
             // else
             // {
             //     new_average = exponential_rolling_average(
-            //         wait_times_[worker_ptr],
+            //         wait_times_[worker_id],
             //         request_interval,
             //         1/1000);
             // }
 
-            // wait_times_[worker_ptr] = new_average;
-            // average_count_[worker_ptr] = average_count_[worker_ptr] + 1;
+            // wait_times_[worker_id] = new_average;
+            // average_count_[worker_id] = average_count_[worker_id] + 1;
 
 
             // BOOST_LOG_TRIVIAL(info) << "EMA AVERAGE FOR CURRENT WORKER: " << new_average * 10;
             // BOOST_LOG_TRIVIAL(info) << "SMA AVERAGE FOR CURRENT WORKER: " << sma * 10;
             // 3/4 of the average added as a buffer to allow for potentially late requests.
             // Make it so the buffer is larger for smaller values and smaller for bigger
-            // send_worker_keepalive(worker_ptr,  * error_multiplier);
+            // send_worker_keepalive(worker_id,  * error_multiplier);
         }
 };
 

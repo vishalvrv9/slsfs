@@ -56,6 +56,7 @@ public:
 
     void set_worker_keepalive()
     {
+        // causes non desirable effect of keeping idle workers alive.
         for (auto [worker_ptr, _unused] : worker_set_)
             if (worker_ptr->is_valid())
                 keepalive_policy_->set_worker_keepalive(worker_ptr);

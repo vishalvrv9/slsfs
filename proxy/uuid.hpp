@@ -108,5 +108,12 @@ auto operator << (std::ostream &os, uuid const& id) -> std::ostream&
     return os;
 }
 
+auto hash(uuid const& k) -> std::size_t
+{
+    std::size_t seed = 0x1b873593;
+    pack::hash::range(seed, k.begin(), k.end());
+    return seed;
+}
+
 } // namespace uuid
 #endif // UUID_HPP__

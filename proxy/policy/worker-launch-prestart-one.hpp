@@ -19,7 +19,8 @@ class prestart_one : public worker_launch
 {
     std::chrono::milliseconds no_older_than_;
 public:
-    prestart_one(int no_older_than): no_older_than_{no_older_than * 1ms} {}
+    prestart_one(int no_older_than): worker_launch(10),
+                                     no_older_than_{no_older_than * 1ms} {}
 
     bool should_start_new_worker (job_queue& pending_jobs, worker_set& ws) override
     {

@@ -6,12 +6,14 @@
 #include "serializer.hpp"
 #include "launcher-job.hpp"
 #include "launcher-policy.hpp"
+#include "uuid.hpp"
 
 #include <oneapi/tbb/concurrent_queue.h>
 #include <oneapi/tbb/concurrent_hash_map.h>
 
 #include <iterator>
 #include <atomic>
+#include <mutex>
 
 namespace slsfs::launcher
 {
@@ -32,6 +34,7 @@ class launcher
     worker_set worker_set_;
     fileid_map fileid_to_worker_;
     job_queue pending_jobs_;
+    std::once_flag process_thread_flag_;
 
     uuid::uuid const& id_;
     std::string const announce_host_;
@@ -144,46 +147,65 @@ public:
 
         BOOST_LOG_TRIVIAL(debug) << "pending job count=" << pending_jobs_.unsafe_size();
 
+//        std::call_once(
+//            process_thread_flag_,
+//            [this] {
+//                std::thread th (
+//                    [this] {
+//                        for (;;)
+//                        {
+//                            job_ptr j;
+//                            while (pending_jobs_.try_pop(j))
+//                                process_job(j);
+//                            std::this_thread::yield();
+//                        }
+//                    });
+//                th.detach();
+//            });
+
         job_ptr j;
         while (pending_jobs_.try_pop(j))
-        {
-            BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
+            net::post(io_context_, [this, j] { process_job(j); });
+    }
 
-            df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
+    void process_job(job_ptr j)
+    {
+        BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
+
+        df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
+        if (!worker_ptr || not worker_ptr->is_valid())
+        {
+            worker_ptr = launcher_policy_.get_available_worker(j->pack_);
+
+            // no available worker. Re-scheduling request
             if (!worker_ptr || not worker_ptr->is_valid())
             {
-                worker_ptr = launcher_policy_.get_available_worker(j->pack_);
-
-                // no available worker. Re-scheduling request
-                if (!worker_ptr || not worker_ptr->is_valid())
-                {
-                    BOOST_LOG_TRIVIAL(error) << "No available worker. Re-scheduling request";
-                    pending_jobs_.push(j);
-                    break;
-                }
-
-                fileid_to_worker_.emplace(j->pack_->header, worker_ptr);
+                BOOST_LOG_TRIVIAL(error) << "No available worker. Re-scheduling request";
+                pending_jobs_.push(j);
+                return;
             }
 
-            BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
-
-            // async launch stat calculator
-            launcher_policy_.started_a_new_job(worker_ptr.get());
-
-            worker_ptr->start_write(j);
-
-            using namespace std::chrono_literals;
-            j->timer_.expires_from_now(2s);
-            j->timer_.async_wait(
-                [this, j] (boost::system::error_code ec) {
-                    if (ec && ec != net::error::operation_aborted)
-                    {
-                        BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << j->pack_->header;
-                        pending_jobs_.push(j);
-                    }
-                });
-            BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
+            fileid_to_worker_.emplace(j->pack_->header, worker_ptr);
         }
+
+        BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
+
+        // async launch stat calculator
+        launcher_policy_.started_a_new_job(worker_ptr.get());
+
+        worker_ptr->start_write(j);
+
+        using namespace std::chrono_literals;
+        j->timer_.expires_from_now(2s);
+        j->timer_.async_wait(
+            [this, j] (boost::system::error_code ec) {
+                if (ec && ec != net::error::operation_aborted)
+                {
+                    BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << j->pack_->header;
+                    pending_jobs_.push(j);
+                }
+            });
+        BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
     }
 
     void create_worker(std::string const& body)
