@@ -4,6 +4,12 @@ import statistics
 import collections
 import json
 
+def good_mean(arr):
+    try:
+        return statistics.mean(arr)
+    except:
+        return 0
+
 if __name__ == "__main__":
     with open("proxy-report.json") as fp:
         proxy_report = json.load(fp)
@@ -71,10 +77,8 @@ if __name__ == "__main__":
                             testname = x
                             client_run_duration.append(row[x])
 
-    try:
-        average_runtime = statistics.mean([int(x[:-2]) for x in client_run_duration if x != ""])
-    except:
-        average_runtime = 0
+    average_runtime = good_mean([int(x[:-2]) for x in client_run_duration if x != ""])
+
 
     client_run_duration.insert(1, "")
     client_run_duration.insert(1, "{:.2f}s".format(average_runtime/1000000000))
@@ -83,7 +87,7 @@ if __name__ == "__main__":
     summary_table_value.insert(1, len(all_latency) / (average_runtime/1000000000))
 
     summary_table_name.insert(1, "IOPS(hot)")
-    avg_cold = statistics.mean(cold_start_latency) / 1000000000
+    avg_cold = good_mean(cold_start_latency) / 1000000000
     summary_table_value.insert(1, len(all_latency) / ((average_runtime/1000000000) - avg_cold))
 
     summary_table_name.insert(1, "TotalReqs")
@@ -105,15 +109,17 @@ if __name__ == "__main__":
         startup_time.append(df["start_duration"])
 
     summary_table_name.append("DF Start (s)")
-    summary_table_value.append(statistics.mean(startup_time) / 1000000000)
+    summary_table_value.append(good_mean(startup_time) / 1000000000)
 
     summary_table_name.append("Avg Util=(finished job/duration)")
-    summary_table_value.append(statistics.mean(util))
+
+    summary_table_value.append(good_mean(util))
 
     summary_table_name.append("Max Util")
+    util.append(0)
     summary_table_value.append(max(util))
 
-    average_latency = statistics.mean([float(x) for x in all_latency])
+    average_latency = good_mean([float(x) for x in all_latency])
     average_latency_stdev = statistics.stdev([float(x) for x in all_latency])
 
     distribution = collections.defaultdict(lambda: 0)

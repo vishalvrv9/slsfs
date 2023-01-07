@@ -233,6 +233,10 @@ public:
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t /*length*/) {
                 if (not ec)
                 {
+//                    slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+//                    resp->header = pack->header;
+//                    resp->header.type = slsfs::pack::msg_t::ack;
+//                    self->start_write(resp);
                     self->launcher_.start_trigger_post(
                         *read_buf, pack,
                         [self, pack] (slsfs::pack::packet_pointer resp) {

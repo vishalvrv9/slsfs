@@ -20,6 +20,9 @@ struct write_job
     std::shared_ptr<boost_callback> next;
 };
 
+namespace v1
+{
+
 template<typename PacketPointer, typename BufType>
 class socket_writer
 {
@@ -74,6 +77,66 @@ public:
         }
     }
 };
+
+} // namespace v1
+
+namespace v2
+{
+
+template<typename PacketPointer, typename BufType>
+class socket_writer
+{
+    boost::asio::io_context & io_context_;
+    boost::asio::io_context::strand write_io_strand_;
+    oneapi::tbb::concurrent_queue<write_job<PacketPointer, BufType>> write_queue_;
+    boost::asio::ip::tcp::socket& socket_;
+
+    void start_write_one_packet()
+    {
+        write_job<PacketPointer, BufType> job;
+
+        if (write_queue_.try_pop(job))
+        {
+            if (job.bufptr == nullptr)
+                job.bufptr = job.pack->serialize();
+
+            boost::asio::async_write(
+                socket_,
+                boost::asio::buffer(job.bufptr->data(), job.bufptr->size()),
+                boost::asio::bind_executor(
+                    write_io_strand_,
+                    [this, job] (boost::system::error_code ec, std::size_t transferred_size) {
+                        std::invoke(*job.next, ec, transferred_size);
+                        if (ec)
+                        {
+                            BOOST_LOG_TRIVIAL(error) << "socket writer get error: " << ec.message();
+                            return;
+                        }
+
+                        start_write_one_packet();
+                    }));
+        }
+    }
+
+public:
+    socket_writer(boost::asio::io_context &io, boost::asio::ip::tcp::socket &s):
+        io_context_{io}, write_io_strand_{io}, socket_{s} {}
+
+    void start_write_socket(PacketPointer pack,
+                            std::shared_ptr<boost_callback> next,
+                            std::shared_ptr<BufType> bufptr = nullptr)
+    {
+        bool write_in_progress = !write_queue_.empty();
+        write_queue_.push(write_job(pack, bufptr, next));
+        if (not write_in_progress)
+            start_write_one_packet();
+    }
+};
+
+} // namespace v2
+
+template<typename PacketPointer, typename BufType>
+using socket_writer = v2::socket_writer<PacketPointer, BufType>;
 
 } // namespace slsfs
 

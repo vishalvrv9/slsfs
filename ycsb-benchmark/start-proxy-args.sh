@@ -3,10 +3,10 @@
 source avaliable-host.sh
 export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=2000
+export EACH_CLIENT_ISSUE=50000
 export TOTAL_CLIENT=12
 export BUFSIZE=4096
-export CLIENT_TESTNAME=95-5
+export CLIENT_TESTNAME=100-0
 export BACKEND_CONFIG=/backend/ssbd-stripe.json
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
 export BACKEND_BLOCKSIZE=4096
