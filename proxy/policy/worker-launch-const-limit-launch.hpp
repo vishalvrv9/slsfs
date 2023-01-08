@@ -20,8 +20,7 @@ public:
     const_limit_launch(int threshold, unsigned int max_outstanding_starting_request):
         worker_launch(max_outstanding_starting_request), threshold_{threshold} {}
 
-    bool should_start_new_worker (job_queue& /*pending_jobs*/,
-                                  worker_set& ws) override
+    bool should_start_new_worker (worker_set& ws) override
     {
         for (auto [worker_ptr, _notused] : ws)
             if (worker_ptr->pending_jobs() <= threshold_ and worker_ptr->is_valid())

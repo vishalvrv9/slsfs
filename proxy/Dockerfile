@@ -1,4 +1,4 @@
-FROM gcc:12
+FROM gcc:12 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev gdb && \
@@ -25,7 +25,6 @@ RUN mkdir /zookeeper-cpp/build && cd /zookeeper-cpp/build && \
     cmake --build . && ninja install
 
 ADD . /final
-ADD backend /backend
 
 ARG debug
 
@@ -34,5 +33,17 @@ RUN --mount=type=cache,target=/final/build \
     bash -c 'if [[ -z "$debug" ]]; then make release; else make debug; fi' && \
     cp /final/build/bin/* /bin && \
     chmod +x /bin/run
+
+FROM busybox:glibc
+
+ADD backend /backend
+
+COPY --from=builder /usr/lib/x86_64-linux-gnu/libzookeeper_mt.so.2 /lib/libzookeeper_mt.so.2
+COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 /lib/librt.so.1
+COPY --from=builder /lib/x86_64-linux-gnu/libdl.so.2 /lib/libdl.so.2
+
+COPY --from=builder /bin/run /bin/run
+COPY --from=builder /bin/slsfs-client /bin/slsfs-client
+
 
 ENTRYPOINT ["/bin/run"]

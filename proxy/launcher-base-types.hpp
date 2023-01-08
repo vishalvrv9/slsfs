@@ -35,8 +35,8 @@ namespace policy
 struct info
 {
     virtual void execute() {}
-    virtual void started_a_new_job(df::worker*) {}
-    virtual void finished_a_job(df::worker*) {}
+    virtual void started_a_new_job(df::worker*, job_ptr) {}
+    virtual void finished_a_job(df::worker*, job_ptr) {}
     virtual void starting_a_new_worker() {}
     virtual void registered_a_new_worker(df::worker*) {}
     virtual void deregistered_a_worker(df::worker*) {}
@@ -81,18 +81,21 @@ public:
         {
             json dfstat;
             dfstat["start_duration"] = info.start_duration.count();
-            int duration = (info.end_time - info.start_time).count();
-            if (duration == 0)
-                duration = (basic::now()  - info.start_time).count();
 
-            dfstat["duration"] = duration;
+            using namespace std::chrono_literals;
+
+            std::chrono::nanoseconds duration = info.end_time - info.start_time;
+            if (duration == 0ns)
+                duration = (basic::now() - info.start_time);
+
+            dfstat["duration"] = duration.count();
             dfstat["finished_job_count"] = info.finished_job_count.load();
             report["df"].push_back(dfstat);
         }
         output << report.dump();
     }
 
-    void finished_a_job(df::worker* ptr) override
+    void finished_a_job(df::worker* ptr, job_ptr) override
     {
         worker_info_map_accessor it;
         if (worker_info_map_.find(it, ptr->worker_id_))

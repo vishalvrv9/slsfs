@@ -42,8 +42,8 @@ target_precompile_headers(run PRIVATE <fmt/core.h>)
 target_precompile_headers(run PRIVATE <nlohmann/json.hpp>)
 target_precompile_headers(slsfs-client REUSE_FROM run)
 
-target_link_libraries(run ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
-target_link_libraries(slsfs-client -static ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(run -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(slsfs-client -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 
 IF ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
    target_link_libraries(run ws2_32 wsock32)

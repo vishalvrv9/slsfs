@@ -222,6 +222,7 @@ public:
                 handler(resptr->data.buf);
             });
 
+        [[maybe_unused]]
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 
@@ -351,6 +352,7 @@ public:
                 std::invoke(handler, resp_ok);
             });
 
+        [[maybe_unused]]
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 
@@ -426,6 +428,7 @@ public:
                 std::invoke(handler, resptr->data.buf);
             });
 
+        [[maybe_unused]]
         bool ok = outstanding_jobs_.emplace(ptr->header, newjob);
         assert(ok);
 

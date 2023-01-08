@@ -12,34 +12,36 @@ namespace slsfs::launcher::policy
 class worker_launch : public info
 {
 protected:
-    unsigned int const max_outstanding_starting_request_;
-    std::atomic<unsigned int> counter_ = 0;
+    int const max_outstanding_starting_request_;
+    std::atomic<int> starting_worker_count_ = 0;
 
 public:
-    worker_launch(unsigned int max_outstanding_starting_request):
+    worker_launch(int max_outstanding_starting_request):
         max_outstanding_starting_request_{max_outstanding_starting_request} {}
 
     void starting_a_new_worker() override {
-        counter_.fetch_add(1, std::memory_order_relaxed);
+        starting_worker_count_.fetch_add(1, std::memory_order_relaxed);
     }
 
     void registered_a_new_worker(df::worker*) override {
-        counter_.fetch_sub(1, std::memory_order_relaxed);
+        starting_worker_count_.fetch_sub(1, std::memory_order_relaxed);
     }
 
-    bool reaches_max_pending_start_worker_requests() {
-        return counter_.load() > max_outstanding_starting_request_;
+    int get_ideal_worker_count_delta (worker_set& ws)
+    {
+//        BOOST_LOG_TRIVIAL(info) << "get_ideal_worker_count(ws): " << get_ideal_worker_count(ws)
+//                                << " ws.size(): " << ws.size()
+//                                << " starting_worker_count_: " << starting_worker_count_;
+
+        int should_start = std::max(get_ideal_worker_count(ws) - (static_cast<int>(ws.size()) + starting_worker_count_.load()), 0);
+        int can_start    = std::max(max_outstanding_starting_request_ - starting_worker_count_.load(), 0);
+
+//        BOOST_LOG_TRIVIAL(info) << "calc: " << std::min(should_start, can_start);
+        return std::min(should_start, can_start);
     }
 
     virtual
-    bool should_start_new_worker(launcher::job_queue& pending_jobs, worker_set& current_workers)
-    {
-        using namespace std::chrono_literals;
-        if (reaches_max_pending_start_worker_requests())
-            return false;
-
-        return current_workers.empty();
-    }
+    int get_ideal_worker_count (worker_set &) { return 0; }
 };
 
 } // namespace slsfs::launcher::policy

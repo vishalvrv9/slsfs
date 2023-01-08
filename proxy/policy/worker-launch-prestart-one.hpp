@@ -22,9 +22,8 @@ public:
     prestart_one(int no_older_than): worker_launch(10),
                                      no_older_than_{no_older_than * 1ms} {}
 
-    bool should_start_new_worker (job_queue& pending_jobs, worker_set& ws) override
+    bool should_start_new_worker (worker_set& ws) override
     {
-        pending_jobs.unsafe_size();
         for (auto [worker_ptr, _notused] : ws)
         {
             //BOOST_LOG_TRIVIAL(info) << std::chrono::high_resolution_clock::now() - worker_ptr->started_ << " less then " << no_older_than_;

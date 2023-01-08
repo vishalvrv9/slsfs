@@ -384,6 +384,10 @@ void set_policy_filetoworker(tcp_server& server, std::string const& policy, [[ma
         server.set_policy_filetoworker<slsfs::launcher::policy::random_assign>();
         break;
 
+    case "active-load-balance"_:
+        server.set_policy_filetoworker<slsfs::launcher::policy::active_lowest_load>();
+        break;
+
     default:
         using namespace std::string_literals;
         throw std::runtime_error("unknown filetoworker policy: "s + policy);
@@ -395,29 +399,44 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
     using namespace slsfs::basic::sswitcher;
     switch (hash(policy))
     {
-    case "const-limit-launch"_:
-        server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
-        break;
-    case "prestart-one"_:
+    case "const-average-load"_:
     {
-        server.set_policy_launch<slsfs::launcher::policy::prestart_one>(std::stoi(args));
-        break;
-    }
-    case "adaptive-max-load"_:
-    {
-        std::regex pattern("(\\d+):(\\d+):(\\d+)");
+        std::regex const pattern("(\\d+):(\\d+)");
         std::smatch match;
         if (std::regex_search(args, match, pattern))
         {
-            int const max_latency      = std::stoi(match[1]);
-            int const min_process_rate = std::stoi(match[2]);
-            unsigned int const max_outstanding_starting_request = std::stoi(match[3]);
-            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate, max_outstanding_starting_request);
+            int const max_outstanding_starting_request = std::stoi(match[1]);
+            std::uint64_t const max_average_load = std::stoull(match[2]);
+            server.set_policy_launch<slsfs::launcher::policy::const_average_load>(max_outstanding_starting_request, max_average_load);
         }
         else
-            throw std::runtime_error("unable to parse args; should be max_latency:min_process");
+            throw std::runtime_error("unable to parse args for launch policy; should be max_latency:min_process");
         break;
     }
+
+// case "const-limit-launch"_:
+//     server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
+//     break;
+//    case "prestart-one"_:
+//    {
+//        server.set_policy_launch<slsfs::launcher::policy::prestart_one>(std::stoi(args));
+//        break;
+//    }
+//    case "adaptive-max-load"_:
+//    {
+//        std::regex pattern("(\\d+):(\\d+):(\\d+)");
+//        std::smatch match;
+//        if (std::regex_search(args, match, pattern))
+//        {
+//            int const max_latency      = std::stoi(match[1]);
+//            int const min_process_rate = std::stoi(match[2]);
+//            unsigned int const max_outstanding_starting_request = std::stoi(match[3]);
+//            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate, max_outstanding_starting_request);
+//        }
+//        else
+//            throw std::runtime_error("unable to parse args; should be max_latency:min_process");
+//        break;
+//    }
     default:
         using namespace std::string_literals;
         throw std::runtime_error("unknown launch policy: "s + policy);
@@ -433,8 +452,27 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
         server.set_policy_keepalive<slsfs::launcher::policy::keepalive_const_time>(std::stoi(args) /* ms */);
         break;
     case "moving-interval"_:
-        server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval>(std::stoi(args) /* ms */);
+    {
+        std::regex const pattern("(\\d+):(\\d+):(\\d+):(\\d+)");
+        std::smatch match;
+        if (std::regex_search(args, match, pattern))
+        {
+            int const sma_buffer_size = std::stoi(match[1]);
+            int const default_wait_time = std::stoi(match[2]);
+            int const concurrency_threshold = std::stoi(match[3]);
+            double const error_margin= std::stod(match[4]);
+            server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval>(
+                sma_buffer_size,
+                default_wait_time,
+                concurrency_threshold,
+                error_margin
+            );
+        }
+        else
+            throw std::runtime_error(
+                "unable to parse args for keepalive policy; should be sma_buffer_size:default_keepalive:concurrency_threshold:error_margin");
         break;
+    }
     default:
         using namespace std::string_literals;
         throw std::runtime_error("unknown keepalive policy: "s + policy);

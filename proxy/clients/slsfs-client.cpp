@@ -1,6 +1,7 @@
 #include "../basic.hpp"
 #include "../serializer.hpp"
 #include "../json-replacement.hpp"
+#include "../uuid.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -8,10 +9,12 @@
 #include <boost/filesystem.hpp>
 #include <absl/random/random.h>
 #include <absl/random/zipf_distribution.h>
+#include <zk/client.hpp>
+#include <zk/results.hpp>
+#include <zookeeper/zookeeper.h>
 
 #include <algorithm>
 #include <iostream>
-
 #include <memory>
 #include <array>
 #include <list>
@@ -57,6 +60,58 @@ auto stats(Iterator start, Iterator end, std::string const memo = "")
     return {dist, mean, std::sqrt(var)};
 }
 
+auto get_uuid (boost::asio::io_context &io_context, std::string const& child) -> boost::asio::ip::tcp::resolver::results_type
+{
+    using namespace std::string_literals;
+    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
+
+    zk::future<zk::get_result> resp = client.get("/slsfs/proxy/"s + child);
+    zk::buffer const buf = resp.get().data();
+
+    auto const colon = std::find(buf.begin(), buf.end(), ':');
+
+    std::string host(std::distance(buf.begin(), colon), '\0');
+    std::copy(buf.begin(), colon, host.begin());
+
+    std::string port(std::distance(std::next(colon), buf.end()), '\0');
+    std::copy(std::next(colon), buf.end(), port.begin());
+
+    boost::asio::ip::tcp::resolver resolver(io_context);
+    return resolver.resolve(host, port);
+}
+
+auto setup_slsfs(boost::asio::io_context &io_context) -> std::pair<std::vector<slsfs::uuid::uuid>, std::vector<boost::asio::ip::tcp::resolver::results_type>>
+{
+    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
+
+    std::vector<slsfs::uuid::uuid> new_proxy_list;
+    std::vector<boost::asio::ip::tcp::resolver::results_type> proxys;
+    client.get_children("/slsfs/proxy").then(
+        [&] (zk::future<zk::get_children_result> children) {
+            std::vector<std::string> list = children.get().children();
+
+            std::transform (list.begin(), list.end(),
+                            std::back_inserter(new_proxy_list),
+                            slsfs::uuid::decode_base64);
+
+            std::sort(new_proxy_list.begin(), new_proxy_list.end());
+
+            for (auto proxy : new_proxy_list)
+                proxys.push_back(get_uuid(io_context, proxy.encode_base64()));
+        }).wait();
+    return {new_proxy_list, proxys};
+}
+
+auto pick_proxy(std::vector<slsfs::uuid::uuid>& proxy_uuid, std::vector<tcp::socket>& proxy_sockets, slsfs::pack::key_t& fileid) -> tcp::socket&
+{
+    auto it = std::upper_bound (proxy_uuid.begin(), proxy_uuid.end(), fileid);
+    if (it == proxy_uuid.end())
+        it = proxy_uuid.begin();
+
+    int d = std::distance(it, proxy_uuid.begin());
+    return proxy_sockets.at(d);
+}
+
 auto iotest (int const times, int const bufsize,
              std::vector<int> rwdist,
              std::function<slsfs::pack::key_t(void)> genname,
@@ -64,9 +119,16 @@ auto iotest (int const times, int const bufsize,
     -> std::pair<std::list<double>, std::chrono::nanoseconds>
 {
     boost::asio::io_context io_context;
-    tcp::socket s(io_context);
-    tcp::resolver resolver(io_context);
-    boost::asio::connect(s, resolver.resolve("192.168.0.224", "12001"));
+    auto && [proxy_uuid, proxy_endpoint] = setup_slsfs(io_context);
+
+    std::vector<tcp::socket> proxy_sockets;
+
+    for (auto&& endpoint : proxy_endpoint)
+    {
+        proxy_sockets.emplace_back(io_context);
+        BOOST_LOG_TRIVIAL(trace) << "connecting ";
+        boost::asio::connect(proxy_sockets.back(), endpoint);
+    }
 
     std::string const buf(bufsize, 'A');
 
@@ -74,6 +136,7 @@ auto iotest (int const times, int const bufsize,
     std::uniform_int_distribution<> dist(0, rwdist.size()-1);
     std::mt19937 engine(std::random_device{}());
 
+    BOOST_LOG_TRIVIAL(trace) << "starting";
     auto start = std::chrono::high_resolution_clock::now();
     for (int i = 0; i < times; i++)
     {
@@ -109,6 +172,8 @@ auto iotest (int const times, int const bufsize,
         auto buf = ptr->serialize();
 
         records.push_back(record([&]() {
+            tcp::socket& s = pick_proxy(proxy_uuid, proxy_sockets, ptr->header.key);
+
             boost::asio::write(s, boost::asio::buffer(buf->data(), buf->size()));
 
             slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
@@ -248,6 +313,7 @@ int main(int argc, char *argv[])
         ("zipf-alpha",    po::value<double>()->default_value(1.2),  "set the alpha value of zipf dist")
         ("file-range",    po::value<int>()->default_value(256*256), "set the total different number of files")
         ("test-name",     po::value<std::string>(),                 "oneof [fill, 50-50, 95-5, 100-0, 0-100]; format: read-write")
+        ("uniform-dist",  po::bool_switch(),                        "use uniform distribution")
         ("result",        po::value<std::string>()->default_value("/dev/null"), "save result to this file");
 
     po::positional_options_description pos_po;
@@ -263,19 +329,34 @@ int main(int argc, char *argv[])
     int const bufsize       = vm["bufsize"].as<int>();
     double const zipf_alpha = vm["zipf-alpha"].as<double>();
     int const file_range    = vm["file-range"].as<int>();
+    bool const use_uniform  = vm["uniform-dist"].as<bool>();
 
     std::string const test_name  = vm["test-name"].as<std::string>();
     std::string const resultfile = vm["result"].as<std::string>();
 
     absl::zipf_distribution namedist(file_range, zipf_alpha);
+    std::uniform_int_distribution<> uniformdist(0, file_range);
 
-    auto genname =
-        [&engine, &namedist]() {
+    std::function<slsfs::pack::key_t(void)> selected;
+    if (use_uniform)
+        selected = [&engine, &uniformdist]() {
+            int n = uniformdist(engine);
+            slsfs::pack::unit_t n1 = n / 256;
+            slsfs::pack::unit_t n2 = n % 256;
+            return slsfs::pack::key_t {
+                n1, n2, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, n1, n2
+            };
+        };
+    else
+        selected = [&engine, &namedist]() {
             int n = namedist(engine);
             slsfs::pack::unit_t n1 = n / 256;
             slsfs::pack::unit_t n2 = n % 256;
             return slsfs::pack::key_t {
-                7, 8, 7, 8, 7, 8, 7, 8,
+                n1, n2, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, n1, n2
@@ -289,12 +370,13 @@ int main(int argc, char *argv[])
             slsfs::pack::unit_t n1 = n / 256;
             slsfs::pack::unit_t n2 = n % 256;
             return slsfs::pack::key_t {
-                7, 8, 7, 8, 7, 8, 7, 8,
+                n1, n2, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, 7, 8,
                 7, 8, 7, 8, 7, 8, n1, n2
             };
         };
+
 
     using namespace slsfs::basic::sswitcher;
     switch (slsfs::basic::sswitcher::hash(test_name))
@@ -322,7 +404,7 @@ int main(int argc, char *argv[])
                     std::launch::async,
                     iotest, total_times, bufsize,
                     std::vector<int> {0, 1},
-                    genname,
+                    selected,
                     [bufsize](int) { return 0; },
                     "");
         });
@@ -336,7 +418,7 @@ int main(int argc, char *argv[])
                     std::launch::async,
                     iotest, total_times, bufsize,
                     std::vector<int>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
-                    genname,
+                    selected,
                     [bufsize](int) { return 0; },
                     "");
         });
@@ -350,7 +432,7 @@ int main(int argc, char *argv[])
                     std::launch::async,
                     iotest, total_times, bufsize,
                     std::vector<int> {0},
-                    genname,
+                    selected,
                     [bufsize](int) { return 0; },
                     "");
         });
@@ -364,11 +446,12 @@ int main(int argc, char *argv[])
                     std::launch::async,
                     iotest, total_times, bufsize,
                     std::vector<int> {1},
-                    genname,
+                    selected,
                     [bufsize](int) { return 0; },
                     "");
         });
         break;
+
     default:
         BOOST_LOG_TRIVIAL(error) << "unknown test name << " << test_name;
     }

@@ -136,7 +136,7 @@ public:
 } // namespace v2
 
 template<typename PacketPointer, typename BufType>
-using socket_writer = v2::socket_writer<PacketPointer, BufType>;
+using socket_writer = v1::socket_writer<PacketPointer, BufType>;
 
 } // namespace slsfs
 

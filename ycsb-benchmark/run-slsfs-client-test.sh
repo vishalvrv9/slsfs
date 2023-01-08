@@ -1,15 +1,17 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="${BACKEND_CONFIG_NAME}_testname+${CLIENT_TESTNAME}_policy+${POLICY_FILETOWORKER}+${POLICY_LAUNCH}+${POLICY_KEEPALIVE}_host+${#hosts[@]}_thread+${TOTAL_CLIENT}"
+TESTNAME="${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+${POLICY_FILETOWORKER}+${POLICY_LAUNCH}+${POLICY_KEEPALIVE}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
 
-export UPLOAD_GDRIVE=1fAcBZKe6ansCEEXjMR0L2ogVUrz11oPMHduwDDuOxB4
+export UPLOAD_GDRIVE=1ird5QgDFKn2n1J6fdWh8hWJUXCwGm0NkG7BO2rimtis
 
 bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'cd ../proxy; make from-docker; screen -S proxy2 -dm /home/ubuntu/slsfs/ycsb-benchmark/start-proxy.sh' &
+bash -c 'cd ../proxy; make from-docker;' &
 bash -c "cd ../ssbd; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
+
+screen -S proxy2 -dm /home/ubuntu/slsfs/ycsb-benchmark/start-proxy.sh
 
 docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /tmp/slsfs-client;
 
@@ -35,22 +37,23 @@ done
 echo starting;
 
 for h in "${hosts[@]}"; do
-    ssh "$h" "rm /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 0.99 --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
+    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.2 --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 
-mkdir -p result-$TESTNAME;
+mkdir -p $TESTNAME-result;
 
 for h in "${hosts[@]}"; do
-    scp "$h:/tmp/$h-$TESTNAME*" result-$TESTNAME/
+    scp "$h:/tmp/$h-$TESTNAME*" $TESTNAME-result/
 done
-cp start-proxy-args.sh result-$TESTNAME/
-cp /tmp/proxy-report.json result-$TESTNAME/
+cp start-proxy-args.sh $TESTNAME-result/
+cp /tmp/proxy-report.json $TESTNAME-result/
 wait < <(jobs -p);
 
-cd "result-$TESTNAME/"
-rm -f ${TESTNAME}_summary.csv;
+cd "$TESTNAME-result/"
+rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
 python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
-../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary.csv
+head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
+../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
 echo "finish test: $TESTNAME"

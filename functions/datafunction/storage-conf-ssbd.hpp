@@ -12,6 +12,27 @@ namespace slsfsdf
 // Storage backend configuration for SSBD
 class storage_conf_ssbd : public storage_conf
 {
+    int replication_size_ = 3;
+    static auto static_engine() -> std::mt19937&
+    {
+        static thread_local std::mt19937 mt;
+        return mt;
+    }
+
+    auto select_replica(slsfs::pack::key_t const& uuid, int count) -> std::vector<int> // , std::uint32_t blockid
+    {
+        std::seed_seq seeds {uuid.begin(), uuid.end()};
+        static_engine().seed(seeds);
+
+        std::uniform_int_distribution<> dist(0, hostlist_.size() - 1);
+        auto gen = [this, &dist] () { return dist(static_engine()); };
+
+        std::vector<int> rv(count);
+        std::generate(rv.begin(), rv.end(), gen);
+
+        return rv;
+    }
+
 protected:
     boost::asio::io_context &io_context_;
 public:
@@ -28,6 +49,8 @@ public:
 
             hostlist_.push_back(std::make_shared<slsfs::storage::ssbd>(io_context_, host, port));
         }
+
+        replication_size_ = config["replication_size"].get<int>();
 
         storage_conf::init(config);
     }
@@ -57,19 +80,28 @@ public:
                     blockwritesize = blocksize() - offset;
                 realpos += blockwritesize;
 
-                slsfs::base::buf b(blockwritesize);
-                std::copy_n(write_buf, blockwritesize, b.begin());
+                auto buf_ptr = std::make_shared<slsfs::base::buf>(blockwritesize);
 
-                for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
+                std::copy_n(write_buf, blockwritesize, buf_ptr->begin());
+
+                auto const uuid = input.uuid_shared();
+                std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
+
+                auto it = selected_host_index.begin();
+                std::shared_ptr<slsfs::storage::interface> host = hostlist_.at(*it);
+                host->write_key(*uuid, blockid, *buf_ptr, offset, 0);
+                it++;
+
+                for (; it != selected_host_index.end(); ++it)
                 {
-                    //slsfs::base::buf resp = host->write_key(input.uuid(), blockid, offset, blockwritesize);
-
-                    host->write_key(input.uuid(), blockid, b, offset, 0);
-                    break;
+                    host = hostlist_.at(*it);
+                    boost::asio::post(
+                        io_context_,
+                        [host, uuid, blockid, buf_ptr, offset] () {
+                            host->write_key(*uuid, blockid, *buf_ptr, offset, 0);
+                        });
                 }
             }
-            break;
-
             response = {'O', 'K'};
             break;
         }
@@ -95,13 +127,14 @@ public:
                     blockreadsize = blocksize() - offset;
                 realpos += blockreadsize;
 
+                auto const uuid = input.uuid_shared();
+                std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
+
                 slsfs::log::logstring(fmt::format("_data_ read perform_single_request sending: {}, {}, {}", blockid, offset, blockreadsize));
-                for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
-                {
-                    slsfs::base::buf resp = host->read_key(input.uuid(), blockid, offset, blockreadsize);
-                    response.insert(response.end(), resp.begin(), resp.end());
-                    break;
-                }
+                auto it = selected_host_index.begin();
+                std::shared_ptr<slsfs::storage::interface> host = hostlist_.at(*it);
+                slsfs::base::buf resp = host->read_key(input.uuid(), blockid, offset, blockreadsize);
+                response.insert(response.end(), resp.begin(), resp.end());
             }
             break;
         }

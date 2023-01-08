@@ -22,8 +22,6 @@ class launcher_policy
 {
     net::io_context& io_context_;
     worker_set& worker_set_;
-    fileid_map& fileid_to_worker_;
-    oneapi::tbb::concurrent_queue<job_ptr>& pending_jobs_;
     std::string const announce_host_;
     net::ip::port_type const announce_port_;
     reporter reporter_;
@@ -35,19 +33,21 @@ public:
     std::unique_ptr<policy::worker_keepalive>    keepalive_policy_    = nullptr;
 
 public:
-    launcher_policy(net::io_context& ioc, worker_set& ws, fileid_map& fileid, oneapi::tbb::concurrent_queue<job_ptr>& pending_jobs,
-                    std::string const& host, boost::asio::ip::port_type const port,
+    launcher_policy(net::io_context& ioc, worker_set& ws,
+                    std::string const& host, net::ip::port_type const port,
                     std::string const& save_report):
-        io_context_{ioc}, worker_set_{ws}, fileid_to_worker_{fileid}, pending_jobs_{pending_jobs},
+        io_context_{ioc}, worker_set_{ws},
         announce_host_{host}, announce_port_{port},
         reporter_{save_report} {}
 
-    auto get_available_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr {
-        return filetoworker_policy_->get_available_worker(packet_ptr, worker_set_);
+    auto get_available_worker(pack::packet_pointer ptr) -> df::worker_ptr {
+        return filetoworker_policy_->get_available_worker(ptr, worker_set_);
     }
 
-    bool should_start_new_worker() {
-        return launch_policy_->should_start_new_worker(pending_jobs_, worker_set_);
+    int get_ideal_worker_count_delta()
+    {
+        int want_start = launch_policy_->get_ideal_worker_count_delta(worker_set_);
+        return want_start;
     }
 
     auto get_worker_config() -> std::string& {
@@ -56,18 +56,17 @@ public:
 
     void set_worker_keepalive()
     {
-        // causes non desirable effect of keeping idle workers alive.
         for (auto [worker_ptr, _unused] : worker_set_)
             if (worker_ptr->is_valid())
                 keepalive_policy_->set_worker_keepalive(worker_ptr);
     }
 
-    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr
-    {
-        fileid_to_worker_accessor it;
-        if (bool found = fileid_to_worker_.find(it, packet_ptr->header); found)
-            return it->second;
-        return nullptr;
+    void start_transfer() {
+        filetoworker_policy_->start_transfer();
+    }
+
+    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr {
+        return filetoworker_policy_->get_assigned_worker(packet_ptr);
     }
 
     // methods for updates; defined in base_types.hpp
@@ -84,27 +83,27 @@ public:
             });
     }
 
-    void started_a_new_job(df::worker* worker_ptr)
+    void started_a_new_job(df::worker* worker_ptr, job_ptr job)
     {
         net::post(
             io_context_,
-            [this, worker_ptr] () {
-                keepalive_policy_   ->started_a_new_job(worker_ptr);
-                launch_policy_      ->started_a_new_job(worker_ptr);
-                filetoworker_policy_->started_a_new_job(worker_ptr);
-                reporter_.started_a_new_job(worker_ptr);
+            [this, worker_ptr, job] () {
+                keepalive_policy_   ->started_a_new_job(worker_ptr, job);
+                launch_policy_      ->started_a_new_job(worker_ptr, job);
+                filetoworker_policy_->started_a_new_job(worker_ptr, job);
+                reporter_.started_a_new_job(worker_ptr, job);
             });
     }
 
-    void finished_a_job(df::worker* worker_ptr)
+    void finished_a_job(df::worker* worker_ptr, job_ptr job)
     {
         net::post(
             io_context_,
-            [this, worker_ptr] () {
-                keepalive_policy_   ->finished_a_job(worker_ptr);
-                launch_policy_      ->finished_a_job(worker_ptr);
-                filetoworker_policy_->finished_a_job(worker_ptr);
-                reporter_.finished_a_job(worker_ptr);
+            [this, worker_ptr, job] () {
+                keepalive_policy_   ->finished_a_job(worker_ptr, job);
+                launch_policy_      ->finished_a_job(worker_ptr, job);
+                filetoworker_policy_->finished_a_job(worker_ptr, job);
+                reporter_.finished_a_job(worker_ptr, job);
             });
     }
 

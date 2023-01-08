@@ -29,12 +29,8 @@ concept CanResolveZookeeper = requires(T t)
 class launcher
 {
     net::io_context& io_context_;
-    net::io_context::strand check_start_strand_;
 
     worker_set worker_set_;
-    fileid_map fileid_to_worker_;
-    job_queue pending_jobs_;
-    std::once_flag process_thread_flag_;
 
     uuid::uuid const& id_;
     std::string const announce_host_;
@@ -51,9 +47,12 @@ class launcher
                 switch (error.value())
                 {
                 case boost::system::errc::success: // timer timeout
+                {
                     start_execute_policy();
                     launcher_policy_.execute();
+                    create_worker_with_policy();
                     break;
+                }
                 case boost::system::errc::operation_canceled: // timer canceled
                     BOOST_LOG_TRIVIAL(error) << "getting an operation_aborted error on launcher start_execute_policy()";
                     break;
@@ -63,15 +62,32 @@ class launcher
             });
     }
 
+    void create_worker_with_policy()
+    {
+        int const should_start = launcher_policy_.get_ideal_worker_count_delta();
+
+        for (int i = 0; i < should_start; i++)
+        {
+            create_worker(launcher_policy_.get_worker_config());
+            launcher_policy_.start_transfer();
+        }
+    }
+
+    void create_worker(std::string const& body)
+    {
+        launcher_policy_.starting_a_new_worker();
+        trigger::make_trigger(io_context_)->start_post(body);
+    }
+
 public:
     launcher(net::io_context& io, uuid::uuid const& id,
              std::string const& announce, net::ip::port_type port,
              std::string const& save_report):
-        io_context_{io}, check_start_strand_{io},
+        io_context_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
-        launcher_policy_{io, worker_set_, fileid_to_worker_, pending_jobs_,
+        launcher_policy_{io, worker_set_,
                          announce_host_, announce_port_,
                          save_report} {
         start_execute_policy();
@@ -80,6 +96,10 @@ public:
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
         launcher_policy_.filetoworker_policy_ = std::make_unique<PolicyType>(std::forward<Args>(args)...);
+    }
+
+    auto fileid_to_worker() -> fileid_map& {
+        return launcher_policy_.filetoworker_policy_->fileid_to_worker_;
     }
 
     template<typename PolicyType, typename ... Args>
@@ -108,110 +128,64 @@ public:
 
         launcher_policy_.registered_a_new_worker(worker_ptr.get());
         worker_ptr->start_read_header();
-        start_jobs();
     }
 
     void on_worker_reschedule(job_ptr job)
     {
         BOOST_LOG_TRIVIAL(debug) << "job " << job->pack_->header << " reschedule";
-        pending_jobs_.push(job);
-        fileid_to_worker_.erase(job->pack_->header);
+        fileid_to_worker().erase(job->pack_->header);
+        schedule(job);
     }
 
     void on_worker_close(df::worker_ptr worker)
     {
         BOOST_LOG_TRIVIAL(debug) << "worker close: " << worker.get();
         worker_set_.erase(worker);
-        start_jobs();
     }
 
-    void on_worker_finished_a_job(df::worker* worker) {
-        launcher_policy_.finished_a_job(worker);
+    void on_worker_finished_a_job(df::worker* worker, job_ptr job) {
+        launcher_policy_.finished_a_job(worker, job);
     }
 
-    void start_jobs()
-    {
-        // execute the assigned policy
-        // 1. which data function to pick?
-        // 2. determine we start a new data function?
-        // 3. how long should this data function idle?
-
-        net::post(
-            io_context_,
-            net::bind_executor(
-                check_start_strand_,
-                [this] () {
-                    if (launcher_policy_.should_start_new_worker())
-                        create_worker(launcher_policy_.get_worker_config());
-                }));
-
-        BOOST_LOG_TRIVIAL(debug) << "pending job count=" << pending_jobs_.unsafe_size();
-
-//        std::call_once(
-//            process_thread_flag_,
-//            [this] {
-//                std::thread th (
-//                    [this] {
-//                        for (;;)
-//                        {
-//                            job_ptr j;
-//                            while (pending_jobs_.try_pop(j))
-//                                process_job(j);
-//                            std::this_thread::yield();
-//                        }
-//                    });
-//                th.detach();
-//            });
-
-        job_ptr j;
-        while (pending_jobs_.try_pop(j))
-            net::post(io_context_, [this, j] { process_job(j); });
-    }
-
-    void process_job(job_ptr j)
+    void process_job(job_ptr job)
     {
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
 
-        df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(j->pack_);
+        df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(job->pack_);
         if (!worker_ptr || not worker_ptr->is_valid())
         {
-            worker_ptr = launcher_policy_.get_available_worker(j->pack_);
+            worker_ptr = launcher_policy_.get_available_worker(job->pack_);
 
             // no available worker. Re-scheduling request
             if (!worker_ptr || not worker_ptr->is_valid())
             {
-                BOOST_LOG_TRIVIAL(error) << "No available worker. Re-scheduling request";
-                pending_jobs_.push(j);
+                BOOST_LOG_TRIVIAL(debug) << "No available worker. Re-scheduling request";
+                create_worker_with_policy();
+                schedule(job);
                 return;
             }
 
-            fileid_to_worker_.emplace(j->pack_->header, worker_ptr);
+            fileid_to_worker().emplace(job->pack_->header, worker_ptr);
         }
 
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
 
         // async launch stat calculator
-        launcher_policy_.started_a_new_job(worker_ptr.get());
+        launcher_policy_.started_a_new_job(worker_ptr.get(), job);
 
-        worker_ptr->start_write(j);
+        worker_ptr->start_write(job);
 
         using namespace std::chrono_literals;
-        j->timer_.expires_from_now(2s);
-        j->timer_.async_wait(
-            [this, j] (boost::system::error_code ec) {
+        job->timer_.expires_from_now(2s);
+        job->timer_.async_wait(
+            [this, job] (boost::system::error_code ec) {
                 if (ec && ec != net::error::operation_aborted)
                 {
-                    BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << j->pack_->header;
-                    pending_jobs_.push(j);
+                    BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << job->pack_->header;
+                    schedule(job);
                 }
             });
-        BOOST_LOG_TRIVIAL(debug) << "start job " << j->pack_->header;
-    }
-
-    void create_worker(std::string const& body)
-    {
-        launcher_policy_.starting_a_new_worker();
-        trigger::make_trigger(io_context_)->start_post(body);
+        BOOST_LOG_TRIVIAL(debug) << "start job " << job->pack_->header;
     }
 
     template<typename Callback>
@@ -223,9 +197,12 @@ public:
         pack->data.buf    = std::vector<pack::unit_t>(body.size());
         std::memcpy(pack->data.buf.data(), body.data(), body.size());
 
-        auto j = std::make_shared<job>(io_context_, pack, next);
-        pending_jobs_.push(j);
-        start_jobs();
+        auto job_ptr = std::make_shared<job>(io_context_, pack, next);
+        schedule(job_ptr);
+    }
+
+    void schedule(job_ptr job) {
+        net::post(io_context_, [this, job] { process_job(job); });
     }
 
     // assumes begin -> end are sorted
@@ -233,7 +210,7 @@ public:
     void reconfigure(ForwardIterator begin, ForwardIterator end, Zookeeper&& zoo)
     {
         BOOST_LOG_TRIVIAL(trace) << "launcher reconfigure";
-        for (auto&& pair : fileid_to_worker_)
+        for (auto&& pair : fileid_to_worker())
         {
             auto it = std::upper_bound (begin, end, pair.first.key);
             if (it == end)

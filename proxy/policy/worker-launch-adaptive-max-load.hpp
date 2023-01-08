@@ -69,14 +69,13 @@ public:
         last_update_ = basic::now();
     }
 
-    bool should_start_new_worker (job_queue& pending_jobs, worker_set& ws) override
+    bool should_start_new_worker (worker_set& ws) override
     {
-        BOOST_LOG_TRIVIAL(info) << "should_start_new_worker " << counter_.load() << " " << max_outstanding_starting_request_ << " " << worker_launch::should_start_new_worker(pending_jobs, ws);
+        BOOST_LOG_TRIVIAL(info) << "should_start_new_worker " << counter_.load() << " " << max_outstanding_starting_request_ << " " << worker_launch::should_start_new_worker(ws);
         if (reaches_max_pending_start_worker_requests())
             return false;
 
-
-        if (worker_launch::should_start_new_worker(pending_jobs, ws))
+        if (worker_launch::should_start_new_worker(ws))
             return true;
 
         for (auto [worker_ptr, _notused] : ws)

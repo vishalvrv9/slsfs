@@ -22,7 +22,7 @@ concept IsLauncher = requires(T l)
 {
     { l.on_worker_reschedule     (std::declval<launcher::job_ptr>())} -> std::convertible_to<void>;
     { l.on_worker_close          (std::declval<worker_ptr>())       } -> std::convertible_to<void>;
-    { l.on_worker_finished_a_job (std::declval<worker*>())          } -> std::convertible_to<void>;
+    { l.on_worker_finished_a_job (std::declval<worker*>(), std::declval<launcher::job_ptr>())} -> std::convertible_to<void>;
 };
 
 using worker_id = std::size_t;
@@ -37,7 +37,7 @@ class worker : public std::enable_shared_from_this<worker>
 
     boost::signals2::signal<void (launcher::job_ptr)> on_worker_reschedule_;
     boost::signals2::signal<void (worker_ptr)> on_worker_close_;
-    boost::signals2::signal<void (worker*)> on_worker_finished_a_job_;
+    boost::signals2::signal<void (worker*, launcher::job_ptr)> on_worker_finished_a_job_;
 
 public:
     basic::time_point started_ = basic::now();
@@ -52,7 +52,7 @@ public:
         {
             on_worker_reschedule_    .connect([&l] (launcher::job_ptr job) { l.on_worker_reschedule(job); });
             on_worker_close_         .connect([&l] (worker_ptr p) { l.on_worker_close(p); });
-            on_worker_finished_a_job_.connect([&l] (worker* p) { l.on_worker_finished_a_job(p); });
+            on_worker_finished_a_job_.connect([&l] (worker* p, launcher::job_ptr job) { l.on_worker_finished_a_job(p, job); });
         }
 
     bool is_valid() { return valid_; }
@@ -178,13 +178,13 @@ public:
                 if (bool found = self->started_jobs_.find(it, pack->header); not found)
                     return;
 
-                launcher::job_ptr j = it->second;
+                launcher::job_ptr job = it->second;
                 self->started_jobs_.erase(it);
 
-                j->state_ = launcher::job::state::finished;
-                j->on_completion_(pack);
-                BOOST_LOG_TRIVIAL(debug) << "job " << j->pack_->header << " complete";
-                self->on_worker_finished_a_job_(self.get());
+                job->state_ = launcher::job::state::finished;
+                job->on_completion_(pack);
+                BOOST_LOG_TRIVIAL(debug) << "job " << job->pack_->header << " complete";
+                self->on_worker_finished_a_job_(self.get(), job);
             });
     }
 
