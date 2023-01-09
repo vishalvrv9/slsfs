@@ -24,14 +24,17 @@ class SMA {
         std::uint32_t sum = 0;
 
     public:
-        constexpr SMA(std::uint32_t buffer_size) {
-            N = buffer_size;
+        SMA(std::uint32_t buffer_size) {
+            if (buffer_size != 0)
+                N = buffer_size;
+            previousInputs.resize(N, 0);
         }
 
         std::uint32_t record(std::uint32_t input) {
             sum -= previousInputs[index];
             sum += input;
-            previousInputs[index] = input;
+            previousInputs[index] = index;
+
             if (++index == N)
                 index = 0;
             return (sum + (N / 2)) / N;
@@ -47,16 +50,16 @@ class SMA {
 class keepalive_moving_interval : public worker_keepalive
 {
     private:
-        std::uint16_t sma_buffer_size;
+        std::uint32_t sma_buffer_size;
         double error_margin;
         pack::waittime_type default_wait_time_;
         pack::waittime_type concurrency_threshold;
-        std::map<df::worker_id, SMA*> wait_times_;
+        std::map<df::worker_id, SMA> wait_times_;
         std::map<df::worker_id, std::chrono::high_resolution_clock::time_point> last_request_;
 
     public:
         keepalive_moving_interval (
-            std::uint16_t buffer_size,
+            std::uint32_t buffer_size,
             pack::waittime_type default_ms,
             pack::waittime_type threshold,
             double error_ms):
@@ -68,21 +71,27 @@ class keepalive_moving_interval : public worker_keepalive
             df::worker_id worker_ptr = worker_ptr_shared->worker_id_;
             pack::waittime_type keep_alive;
 
-            if (wait_times_[worker_ptr]->get_sma() < concurrency_threshold) {
+            auto it = wait_times_.find(worker_ptr);
+            if (it == wait_times_.end())
+                return;
+
+            SMA& sma = it->second;
+
+            if (sma.get_sma() < concurrency_threshold) {
                 keep_alive = default_wait_time_;
             }
             else {
-                if (wait_times_[worker_ptr]->get_sma() > 100) {
-                    keep_alive = wait_times_[worker_ptr]->get_sma() +
-                    (error_margin * wait_times_[worker_ptr]->get_sma());
+                if (sma.get_sma() > 100) {
+                    keep_alive = sma.get_sma() +
+                    (error_margin * sma.get_sma());
                 }
                 else {
-                    keep_alive = wait_times_[worker_ptr]->get_sma() +
-                    (100 / wait_times_[worker_ptr]->get_sma());
+                    keep_alive = sma.get_sma() +
+                    (100 / sma.get_sma());
                 }
             }
 
-            BOOST_LOG_TRIVIAL(info) << "SMA sent = " << keep_alive;
+            BOOST_LOG_TRIVIAL(debug) << "SMA sent = " << keep_alive;
             send_worker_keepalive(worker_ptr_shared, keep_alive);
         }
 
@@ -92,8 +101,15 @@ class keepalive_moving_interval : public worker_keepalive
             df::worker_id worker_id = worker_ptr->worker_id_;
             if (last_request_.count(worker_id) == 0)
             {
-                wait_times_[worker_id] = new SMA(sma_buffer_size);
-                wait_times_[worker_id]->record(default_wait_time_);
+                //wait_times_[worker_id] = SMA(sma_buffer_size);
+//                BOOST_LOG_TRIVIAL(info) << "sma_buffer_size: " << sma_buffer_size;
+                wait_times_.emplace(worker_id, sma_buffer_size);
+
+                auto it = wait_times_.find(worker_id);
+                if (it == wait_times_.end())
+                    return;
+
+                it->second.record(default_wait_time_);
                 last_request_[worker_id] = std::chrono::high_resolution_clock::now();
                 return;
             }
@@ -107,8 +123,12 @@ class keepalive_moving_interval : public worker_keepalive
 
 
             if (request_interval > concurrency_threshold){
-                BOOST_LOG_TRIVIAL(info) << "recording request interval = " << request_interval
-                << ", SMA = " << wait_times_[worker_id]->record(request_interval);
+                auto it = wait_times_.find(worker_id);
+                if (it == wait_times_.end())
+                    return;
+
+                BOOST_LOG_TRIVIAL(debug) << "recording request interval = " << request_interval
+                                         << ", SMA = " << it->second.record(request_interval);
             }
         }
 };

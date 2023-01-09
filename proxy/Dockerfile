@@ -34,6 +34,8 @@ RUN --mount=type=cache,target=/final/build \
     cp /final/build/bin/* /bin && \
     chmod +x /bin/run
 
+#ADD backend /backend
+
 FROM busybox:glibc
 
 ADD backend /backend

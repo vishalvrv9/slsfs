@@ -94,12 +94,12 @@ public:
 
                 for (; it != selected_host_index.end(); ++it)
                 {
-                    host = hostlist_.at(*it);
-                    boost::asio::post(
-                        io_context_,
-                        [host, uuid, blockid, buf_ptr, offset] () {
-                            host->write_key(*uuid, blockid, *buf_ptr, offset, 0);
-                        });
+//                    host = hostlist_.at(*it);
+//                    boost::asio::post(
+//                        io_context_,
+//                        [host, uuid, blockid, buf_ptr, offset] () {
+//                            host->write_key(*uuid, blockid, *buf_ptr, offset, 0);
+//                        });
                 }
             }
             response = {'O', 'K'};

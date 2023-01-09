@@ -50,7 +50,7 @@ class launcher
                 {
                     start_execute_policy();
                     launcher_policy_.execute();
-                    create_worker_with_policy();
+                    create_worker_with_policy(); // This should not execute if there are no files to transfer to the new worker
                     break;
                 }
                 case boost::system::errc::operation_canceled: // timer canceled

@@ -55,11 +55,43 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
+    static
+    auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
+    {
+        // Convert the time point to a duration since the epoch
+        std::chrono::duration<double> time_since_epoch = now.time_since_epoch();
+
+        // Convert the duration to a number of seconds
+        double seconds = time_since_epoch.count();
+
+        // Convert the number of seconds to a time_t object
+        std::time_t time = std::time_t(seconds);
+
+        // Convert the time_t object to a tm object
+        std::tm tm = *std::gmtime(&time);
+
+        // Create a stringstream and use put_time to format the tm object
+        std::stringstream ss;
+        ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
+
+        // Get the string from the stringstream
+        return ss.str();
+    }
+
     void timer_reset()
     {
         slsfs::log::logstring("timer_reset");
         recv_deadline_.cancel();
-        recv_deadline_.expires_at(last_update_ + waittime_);
+
+//        {
+//            std::stringstream ss;
+//            ss << waittime_.count();
+//            slsfs::log::logstring(fmt::format("timer last update {} {}", log_timer(last_update_), ss.str()));
+//        }
+        std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
+        recv_deadline_.expires_at(timeout_time);
+//        slsfs::log::logstring(fmt::format("timeout_time: {}", log_timer(timeout_time)));
+
         recv_deadline_.async_wait(
             [self=this->shared_from_this()] (boost::system::error_code ec) {
                 if (ec)
@@ -217,7 +249,11 @@ public:
 
                     self->start_write(ok);
                     if (pack->header.type != slsfs::pack::msg_t::set_timer)
+                    {
                         self->last_update_ = now();
+                        //slsfs::log::logstring(fmt::format("last update set to: {}", log_timer(self->last_update_)));
+                    }
+
                     self->timer_reset();
                     self->start_listen_commands();
                 }

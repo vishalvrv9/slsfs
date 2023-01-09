@@ -11,8 +11,14 @@ def good_mean(arr):
         return 0
 
 if __name__ == "__main__":
-    with open("proxy-report.json") as fp:
-        proxy_report = json.load(fp)
+    with open("proxy-report-1.json") as fp:
+        proxy_report1 = json.load(fp)
+
+    with open("proxy-report-2.json") as fp:
+        proxy_report2 = json.load(fp)
+
+    with open("proxy-report-3.json") as fp:
+        proxy_report3 = json.load(fp)
 
     savename = sys.argv[1]
     csvs = sys.argv[2:]
@@ -100,11 +106,19 @@ if __name__ == "__main__":
     summary_table_value.append("")
 
     summary_table_name.append("Total DF")
-    summary_table_value.append(proxy_report["started_df"])
+    summary_table_value.append(proxy_report1["started_df"] + proxy_report2["started_df"] + proxy_report3["started_df"])
 
     util = []
     startup_time = []
-    for df in proxy_report["df"]:
+    for df in proxy_report1["df"]:
+        util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
+        startup_time.append(df["start_duration"])
+
+    for df in proxy_report2["df"]:
+        util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
+        startup_time.append(df["start_duration"])
+
+    for df in proxy_report3["df"]:
         util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
         startup_time.append(df["start_duration"])
 

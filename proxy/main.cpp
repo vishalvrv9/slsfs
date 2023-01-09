@@ -457,10 +457,12 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
         std::smatch match;
         if (std::regex_search(args, match, pattern))
         {
-            int const sma_buffer_size = std::stoi(match[1]);
-            int const default_wait_time = std::stoi(match[2]);
+            int const sma_buffer_size       = std::stoi(match[1]);
+            int const default_wait_time     = std::stoi(match[2]);
             int const concurrency_threshold = std::stoi(match[3]);
-            double const error_margin= std::stod(match[4]);
+            double const error_margin       = std::stoi(match[4]) * 0.01;
+            BOOST_LOG_TRIVIAL(trace) << "Moving-Interval policy with arguments:" << sma_buffer_size << default_wait_time << concurrency_threshold << error_margin;
+
             server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval>(
                 sma_buffer_size,
                 default_wait_time,
@@ -487,12 +489,13 @@ int main(int argc, char* argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
-        ("init", "reset all system (clear zookeeper entries)")
+        ("listen,l", po::value<unsigned short>()->default_value(12000),           "listen on this port")
+        ("init",     po::bool_switch(),                                           "reset all system (clear zookeeper entries)")
+        ("initint",  po::value<int>()->default_value(0),                          "reset all system with 0, 1")
         ("thread",   po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
-        ("announce", po::value<std::string>(), "announce this ip address for other proxy to connect")
-        ("report",   po::value<std::string>()->default_value("/dev/null"), "path to save report every seconds")
-        ("policy-filetoworker",      po::value<std::string>(), "file to worker policy name")
+        ("announce", po::value<std::string>(),                                    "announce this ip address for other proxy to connect")
+        ("report",   po::value<std::string>()->default_value("/dev/null"),        "path to save report every seconds")
+        ("policy-filetoworker",      po::value<std::string>(),                    "file to worker policy name")
         ("policy-filetoworker-args", po::value<std::string>()->default_value(""), "file to worker policy name extra args")
         ("policy-launch",            po::value<std::string>(),                    "launch policy name")
         ("policy-launch-args",       po::value<std::string>()->default_value(""), "launch policy name extra args")
@@ -515,10 +518,12 @@ int main(int argc, char* argv[])
 
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
+
     unsigned short const port  = vm["listen"].as<unsigned short>();
     std::string const announce = vm["announce"].as<std::string>();
     std::string const save_report = vm["report"].as<std::string>();
-    int const blocksize = vm["blocksize"].as<int>();
+    int  const blocksize       = vm["blocksize"].as<int>();
+    bool const init_cluster    = vm["init"].as<bool>();
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
 
     std::string worker_config;
@@ -555,8 +560,11 @@ int main(int argc, char* argv[])
 
     slsfs::zookeeper::zookeeper zoo {ioc, server.launcher(), server_id, announce_buf};
 
-    if (vm.count("init"))
+    if (init_cluster || vm["initint"].as<int>() != 0)
+    {
+        BOOST_LOG_TRIVIAL(info) << "init cluster + init zookeeper";
         zoo.reset();
+    }
     else
         zoo.start_setup();
 

@@ -40,7 +40,7 @@ class zookeeper
     std::chrono::system_clock::duration local_zk_diff_ = std::chrono::nanoseconds::zero();
 
 #ifdef NDEBUG
-    constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_INFO;
+    constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_ERROR;
 #else
     ////constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_DEBUG;
     constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_INFO;
@@ -133,7 +133,7 @@ public:
                     [this, children=std::move(children)] (zk::future<zk::event> event) {
                         zk::event const & e = event.get();
                         BOOST_LOG_TRIVIAL(info) << "watch event get: " << e.type();
-                        start_reconfigure();
+                        //start_reconfigure();
                         start_watch();
                     });
             });

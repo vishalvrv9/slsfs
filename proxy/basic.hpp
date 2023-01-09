@@ -54,6 +54,8 @@
 
 #include <boost/date_time/posix_time/posix_time.hpp>
 
+#include <zookeeper/zookeeper.h>
+
 #include <fmt/core.h>
 
 #include <nlohmann/json.hpp>
@@ -118,6 +120,8 @@ void init_log()
     /* console sink */
     auto console = boost::log::add_console_log(std::clog);
     console->set_formatter(final_format);
+
+    ::zoo_set_debug_level(ZOO_LOG_LEVEL_ERROR);
 }
 
 auto ssl_ctx() -> ssl::context&

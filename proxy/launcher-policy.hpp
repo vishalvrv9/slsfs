@@ -44,9 +44,19 @@ public:
         return filetoworker_policy_->get_available_worker(ptr, worker_set_);
     }
 
+    auto fileid_to_worker() -> fileid_map& {
+        return filetoworker_policy_->fileid_to_worker_;
+    }
+
     int get_ideal_worker_count_delta()
     {
         int want_start = launch_policy_->get_ideal_worker_count_delta(worker_set_);
+
+        return want_start;
+        if (fileid_to_worker().size() >= worker_set_.size())
+            want_start = std::min<int>(want_start, fileid_to_worker().size() - worker_set_.size());
+        else
+            want_start = 0;
         return want_start;
     }
 
