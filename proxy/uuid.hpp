@@ -58,6 +58,23 @@ uuid get_uuid(std::string const& buffer)
     return id;
 }
 
+uuid gen_uuid_static_seed(std::string const& any)
+{
+    static std::mt19937 rng;
+    uuid id;
+    Poco::Crypto::DigestEngine engine{"SHA256"};
+
+    int sum = std::accumulate(any.begin(), any.end(), 0);
+    rng.seed(sum);
+    engine.update(any.data(), any.size());
+
+    Poco::DigestEngine::Digest const& digest = engine.digest();
+
+    std::copy(digest.begin(), digest.end(), id.begin());
+//    std::cout << Poco::DigestEngine::digestToHex(digest) << "\n";
+    return id;
+}
+
 uuid gen_uuid()
 {
     static std::mt19937 rng;

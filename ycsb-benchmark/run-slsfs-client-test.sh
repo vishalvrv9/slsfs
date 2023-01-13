@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+${POLICY_FILETOWORKER}+${POLICY_LAUNCH}+${POLICY_KEEPALIVE}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
+TESTNAME="CRETRUEV${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_2"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
@@ -32,11 +32,13 @@ start-proxy-remote proxy-2 noinit
 start-proxy-remote proxy-3 noinit
 #./start-proxy.sh
 
+rm -f /tmp/slsfs-client;
 docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /tmp/slsfs-client;
 
 chmod +x /tmp/slsfs-client
 
 for h in "${hosts[@]}"; do
+    ssh $h rm -f /tmp/slsfs-client || exit 0;
     scp /tmp/slsfs-client "$h": &
 done
 wait < <(jobs -p);
@@ -67,7 +69,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 
@@ -87,4 +89,4 @@ rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
 python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
 head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
 ../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
-echo "finish test: $TESTNAME"
+echo -e "\a finish test: $TESTNAME"

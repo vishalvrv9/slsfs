@@ -64,6 +64,13 @@ public:
 
         case slsfs::jsre::operation_t::create:
         {
+            auto uuid = input.uuid_shared();
+            std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
+            auto buffer = std::make_shared<slsfs::base::buf>();
+            std::copy_n(input.data(), input.size(), std::back_inserter(*buffer));
+            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
+
+            start_write_key(0, selected_host_index, uuid, 0, buffer, input, next_ptr);
             break;
         }
 

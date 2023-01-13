@@ -141,6 +141,7 @@ public:
     {
         BOOST_LOG_TRIVIAL(debug) << "worker close: " << worker.get();
         worker_set_.erase(worker);
+        launcher_policy_.deregistered_a_worker(worker.get());
     }
 
     void on_worker_finished_a_job(df::worker* worker, job_ptr job) {
@@ -169,6 +170,8 @@ public:
         }
 
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
+
+        //worker_ptr->soft_close();
 
         // async launch stat calculator
         launcher_policy_.started_a_new_job(worker_ptr.get(), job);
@@ -201,7 +204,9 @@ public:
         schedule(job_ptr);
     }
 
-    void schedule(job_ptr job) {
+    void schedule(job_ptr job)
+    {
+        launcher_policy_.schedule_a_new_job(job);
         net::post(io_context_, [this, job] { process_job(job); });
     }
 

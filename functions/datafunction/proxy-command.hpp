@@ -90,15 +90,15 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
 //        }
         std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
         recv_deadline_.expires_at(timeout_time);
-//        slsfs::log::logstring(fmt::format("timeout_time: {}", log_timer(timeout_time)));
+        slsfs::log::logstring(fmt::format("set timeout_time: {}", log_timer(timeout_time)));
 
         recv_deadline_.async_wait(
-            [self=this->shared_from_this()] (boost::system::error_code ec) {
+            [self=this->shared_from_this(), timeout_time] (boost::system::error_code ec) {
                 if (ec)
-                    slsfs::log::logstring(fmt::format("timer_reset: {}", ec.message()));
+                    slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("now: {}, timertime: {}, msg: {}", log_timer(now()), log_timer(timeout_time), ec.message()));
                 else
                 {
-                    slsfs::log::logstring<slsfs::log::level::info>("timer_reset: read header timeout. close connection()");
+                    slsfs::log::logstring<slsfs::log::level::error>("timer_reset: read header timeout. close connection()");
                     self->close();
                 }
         });
@@ -126,6 +126,7 @@ public:
             [self=shared_from_this()] (boost::system::error_code ec, std::size_t length) {
                 self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
                 slsfs::log::logstring("timer_reset: send shutdown");
+                std::exit(0);
             });
     }
 
@@ -244,7 +245,7 @@ public:
                     {
                         std::stringstream ss;
                         ss << pack->header;
-                        slsfs::log::logstring<slsfs::log::level::error>(fmt::format("return: {}", ss.str()));
+                        slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("return: {}", ss.str()));
                     }
 
                     self->start_write(ok);
@@ -314,7 +315,7 @@ public:
                                 self->start_write(pack);
                                 auto const end = std::chrono::high_resolution_clock::now();
                                 auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                                slsfs::log::logstring<slsfs::log::level::info>(fmt::format("req finish in: {}", relativetime));
+                                slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("req finish in: {}", relativetime));
                             });
                     }
                     else
@@ -327,7 +328,7 @@ public:
                         self->start_write(pack);
                         auto const end = std::chrono::high_resolution_clock::now();
                         auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                        slsfs::log::logstring<slsfs::log::level::info>(fmt::format("req finish in: {}", relativetime));
+                        slsfs::log::logstring(fmt::format("req finish in: {}", relativetime));
                     }
                 }
             )

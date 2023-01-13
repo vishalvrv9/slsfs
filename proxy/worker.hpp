@@ -55,7 +55,8 @@ public:
             on_worker_finished_a_job_.connect([&l] (worker* p, launcher::job_ptr job) { l.on_worker_finished_a_job(p, job); });
         }
 
-    bool is_valid() { return valid_; }
+    bool is_valid() { return valid_.load(); }
+    void soft_close() { valid_.store(false); }
     int  pending_jobs() { return started_jobs_.size(); }
 
     void close()

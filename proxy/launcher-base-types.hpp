@@ -35,6 +35,7 @@ namespace policy
 struct info
 {
     virtual void execute() {}
+    virtual void schedule_a_new_job(worker_set&, job_ptr) {}
     virtual void started_a_new_job(df::worker*, job_ptr) {}
     virtual void finished_a_job(df::worker*, job_ptr) {}
     virtual void starting_a_new_worker() {}
@@ -67,6 +68,16 @@ class reporter : public policy::info
     oneapi::tbb::concurrent_hash_map<df::worker_id, worker_info> worker_info_map_;
     using worker_info_map_accessor = decltype(worker_info_map_)::accessor;
 
+    struct history
+    {
+        int worker_count;
+        int number_of_incoming_request;
+        basic::time_point when = basic::now();
+    };
+
+    std::atomic<int> worker_count_ = 0, number_of_incoming_request_ = 0;
+    oneapi::tbb::concurrent_vector<history> history_;
+
 public:
     reporter(std::string const& report_file): report_file_{report_file} {}
 
@@ -92,6 +103,19 @@ public:
             dfstat["finished_job_count"] = info.finished_job_count.load();
             report["df"].push_back(dfstat);
         }
+
+        report["history"] = json::array();
+        history_.emplace_back(worker_count_, number_of_incoming_request_);
+        for (history &h : history_)
+        {
+            json obj;
+            obj["timestamp"] = (h.when - start_time_).count();
+            obj["worker_count"] = h.worker_count;
+            obj["number_of_incoming_request"] = h.number_of_incoming_request;
+            report["history"].push_back(obj);
+        }
+
+        number_of_incoming_request_ = 0;
         output << report.dump();
     }
 
@@ -100,6 +124,10 @@ public:
         worker_info_map_accessor it;
         if (worker_info_map_.find(it, ptr->worker_id_))
             it->second.finished_job_count.fetch_add(1, std::memory_order_relaxed);
+    }
+
+    void started_a_new_job(df::worker*, job_ptr) override {
+        number_of_incoming_request_.fetch_add(1, std::memory_order_relaxed);
     }
 
     void starting_a_new_worker() override {
@@ -112,12 +140,14 @@ public:
         pending_worker_timestamps_.try_pop(started_time);
 
         started_worker_.fetch_add(1, std::memory_order_relaxed);
+        worker_count_.fetch_add(1, std::memory_order_relaxed);
 
         worker_info_map_.emplace(ptr->worker_id_, basic::now() - started_time);
     }
 
     void deregistered_a_worker(df::worker * ptr) override
     {
+        worker_count_.fetch_sub(1, std::memory_order_relaxed);
         worker_info_map_accessor it;
         if (worker_info_map_.find(it, ptr->worker_id_))
             it->second.end_time = basic::now();

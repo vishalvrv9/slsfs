@@ -87,7 +87,7 @@ if __name__ == "__main__":
 
 
     client_run_duration.insert(1, "")
-    client_run_duration.insert(1, "{:.2f}s".format(average_runtime/1000000000))
+    client_run_duration.insert(1, "{:.2f}".format(average_runtime/1000000000))
 
     summary_table_name.insert(1, "IOPS(all)")
     summary_table_value.insert(1, len(all_latency) / (average_runtime/1000000000))
@@ -110,17 +110,21 @@ if __name__ == "__main__":
 
     util = []
     startup_time = []
+    df_duration = []
     for df in proxy_report1["df"]:
         util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
         startup_time.append(df["start_duration"])
+        df_duration.append(df["duration"])
 
     for df in proxy_report2["df"]:
         util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
         startup_time.append(df["start_duration"])
+        df_duration.append(df["duration"])
 
     for df in proxy_report3["df"]:
         util.append(df["finished_job_count"] / (df["duration"] / 1000000000))
         startup_time.append(df["start_duration"])
+        df_duration.append(df["duration"])
 
     summary_table_name.append("DF Start (s)")
     summary_table_value.append(good_mean(startup_time) / 1000000000)
@@ -140,8 +144,12 @@ if __name__ == "__main__":
     for x in all_latency:
         distribution[int(x / 1000000)] += 1
 
+    summary_table_name.append("DF All Duration")
+    summary_table_value.append(sum(df_duration))
     summary_table_name.append("")
     summary_table_value.append("")
+
+
     summary_table_name.append("dist bucket(ms)")
     summary_table_value.append("")
 

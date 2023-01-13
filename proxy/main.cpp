@@ -475,6 +475,31 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
                 "unable to parse args for keepalive policy; should be sma_buffer_size:default_keepalive:concurrency_threshold:error_margin");
         break;
     }
+    case "moving-interval-global"_:
+    {
+        std::regex const pattern("(\\d+):(\\d+):(\\d+):(\\d+)");
+        std::smatch match;
+        if (std::regex_search(args, match, pattern))
+        {
+            int const sma_buffer_size       = std::stoi(match[1]);
+            int const default_wait_time     = std::stoi(match[2]);
+            int const concurrency_threshold = std::stoi(match[3]);
+            double const error_margin       = std::stoi(match[4]) * 0.01;
+            BOOST_LOG_TRIVIAL(trace) << "Moving-Interval-Global policy with arguments:" << sma_buffer_size << default_wait_time << concurrency_threshold << error_margin;
+
+            server.set_policy_keepalive<slsfs::launcher::policy::keepalive_moving_interval_global>(
+                sma_buffer_size,
+                default_wait_time,
+                concurrency_threshold,
+                error_margin
+            );
+        }
+        else
+            throw std::runtime_error(
+                "unable to parse args for keepalive policy; should be sma_buffer_size:default_keepalive:concurrency_threshold:error_margin");
+        break;
+    }
+
     default:
         using namespace std::string_literals;
         throw std::runtime_error("unknown keepalive policy: "s + policy);
@@ -524,7 +549,8 @@ int main(int argc, char* argv[])
     std::string const save_report = vm["report"].as<std::string>();
     int  const blocksize       = vm["blocksize"].as<int>();
     bool const init_cluster    = vm["init"].as<bool>();
-    slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
+    //slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
+    slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid_static_seed(announce);
 
     std::string worker_config;
     {

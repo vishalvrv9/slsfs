@@ -73,6 +73,7 @@ try
     using json = slsfs::base::json;
     json input;
 
+    ow_out << "{\"started\": \"nyahalo\"}" << std::endl;
     std::cin >> input;
 
 #ifdef AS_ACTIONLOOP

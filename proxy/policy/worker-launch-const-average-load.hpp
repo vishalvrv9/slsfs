@@ -17,6 +17,7 @@ class const_average_load : public worker_launch
     basic::time_point last_update_ = basic::now();
     std::atomic<int> get_ideal_worker_count_ = 0;
     std::atomic<std::uint64_t> processed_size_ = 0;
+    std::atomic<int> starter_ = 0;
 
 public:
     const_average_load(int max_outstanding_starting_request, std::uint64_t max_average_load):
@@ -45,8 +46,16 @@ public:
         processed_size_.fetch_add(job->pack_->header.datasize, std::memory_order_relaxed);
     }
 
+    void schedule_a_new_job(worker_set& ws, job_ptr) override
+    {
+        if (ws.empty())
+            starter_ = 1;
+        else
+            starter_ = 0;
+    }
+
     int get_ideal_worker_count(worker_set &) override {
-        return std::max(1, get_ideal_worker_count_.load());
+        return std::max(starter_.load(), get_ideal_worker_count_.load());
     }
 };
 } // namespace slsfs::launcher

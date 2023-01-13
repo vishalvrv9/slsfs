@@ -33,7 +33,7 @@ class SMA {
         std::uint32_t record(std::uint32_t input) {
             sum -= previousInputs[index];
             sum += input;
-            previousInputs[index] = index;
+            previousInputs[index] = input;
 
             if (++index == N)
                 index = 0;
@@ -86,12 +86,11 @@ class keepalive_moving_interval : public worker_keepalive
                     (error_margin * sma.get_sma());
                 }
                 else {
-                    keep_alive = sma.get_sma() +
-                    (100 / sma.get_sma());
+                    keep_alive = sma.get_sma() + (100 / sma.get_sma());
                 }
             }
 
-            BOOST_LOG_TRIVIAL(debug) << "SMA sent = " << keep_alive;
+            BOOST_LOG_TRIVIAL(info) << "SMA sent = " << keep_alive;
             send_worker_keepalive(worker_ptr_shared, keep_alive);
         }
 

@@ -34,7 +34,13 @@ struct global_info
     char const ** signature;
     std::chrono::high_resolution_clock::time_point start;
     static constexpr bool to_remote = false;
+
+#ifdef NDEBUG
+    static constexpr level current_level = level::info;
+#else
     static constexpr level current_level = level::trace;
+#endif // NDEBUG
+
 };
 
 auto global_info_instance() -> global_info&
@@ -75,24 +81,13 @@ void push_logs()
 template<level Level = level::trace>
 void logstring(std::string const & msg)
 {
-#ifdef NDEBUG
-    return;
-#endif // NDEBUG
-
     auto const now = std::chrono::high_resolution_clock::now();
     global_info& info = global_info_instance();
     auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(now - info.start).count();
 
     if constexpr (global_info::current_level <= Level)
     {
-//        std::stringstream ss;
-//        ss << std::this_thread::get_id();
         std::string const finalmsg = fmt::format("[{0:12d} {1}] {2}", relativetime, (*info.signature), msg);
-//        if (global_info::to_remote)
-//            httpdo::logget("http://zion01:2015", finalmsg);
-
-        //global_msg_vec().push_back(finalmsg);
-
         std::cerr << finalmsg << std::endl;
     }
     return;

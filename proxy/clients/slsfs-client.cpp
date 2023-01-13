@@ -25,6 +25,8 @@
 
 using boost::asio::ip::tcp;
 
+constexpr bool enable_creation = true;
+
 template<typename Function>
 auto record(Function &&f) -> long int
 {
@@ -152,6 +154,7 @@ auto iotest (int const times, int const bufsize,
             r.operation = slsfs::jsre::operation_t::read;
         else
             r.operation = slsfs::jsre::operation_t::write;
+
         r.uuid = ptr->header.key;
         r.position = genpos(i);
         r.size = buf.size();
@@ -168,9 +171,10 @@ auto iotest (int const times, int const bufsize,
             std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
             std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
         }
+
         ptr->header.gen();
         BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
-        auto buf = ptr->serialize();
+        auto pbuf = ptr->serialize();
         int index = pick_proxy(proxy_uuid, ptr->header.key);
 
         tcp::socket& s = proxy_sockets.at(index);
@@ -179,10 +183,112 @@ auto iotest (int const times, int const bufsize,
 
         boost::asio::post(
             io,
-            [&s, &record_list, buf] {
+            [&s, &record_list, pbuf, op=r.operation] {
                 record_list.push_back(record(
-                    [&s, buf] () {
-                        boost::asio::write(s, boost::asio::buffer(buf->data(), buf->size()));
+                        [&s, pbuf, op] () {
+                        if constexpr (enable_creation)
+                                     {
+                                         if (op == slsfs::jsre::operation_t::write)
+                                         {
+                                             {
+                                                 slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+
+                                                 ptr->header.type = slsfs::pack::msg_t::trigger;
+                                                 ptr->header.key = {1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1};
+
+                                                 slsfs::jsre::request r;
+                                                 r.type = slsfs::jsre::type_t::file;
+                                                 r.operation = slsfs::jsre::operation_t::read;
+
+                                                 std::string const buf("a.txt");
+                                                 r.uuid = ptr->header.key;
+                                                 r.position = 0;
+                                                 r.size = buf.size();
+                                                 r.to_network_format();
+
+                                                 ptr->data.buf.resize(sizeof (r) + buf.size());
+                                                 std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
+
+
+                                                 ptr->header.gen();
+                                                 BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
+                                                 auto pbuf = ptr->serialize();
+                                                 //int index = pick_proxy(proxy_uuid, ptr->header.key);
+
+                                                 //tcp::socket& s = proxy_sockets.at(index);
+                                                 //boost::asio::io_context& io = io_context_list.at(index);
+                                                 //std::list<double>& record_list = records.at(index);
+
+                                                 boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
+
+                                                 slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                                                 std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+                                                 boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
+
+                                                 resp->header.parse(headerbuf.data());
+                                                 BOOST_LOG_TRIVIAL(debug) << "write resp:" << resp->header;
+
+                                                 std::string data(resp->header.datasize, '\0');
+                                                 boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
+                                                 BOOST_LOG_TRIVIAL(debug) << data ;
+
+                                             }
+                                             {
+
+                                                 slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+
+                                                 ptr->header.type = slsfs::pack::msg_t::trigger;
+                                                 ptr->header.key = {1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1,
+                                                                    1, 1, 1, 1, 1, 1, 1, 1};
+
+                                                 slsfs::jsre::request r;
+                                                 r.type = slsfs::jsre::type_t::file;
+                                                 r.operation = slsfs::jsre::operation_t::create;
+
+                                                 std::string const buf("a.txt");
+                                                 r.uuid = ptr->header.key;
+                                                 r.position = 0;
+                                                 r.size = buf.size();
+                                                 r.to_network_format();
+
+                                                 ptr->data.buf.resize(sizeof (r) + buf.size());
+                                                 std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
+                                                 std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
+
+                                                 ptr->header.gen();
+                                                 BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
+                                                 auto pbuf = ptr->serialize();
+                                                 //int index = pick_proxy(proxy_uuid, ptr->header.key);
+
+                                                 //tcp::socket& s = proxy_sockets.at(index);
+                                                 //boost::asio::io_context& io = io_context_list.at(index);
+                                                 //std::list<double>& record_list = records.at(index);
+
+                                                 boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
+
+                                                 slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                                                 std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+                                                 boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
+
+                                                 resp->header.parse(headerbuf.data());
+                                                 BOOST_LOG_TRIVIAL(debug) << "write resp:" << resp->header;
+
+                                                 std::string data(resp->header.datasize, '\0');
+                                                 boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
+                                                 BOOST_LOG_TRIVIAL(debug) << data ;
+
+                                             }
+                                         }
+                                     }
+
+
+
+                        boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
                         slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
                         std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
@@ -406,6 +512,13 @@ int main(int argc, char *argv[])
             };
         };
 
+    absl::zipf_distribution singledist(255, zipf_alpha);
+    auto anyname = [&engine, &singledist]() {
+            slsfs::pack::key_t t{};
+            for (slsfs::pack::unit_t& n : t)
+                n = singledist(engine);
+            return t;
+        };
 
     using namespace slsfs::basic::sswitcher;
     switch (slsfs::basic::sswitcher::hash(test_name))
@@ -420,6 +533,20 @@ int main(int argc, char *argv[])
                     iotest, file_range, bufsize,
                     std::vector<int> {1},
                     allname,
+                    [bufsize](int) { return 0; },
+                    "");
+        });
+        break;
+    case "create"_:
+        start_test(
+            "create",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, file_range, bufsize,
+                    std::vector<int> {1},
+                    anyname,
                     [bufsize](int) { return 0; },
                     "");
         });

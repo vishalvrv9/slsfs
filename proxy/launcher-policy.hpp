@@ -71,12 +71,20 @@ public:
                 keepalive_policy_->set_worker_keepalive(worker_ptr);
     }
 
+
     void start_transfer() {
         filetoworker_policy_->start_transfer();
     }
 
-    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr {
-        return filetoworker_policy_->get_assigned_worker(packet_ptr);
+    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr
+    {
+        if (false /* impl */)
+        {
+            policy::lowest_load ll;
+            return ll.get_available_worker(packet_ptr, worker_set_);
+        }
+        else
+            return filetoworker_policy_->get_assigned_worker(packet_ptr);
     }
 
     // methods for updates; defined in base_types.hpp
@@ -92,6 +100,19 @@ public:
                 reporter_.execute();
             });
     }
+
+    void schedule_a_new_job(job_ptr job)
+    {
+        net::post(
+            io_context_,
+            [this, job] () {
+                keepalive_policy_   ->schedule_a_new_job(worker_set_, job);
+                launch_policy_      ->schedule_a_new_job(worker_set_, job);
+                filetoworker_policy_->schedule_a_new_job(worker_set_, job);
+                reporter_.schedule_a_new_job(worker_set_, job);
+            });
+    }
+
 
     void started_a_new_job(df::worker* worker_ptr, job_ptr job)
     {

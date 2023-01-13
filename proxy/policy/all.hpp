@@ -10,6 +10,7 @@
 #include "worker-keepalive.hpp"
 #include "worker-keepalive-const-time.hpp"
 #include "worker-keepalive-moving-interval.hpp"
+#include "worker-keepalive-moving-interval-global.hpp"
 
 #include "worker-launch.hpp"
 #include "worker-launch-const-average-load.hpp"
