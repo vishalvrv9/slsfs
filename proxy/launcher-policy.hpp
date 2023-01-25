@@ -71,7 +71,6 @@ public:
                 keepalive_policy_->set_worker_keepalive(worker_ptr);
     }
 
-
     void start_transfer() {
         filetoworker_policy_->start_transfer();
     }
@@ -113,6 +112,17 @@ public:
             });
     }
 
+    void reschedule_a_job(job_ptr job)
+    {
+        net::post(
+            io_context_,
+            [this, job] () {
+                keepalive_policy_   ->reschedule_a_job(worker_set_, job);
+                launch_policy_      ->reschedule_a_job(worker_set_, job);
+                filetoworker_policy_->reschedule_a_job(worker_set_, job);
+                reporter_.reschedule_a_job(worker_set_, job);
+            });
+    }
 
     void started_a_new_job(df::worker* worker_ptr, job_ptr job)
     {

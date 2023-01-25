@@ -30,7 +30,7 @@ using worker_id = std::size_t;
 class worker : public std::enable_shared_from_this<worker>
 {
     tcp::socket socket_;
-    socket_writer::socket_writer<pack::packet_pointer, std::vector<pack::unit_t>> writer_;
+    socket_writer::socket_writer<pack::packet, std::vector<pack::unit_t>> writer_;
     std::atomic<bool> valid_ = true;
 
     launcher::job_map started_jobs_;
@@ -64,7 +64,7 @@ public:
         boost::system::error_code ec;
         valid_.store(false);
         socket_.shutdown(tcp::socket::shutdown_both, ec);
-        BOOST_LOG_TRIVIAL(info) << "worker " << worker_id_ << " closed";
+        BOOST_LOG_TRIVIAL(info) << "worker [" << id_ << "] closed";
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
         on_worker_close_(shared_from_this());
@@ -93,16 +93,16 @@ public:
                     {
                     case pack::msg_t::worker_dereg:
                         self->close();
-                        BOOST_LOG_TRIVIAL(debug) << "worker get worker_dereg" << pack->header;
+                        BOOST_LOG_TRIVIAL(trace) << "worker get worker_dereg" << pack->header;
                         break;
 
                     case pack::msg_t::worker_response:
-                        BOOST_LOG_TRIVIAL(debug) << "worker get resp " << pack->header;
+                        BOOST_LOG_TRIVIAL(trace) << "worker get resp " << pack->header;
                         self->start_read_body(pack);
                         break;
 
                     case pack::msg_t::ack:
-                        BOOST_LOG_TRIVIAL(debug) << "worker get ack " << pack->header;
+                        BOOST_LOG_TRIVIAL(trace) << "worker get ack " << pack->header;
                         self->on_worker_ack(pack);
                         self->start_read_header();
                         break;
@@ -150,7 +150,7 @@ public:
     {
         net::post(
             [self=shared_from_this(), pack] () {
-                BOOST_LOG_TRIVIAL(debug) << "job " << pack->header << " get ack. cancel job timer";
+                BOOST_LOG_TRIVIAL(trace) << "job " << pack->header << " get ack. cancel job timer";
                 if (pack->empty())
                     return;
 
@@ -184,7 +184,7 @@ public:
 
                 job->state_ = launcher::job::state::finished;
                 job->on_completion_(pack);
-                BOOST_LOG_TRIVIAL(debug) << "job " << job->pack_->header << " complete";
+                BOOST_LOG_TRIVIAL(trace) << "job " << job->pack_->header << " complete";
                 self->on_worker_finished_a_job_(self.get(), job);
             });
     }
@@ -203,7 +203,7 @@ public:
                     //self->on_worker_reschedule_(job);
                 }
                 else
-                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
+                    BOOST_LOG_TRIVIAL(trace) << "worker wrote msg";
             });
 
         writer_.start_write_socket(job->pack_, next);
@@ -222,7 +222,7 @@ public:
                     self->socket_.shutdown(tcp::socket::shutdown_send, ec);
                 }
                 else
-                    BOOST_LOG_TRIVIAL(debug) << "worker wrote msg";
+                    BOOST_LOG_TRIVIAL(trace) << "worker wrote msg";
             });
 
         writer_.start_write_socket(pack, next);

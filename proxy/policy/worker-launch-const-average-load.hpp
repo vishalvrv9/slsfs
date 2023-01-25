@@ -15,9 +15,8 @@ class const_average_load : public worker_launch
 {
     std::uint64_t const max_average_load_; // bytes per second
     basic::time_point last_update_ = basic::now();
-    std::atomic<int> get_ideal_worker_count_ = 0;
+    std::atomic<int> ideal_worker_count_ = 0;
     std::atomic<std::uint64_t> processed_size_ = 0;
-    std::atomic<int> starter_ = 0;
 
 public:
     const_average_load(int max_outstanding_starting_request, std::uint64_t max_average_load):
@@ -32,10 +31,10 @@ public:
         std::uint64_t const normalized_processed_size_ = (processed_size_ * 1000) / duration;
         processed_size_ = 0;
 
-        get_ideal_worker_count_.store(normalized_processed_size_ / max_average_load_);
+        ideal_worker_count_.store(normalized_processed_size_ / max_average_load_);
 
         BOOST_LOG_TRIVIAL(debug) << "normalized_processed_size: " << normalized_processed_size_
-                                 << " get_ideal_worker_count: " << get_ideal_worker_count_;
+                                 << " get_ideal_worker_count: " << ideal_worker_count_;
     }
 
     void finished_a_job (df::worker *, job_ptr job) override {
@@ -46,18 +45,11 @@ public:
         processed_size_.fetch_add(job->pack_->header.datasize, std::memory_order_relaxed);
     }
 
-    void schedule_a_new_job(worker_set& ws, job_ptr) override
-    {
-        if (ws.empty())
-            starter_ = 1;
-        else
-            starter_ = 0;
-    }
-
-    int get_ideal_worker_count(worker_set &) override {
-        return std::max(starter_.load(), get_ideal_worker_count_.load());
+    int get_ideal_worker_count(worker_set &ws) override {
+        return std::max(worker_launch::get_ideal_worker_count(ws), ideal_worker_count_.load());
     }
 };
+
 } // namespace slsfs::launcher
 
 #endif // POLICY_WORKER_LAUNCH_CONST_AVERAGE_LOAD_HPP__

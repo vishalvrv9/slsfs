@@ -12,10 +12,10 @@ namespace slsfs::socket_writer
 
 using boost_callback = std::function<void(boost::system::error_code, std::size_t)>;
 
-template<typename PacketPointer, typename BufType>
+template<typename Packet, typename BufType>
 struct write_job
 {
-    PacketPointer pack;
+    std::shared_ptr<Packet> pack;
     std::shared_ptr<BufType> bufptr;
     std::shared_ptr<boost_callback> next;
 };
@@ -23,18 +23,18 @@ struct write_job
 namespace v1
 {
 
-template<typename PacketPointer, typename BufType>
+template<typename Packet, typename BufType>
 class socket_writer
 {
     boost::asio::io_context & io_context_;
     boost::asio::io_context::strand write_io_strand_;
-    oneapi::tbb::concurrent_queue<write_job<PacketPointer, BufType>> write_queue_;
+    oneapi::tbb::concurrent_queue<write_job<Packet, BufType>> write_queue_;
     boost::asio::ip::tcp::socket& socket_;
     std::atomic<bool> is_writing_ = false;
 
     void start_write_one_packet()
     {
-        write_job<PacketPointer, BufType> job;
+        write_job<Packet, BufType> job;
         if (not write_queue_.try_pop(job))
             is_writing_.store(false);
         else
@@ -52,7 +52,7 @@ class socket_writer
                         if (ec)
                         {
                             is_writing_.store(false);
-                            BOOST_LOG_TRIVIAL(error) << "socket writer get error: " << ec.message();
+                            BOOST_LOG_TRIVIAL(error) << "socket writer error: " << ec.message();
                             return;
                         }
 
@@ -65,7 +65,7 @@ public:
     socket_writer(boost::asio::io_context &io, boost::asio::ip::tcp::socket &s):
         io_context_{io}, write_io_strand_{io}, socket_{s} {}
 
-    void start_write_socket(PacketPointer pack,
+    void start_write_socket(std::shared_ptr<Packet> pack,
                             std::shared_ptr<boost_callback> next,
                             std::shared_ptr<BufType> bufptr = nullptr)
     {
@@ -109,7 +109,7 @@ class socket_writer
                         std::invoke(*job.next, ec, transferred_size);
                         if (ec)
                         {
-                            BOOST_LOG_TRIVIAL(error) << "socket writer get error: " << ec.message();
+                            BOOST_LOG_TRIVIAL(error) << "socket writer start_write_one_packet() error: " << ec.message();
                             return;
                         }
 

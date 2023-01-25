@@ -29,6 +29,7 @@ concept CanResolveZookeeper = requires(T t)
 class launcher
 {
     net::io_context& io_context_;
+    net::io_context::strand launcher_strand_;
 
     worker_set worker_set_;
 
@@ -50,7 +51,7 @@ class launcher
                 {
                     start_execute_policy();
                     launcher_policy_.execute();
-                    create_worker_with_policy(); // This should not execute if there are no files to transfer to the new worker
+                    start_create_worker_with_policy();
                     break;
                 }
                 case boost::system::errc::operation_canceled: // timer canceled
@@ -62,15 +63,21 @@ class launcher
             });
     }
 
-    void create_worker_with_policy()
+    void start_create_worker_with_policy()
     {
-        int const should_start = launcher_policy_.get_ideal_worker_count_delta();
+        net::post(
+            launcher_strand_,
+            [this] {
+                int const should_start = launcher_policy_.get_ideal_worker_count_delta();
 
-        for (int i = 0; i < should_start; i++)
-        {
-            create_worker(launcher_policy_.get_worker_config());
-            launcher_policy_.start_transfer();
-        }
+                if (should_start != 0)
+                    BOOST_LOG_TRIVIAL(debug) << "Ideal worker count delta " << should_start;
+                for (int i = 0; i < should_start; i++)
+                {
+                    create_worker(launcher_policy_.get_worker_config());
+                    launcher_policy_.start_transfer();
+                }
+            });
     }
 
     void create_worker(std::string const& body)
@@ -84,6 +91,7 @@ public:
              std::string const& announce, net::ip::port_type port,
              std::string const& save_report):
         io_context_{io},
+        launcher_strand_{io},
         id_{id},
         announce_host_{announce},
         announce_port_{port},
@@ -116,12 +124,12 @@ public:
         launcher_policy_.worker_config_ = config;
     }
 
-    void add_worker(tcp::socket socket, pack::packet_pointer)
+    void add_worker(tcp::socket socket, pack::packet_pointer worker_info)
     {
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
 
-        BOOST_LOG_TRIVIAL(info) << "active worker count: " << worker_set_.size();
+        BOOST_LOG_TRIVIAL(info) << "Get new worker [" << id_ << "]. Active worker count: " << worker_set_.size();
 
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
@@ -132,14 +140,14 @@ public:
 
     void on_worker_reschedule(job_ptr job)
     {
-        BOOST_LOG_TRIVIAL(debug) << "job " << job->pack_->header << " reschedule";
+        BOOST_LOG_TRIVIAL(trace) << "job " << job->pack_->header << " reschedule";
         fileid_to_worker().erase(job->pack_->header);
-        schedule(job);
+        reschedule(job);
     }
 
     void on_worker_close(df::worker_ptr worker)
     {
-        BOOST_LOG_TRIVIAL(debug) << "worker close: " << worker.get();
+        BOOST_LOG_TRIVIAL(trace) << "worker close: " << worker.get();
         worker_set_.erase(worker);
         launcher_policy_.deregistered_a_worker(worker.get());
     }
@@ -160,9 +168,9 @@ public:
             // no available worker. Re-scheduling request
             if (!worker_ptr || not worker_ptr->is_valid())
             {
-                BOOST_LOG_TRIVIAL(debug) << "No available worker. Re-scheduling request";
-                create_worker_with_policy();
-                schedule(job);
+                BOOST_LOG_TRIVIAL(trace) << "No available worker. Re-scheduling request";
+                //start_create_worker_with_policy();
+                reschedule(job);
                 return;
             }
 
@@ -170,8 +178,6 @@ public:
         }
 
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
-
-        //worker_ptr->soft_close();
 
         // async launch stat calculator
         launcher_policy_.started_a_new_job(worker_ptr.get(), job);
@@ -184,11 +190,11 @@ public:
             [this, job] (boost::system::error_code ec) {
                 if (ec && ec != net::error::operation_aborted)
                 {
-                    BOOST_LOG_TRIVIAL(debug) << "error: " << ec << "repush job " << job->pack_->header;
-                    schedule(job);
+                    BOOST_LOG_TRIVIAL(error) << "error: " << ec << "repush job " << job->pack_->header;
+                    reschedule(job);
                 }
             });
-        BOOST_LOG_TRIVIAL(debug) << "start job " << job->pack_->header;
+        BOOST_LOG_TRIVIAL(trace) << "start job " << job->pack_->header;
     }
 
     template<typename Callback>
@@ -210,6 +216,12 @@ public:
         net::post(io_context_, [this, job] { process_job(job); });
     }
 
+    void reschedule(job_ptr job)
+    {
+        launcher_policy_.reschedule_a_job(job);
+        net::post(io_context_, [this, job] { process_job(job); });
+    }
+
     // assumes begin -> end are sorted
     template<std::forward_iterator ForwardIterator, CanResolveZookeeper Zookeeper>
     void reconfigure(ForwardIterator begin, ForwardIterator end, Zookeeper&& zoo)
@@ -228,7 +240,7 @@ public:
 
     void start_send_reconfigure_message(fileid_worker_pair & pair, net::ip::tcp::endpoint new_proxy)
     {
-        BOOST_LOG_TRIVIAL(debug) << "start_send_reconfigure_message: " << new_proxy;
+        BOOST_LOG_TRIVIAL(trace) << "start_send_reconfigure_message: " << new_proxy;
 
         pack::packet_pointer p = std::make_shared<pack::packet>();
         p->header = pair.first;

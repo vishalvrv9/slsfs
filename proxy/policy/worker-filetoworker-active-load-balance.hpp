@@ -59,7 +59,6 @@ public:
             for (auto && [header, count] : info.file_counter)
                 count.store(0);
         }
-//        BOOST_LOG_TRIVIAL(info) << "Set most_count_file_" << worker_top_debug << ": " << most_count_file_;
     }
 
     void started_a_new_job(df::worker* worker_ptr, job_ptr job) override

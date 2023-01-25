@@ -12,6 +12,7 @@ docker run --privileged -d \
        hare1039/transport:0.0.2 \
            --listen 12001 \
            --announce $IP \
+           $VERBOSE \
            --report /tmp/proxy-report.json \
            --initint                  "$INITINT" \
            --policy-filetoworker      "$POLICY_FILETOWORKER" \

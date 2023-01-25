@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="CRETRUEV${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_2"
+TESTNAME="${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_2"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
@@ -34,12 +34,11 @@ start-proxy-remote proxy-3 noinit
 
 rm -f /tmp/slsfs-client;
 docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /tmp/slsfs-client;
-
 chmod +x /tmp/slsfs-client
 
 for h in "${hosts[@]}"; do
     ssh $h rm -f /tmp/slsfs-client || exit 0;
-    scp /tmp/slsfs-client "$h": &
+    scp /tmp/slsfs-client "$h":/tmp/slsfs-client &
 done
 wait < <(jobs -p);
 
@@ -69,7 +68,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c '/home/ubuntu/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c '/tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 

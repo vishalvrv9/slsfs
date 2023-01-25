@@ -80,8 +80,7 @@ public:
         std::string const name = uuid::encode_base64(namepack);
         std::string query = fmt::format("SELECT value FROM {} WHERE key=?", tablename_);
 
-        log::logstring(query);
-
+        log::log(query);
 
         CassStatement* statement = cass_statement_new(query.c_str(), 1);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });
@@ -118,7 +117,7 @@ public:
 
         std::string query = fmt::format("INSERT INTO {} (key, value) VALUES (?, ?);", tablename_);
 
-        log::logstring(query);
+        log::log(query);
 
         CassStatement* statement = cass_statement_new(query.c_str(), 2);
         SCOPE_DEFER([&statement]() { cass_statement_free(statement); });

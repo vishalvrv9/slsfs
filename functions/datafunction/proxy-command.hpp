@@ -80,25 +80,25 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
 
     void timer_reset()
     {
-        slsfs::log::logstring("timer_reset");
+        slsfs::log::log("timer_reset");
         recv_deadline_.cancel();
 
 //        {
 //            std::stringstream ss;
 //            ss << waittime_.count();
-//            slsfs::log::logstring(fmt::format("timer last update {} {}", log_timer(last_update_), ss.str()));
+//            slsfs::log::log("timer last update {} {}", log_timer(last_update_), ss.str());
 //        }
         std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
         recv_deadline_.expires_at(timeout_time);
-        slsfs::log::logstring(fmt::format("set timeout_time: {}", log_timer(timeout_time)));
+        slsfs::log::log("set timeout_time: {}", log_timer(timeout_time));
 
         recv_deadline_.async_wait(
             [self=this->shared_from_this(), timeout_time] (boost::system::error_code ec) {
                 if (ec)
-                    slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("now: {}, timertime: {}, msg: {}", log_timer(now()), log_timer(timeout_time), ec.message()));
+                    slsfs::log::log<slsfs::log::level::debug>("now: {}, timertime: {}, msg: {}", log_timer(now()), log_timer(timeout_time), ec.message());
                 else
                 {
-                    slsfs::log::logstring<slsfs::log::level::error>("timer_reset: read header timeout. close connection()");
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: read header timeout. close connection()");
                     self->close();
                 }
         });
@@ -125,7 +125,7 @@ public:
             pack,
             [self=shared_from_this()] (boost::system::error_code ec, std::size_t length) {
                 self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
-                slsfs::log::logstring("timer_reset: send shutdown");
+                slsfs::log::log("timer_reset: send shutdown");
                 std::exit(0);
             });
     }
@@ -139,10 +139,10 @@ public:
             [self=shared_from_this()] (boost::system::error_code const & ec, tcp::endpoint const& endpoint) {
                 self->socket_.set_option(tcp::no_delay(true));
                 if (ec)
-                    slsfs::log::logstring(fmt::format("connect to proxy error: {}", ec.message()));
+                    slsfs::log::log("connect to proxy error: {}", ec.message());
                 else
                 {
-                    slsfs::log::logstring("connected. start write and listen");
+                    slsfs::log::log("connected. start write and listen");
                     slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
                     ptr->header.type = slsfs::pack::msg_t::worker_reg;
                     ptr->header.gen();
@@ -156,19 +156,19 @@ public:
 
     void start_listen_commands()
     {
-        slsfs::log::logstring("start_listen_commands called");
+        slsfs::log::log("start_listen_commands called");
         auto readbuf = std::make_shared<std::array<slsfs::pack::unit_t, slsfs::pack::packet_header::bytesize>>();
 
         boost::asio::async_read(
             socket_, boost::asio::buffer(readbuf->data(), readbuf->size()),
             [self=this->shared_from_this(), readbuf] (boost::system::error_code ec, std::size_t /*length*/) {
-                slsfs::log::logstring("start_listen_commands get cmd");
+                slsfs::log::log("start_listen_commands get cmd");
 
                 if (not ec)
                 {
-                    slsfs::log::logstring("start_listen_commands cancel timer");
+                    slsfs::log::log("start_listen_commands cancel timer");
 
-                    slsfs::log::logstring<slsfs::log::level::debug>("get cmd");
+                    slsfs::log::log<slsfs::log::level::debug>("get cmd");
                     slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
                     pack->header.parse(readbuf->data());
 
@@ -178,7 +178,7 @@ public:
                     self->start_listen_commands_body(pack);
                 }
                 else
-                    slsfs::log::logstring(fmt::format("error listen command {}", ec.message()));
+                    slsfs::log::log("error listen command {}", ec.message());
             });
     }
 
@@ -197,7 +197,7 @@ public:
                     {
                     case slsfs::pack::msg_t::proxyjoin:
                     {
-                        slsfs::log::logstring("switch proxy master");
+                        slsfs::log::log("switch proxy master");
                         std::uint32_t addr;
                         std::memcpy(&addr, pack->data.buf.data(), sizeof(addr));
                         addr = slsfs::pack::ntoh(addr);
@@ -210,7 +210,7 @@ public:
                         {
                             std::stringstream ss;
                             ss << ep;
-                            slsfs::log::logstring(fmt::format("try connect to {}", ss.str()));
+                            slsfs::log::log("try connect to {}", ss.str());
                         }
 
                         std::list<boost::asio::ip::tcp::endpoint> ep_list {ep};
@@ -230,7 +230,7 @@ public:
                         slsfs::pack::waittime_type duration_in_ms = 0;
                         std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
                         self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
-                        slsfs::log::logstring(fmt::format("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms)));
+                        slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
                         break;
                     }
 
@@ -245,21 +245,21 @@ public:
                     {
                         std::stringstream ss;
                         ss << pack->header;
-                        slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("return: {}", ss.str()));
+                        slsfs::log::log<slsfs::log::level::debug>(fmt::format("return: {}", ss.str()));
                     }
 
                     self->start_write(ok);
                     if (pack->header.type != slsfs::pack::msg_t::set_timer)
                     {
                         self->last_update_ = now();
-                        //slsfs::log::logstring(fmt::format("last update set to: {}", log_timer(self->last_update_)));
+                        //slsfs::log::log("last update set to: {}", log_timer(self->last_update_));
                     }
 
                     self->timer_reset();
                     self->start_listen_commands();
                 }
                 else
-                    slsfs::log::logstring<slsfs::log::level::error>("start_listen_commands_body: "); // + ec.messag$
+                    slsfs::log::log<slsfs::log::level::error>("start_listen_commands_body: "); // + ec.messag$
             });
     }
 
@@ -270,12 +270,12 @@ public:
     template<typename Func>
     void start_write(slsfs::pack::packet_pointer pack, Func next)
     {
-        slsfs::log::logstring("start write");
+        slsfs::log::log("start write");
 
         auto next_warpper = std::make_shared<slsfs::socket_writer::boost_callback>(
             [self=this->shared_from_this(), next=std::move(next)] (boost::system::error_code ec, std::size_t length) {
                 if (not ec)
-                    slsfs::log::logstring("worker sent msg");
+                    slsfs::log::log("worker sent msg");
                 std::invoke(next, ec, length);
             });
 
@@ -315,7 +315,7 @@ public:
                                 self->start_write(pack);
                                 auto const end = std::chrono::high_resolution_clock::now();
                                 auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                                slsfs::log::logstring<slsfs::log::level::debug>(fmt::format("req finish in: {}", relativetime));
+                                slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
                             });
                     }
                     else
@@ -328,7 +328,7 @@ public:
                         self->start_write(pack);
                         auto const end = std::chrono::high_resolution_clock::now();
                         auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                        slsfs::log::logstring(fmt::format("req finish in: {}", relativetime));
+                        slsfs::log::log("req finish in: {}", relativetime);
                     }
                 }
             )
@@ -358,8 +358,7 @@ public:
 
         case slsfs::jsre::type_t::storagetest:
         {
-            slsfs::log::logstring("end read from storage (1000)");
-            slsfs::log::push_logs();
+            slsfs::log::log("end read from storage (1000)");
         }
 
         }
@@ -388,8 +387,7 @@ public:
 
         case slsfs::jsre::type_t::storagetest:
         {
-            slsfs::log::logstring("end read from storage (1000)");
-            slsfs::log::push_logs();
+            slsfs::log::log("end read from storage (1000)");
         }
 
         }

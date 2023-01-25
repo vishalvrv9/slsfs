@@ -27,7 +27,7 @@ public:
         boost::asio::post(
             io_,
             [self=this->shared_from_this(), pack] {
-                slsfs::log::logstring<slsfs::log::level::debug>("Start Job");
+                slsfs::log::log<slsfs::log::level::debug>("Start Job");
                 //std::invoke(self->job_, pack);
                 //self->start_write(pack);
             });

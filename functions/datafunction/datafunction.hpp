@@ -13,7 +13,7 @@ namespace slsfsdf
 
 void send_metadata(std::string const & filename)
 {
-    slsfs::log::logstring("_data_ send_metadata start");
+    slsfs::log::log("_data_ send_metadata start");
 
     auto const && [parentpath, purefilename] = slsfs::base::parsename(filename);
 
@@ -38,11 +38,6 @@ void send_metadata(std::string const & filename)
     request->data.buf = std::vector<slsfs::pack::unit_t>(v.begin(), v.end());
 
     slsfs::send_kafka(request);
-
-    slsfs::log::logstring("_data_ send_metadata sent kafka + listen kafka");
-    //slsfs::base::json done = slsfs::listen_kafka(response);
-
-    slsfs::log::logstring("_data_ send_metadata end");
 }
 
 
@@ -51,12 +46,12 @@ auto perform_single_request(storage_conf &datastorage,
                             slsfs::jsre::request_parser<slsfs::base::byte> const& input)
     -> slsfs::base::buf
 {
-    slsfs::log::logstring("_data_ perform_single_request start: ");
+    slsfs::log::log("_data_ perform_single_request start: ");
 
     using namespace std::literals;
     slsfs::base::buf response = datastorage.perform(input);
 
-    slsfs::log::logstring("_data_ perform_single_request end");
+    slsfs::log::log("_data_ perform_single_request end");
     return response;
 }
 

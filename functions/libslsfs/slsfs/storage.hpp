@@ -32,8 +32,6 @@ public:
 
     // Create file operation
     virtual void append_list_key(pack::key_t const& name, base::buf const& buffer) {};
-
-    //
     virtual void merge_list_key (pack::key_t const& name, std::function<void(std::vector<base::buf> const&)> reduce) {};
     virtual auto get_list_key   (pack::key_t const& name) -> base::buf { return {}; };
 };

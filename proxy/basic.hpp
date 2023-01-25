@@ -89,18 +89,14 @@ auto now() -> time_point {
     return std::chrono::high_resolution_clock::now();
 }
 
-void init_log()
+void init_log(boost::log::trivial::severity_level level = boost::log::trivial::info)
 {
     boost::log::add_common_attributes();
     boost::log::core::get()->add_global_attribute("Scope",
                                                   boost::log::attributes::named_scope());
-#ifdef NDEBUG
     boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::info);
-#else
-    boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::trace);
-#endif // NDEBUG
+        boost::log::trivial::severity >= level);
+
     /* log formatter: https://gist.github.com/xiongjia/e23b9572d3fc3d677e3d
      * [TimeStamp] [Severity Level] [Scope] Log message
      */

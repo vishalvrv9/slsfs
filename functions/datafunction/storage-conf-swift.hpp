@@ -28,7 +28,7 @@ public:
         {
         case slsfs::jsre::operation_t::write:
         {
-            slsfs::log::logstring("_data_ swiftkv perform_single_request get data");
+            slsfs::log::log("_data_ swiftkv perform_single_request get data");
             auto const write_buf = input.data();
             slsfs::pack::key_t const uuid = input.uuid();
 
@@ -56,15 +56,15 @@ public:
             int const realpos = input.position();
             int const blockid = realpos / blocksize();
             int const offset  = realpos % blocksize();
-            slsfs::log::logstring("_data_ swiftkv perform_single_request reading");
+            slsfs::log::log("_data_ swiftkv perform_single_request reading");
 
             std::uint32_t const size = input.size(); // input["size"].get<std::size_t>();
 
-            slsfs::log::logstring(fmt::format("_data_ swiftkv perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size)));
+            slsfs::log::log("_data_ swiftkv perform_single_request sending: {}, {}, {}, {}", blockid, offset, size, slsfs::pack::ntoh(size));
             for (std::shared_ptr<slsfs::storage::interface> host : hostlist_)
                 response = host->read_key(input.uuid(), blockid, offset, size);
 
-            slsfs::log::logstring("_data_ swiftkv perform_single_request read from ssbd");
+            slsfs::log::log("_data_ swiftkv perform_single_request read from ssbd");
             break;
         }
         }

@@ -1,6 +1,6 @@
 #pragma once
-#ifndef STORAGE_CONF_SSBD_HPP__
-#define STORAGE_CONF_SSBD_HPP__
+#ifndef STORAGE_CONF_SSBD_BASIC_ASYNC_HPP__
+#define STORAGE_CONF_SSBD_BASIC_ASYNC_HPP__
 
 #include <slsfs.hpp>
 
@@ -10,7 +10,7 @@ namespace slsfsdf
 {
 
 // Storage backend configuration for SSBD
-class storage_conf_ssbd : public storage_conf
+class storage_conf_ssbd_basic_async : public storage_conf
 {
     int replication_size_ = 3;
     static auto static_engine() -> std::mt19937&
@@ -36,7 +36,9 @@ class storage_conf_ssbd : public storage_conf
 protected:
     boost::asio::io_context &io_context_;
 public:
-    storage_conf_ssbd(boost::asio::io_context &io): io_context_{io} {}
+    storage_conf_ssbd_basic_async(boost::asio::io_context &io): io_context_{io} {}
+
+    bool use_async() override { return true; }
 
     void init(slsfs::base::json const& config) override
     {
@@ -58,7 +60,7 @@ public:
     auto headersize() -> std::uint32_t   { return 4; } // byte
     auto blocksize()  -> std::uint32_t   { return fullsize_ - headersize(); }
 
-    auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
+    void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
     {
         slsfs::base::buf response;
         switch (input.operation())
@@ -67,9 +69,9 @@ public:
         {
             auto const write_buf = input.data();
 
-            std::uint32_t realpos  = input.position();
+            std::uint32_t realpos   = input.position();
             std::uint32_t writesize = input.size(); // input["size"].get<std::size_t>();
-            std::uint32_t endpos   = realpos + writesize;
+            std::uint32_t endpos    = realpos + writesize;
             while (realpos < endpos)
             {
                 std::uint32_t blockid = realpos / blocksize();
@@ -132,8 +134,26 @@ public:
 
         return response;
     }
+
+    void start_write_key(slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                         std::function<void(slsfs::base::buf)> next)
+    {
+        auto buffer = std::make_shared<slsfs::base::buf>();
+        std::copy_n(input.data(), input.size(), std::back_inserter(*buffer));
+
+        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
+
+        auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
+        start_write_key(0, selected_host_index,
+                        uuid,
+                        version,
+                        buffer,
+                        input,
+                        next_ptr);
+    }
+
 };
 
 } // namespace slsfsdf
 
-#endif // STORAGE_CONF_SSBD_HPP__
+#endif // STORAGE_CONF_SSBD_BASIC_ASYNC_HPP__

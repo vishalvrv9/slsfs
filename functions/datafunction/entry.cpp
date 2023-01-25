@@ -51,9 +51,9 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
     }
 
     var /= size;
-    slsfs::log::logstring<slsfs::log::level::info>(fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var)));
+    slsfs::log::log<slsfs::log::level::info>("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
     for (auto && [time, count] : dist)
-        slsfs::log::logstring<slsfs::log::level::info>(fmt::format("{0} {1}: {2}", memo, time, count));
+        slsfs::log::log<slsfs::log::level::info>("{0} {1}: {2}", memo, time, count);
 }
 
 namespace slsfsdf
@@ -122,7 +122,7 @@ try
     std::string const proxyhost = input["proxyhost"].get<std::string>();
     std::string const proxyport = input["proxyport"].get<std::string>();
 
-    slsfs::log::logstring(fmt::format("connect to {}:{}", proxyhost, proxyport));
+    slsfs::log::log("connect to {}:{}", proxyhost, proxyport);
 
     boost::asio::steady_timer function_timeout{ioc};
     {
@@ -131,7 +131,7 @@ try
 ///        function_timeout.expires_from_now(20s);
         function_timeout.async_wait(
             [proxy_command_ptr] (boost::system::error_code ec) {
-                slsfs::log::logstring(fmt::format("time to die: get code: {}", ec.message()));
+                slsfs::log::log("time to die: get code: {}", ec.message());
                 proxy_command_ptr->close();
             });
     }
@@ -151,14 +151,14 @@ try
     for (std::thread& th : v)
         th.join();
 
-    slsfs::log::logstring("data function shutdown");
+    slsfs::log::log("data function shutdown");
     ow_out << "{\"finish\": \"job\"}" << std::endl;
 
     return 0;
 }
 catch (std::exception const & e)
 {
-    slsfs::log::logstring(std::string("exception thrown ") + e.what());
+    slsfs::log::log(std::string("exception thrown ") + e.what());
     std::cerr << "do function ecxception: " << e.what() << std::endl;
     return -1;
 }
@@ -170,10 +170,7 @@ int main(int argc, char *argv[])
     std::string name = fmt::format("DF:{0:4d}", slsfs::uuid::gen_rand_number());
     char const* name_cstr = name.c_str();
     slsfs::log::init(name_cstr);
-    slsfs::log::logstring("data function start");
-
-    //std::uint32_t version = std::time(nullptr);//const auto p1 = std::chrono::system_clock::now();;
-    SCOPE_DEFER([] { slsfs::log::push_logs(); });
+    slsfs::log::log("data function start");
 
 #ifdef AS_ACTIONLOOP
     namespace io = boost::iostreams;
@@ -182,7 +179,7 @@ int main(int argc, char *argv[])
     std::ostream ow_out {&fpstream};
     while (true)
     {
-        slsfs::log::logstring("starting as action loop");
+        slsfs::log::log("starting as action loop");
         //records.push_back(record([&](){ slsfsdf::do_datafunction(ow_out); }));
         int error = slsfsdf::do_datafunction(ow_out);
         if (error != 0)

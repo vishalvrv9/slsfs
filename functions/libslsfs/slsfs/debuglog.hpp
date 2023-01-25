@@ -26,7 +26,7 @@ enum class level
     none
 };
 
-namespace
+namespace detail
 {
 
 struct global_info
@@ -49,35 +49,6 @@ auto global_info_instance() -> global_info&
     return info;
 }
 
-//auto global_msg_vec() -> std::vector<std::string>&
-//{
-//    static std::vector<std::string> reg;
-//    return reg;
-//}
-
-} // namespace
-
-template<level Level = level::trace>
-void logstring(std::string const & msg);
-
-auto init(char const * &signature)
-{
-    global_info& info = global_info_instance();
-    info.start = std::chrono::high_resolution_clock::now();
-    info.signature = std::addressof(signature);
-
-    logstring(fmt::format("{} unixtime",
-                          std::chrono::duration_cast<std::chrono::nanoseconds>(
-                              info.start.time_since_epoch()).count()));
-    return info;
-}
-
-void push_logs()
-{
-//    for (std::string const &finalmsg : global_msg_vec())
-//        httpdo::logget("http://zion01:2015", finalmsg);
-}
-
 template<level Level = level::trace>
 void logstring(std::string const & msg)
 {
@@ -93,23 +64,43 @@ void logstring(std::string const & msg)
     return;
 }
 
-//auto log(base::json msg) -> slsfs::base::json
-//{
-//    auto const now = std::chrono::high_resolution_clock::now();
-//    global_info& info = global_info_instance();
-//
-//    auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(now - info.start).count();
-//
-//    std::stringstream ss;
-//    ss << "[" << relativetime << " " << (*info.signature) << "] ";
-//
-//    msg["now"] = relativetime;
-//    msg["signature"] = (*info.signature);
-//
-//    logstring(msg.dump());
-////    httpdo::logget("http://zion01:2015", msg.dump());
-//    return msg;
-//}
+} // namespace
+
+auto init(char const * &signature)
+{
+    detail::global_info& info = detail::global_info_instance();
+    info.start = std::chrono::high_resolution_clock::now();
+    info.signature = std::addressof(signature);
+
+    detail::logstring(fmt::format("{} unixtime",
+                                  std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                      info.start.time_since_epoch()).count()));
+    return info;
+}
+
+template<level Level = level::trace, typename ... Args>
+void log(fmt::format_string<Args...> fmt, Args&& ... args)
+{
+    if constexpr (detail::global_info::current_level <= Level)
+        detail::logstring(fmt::format(fmt, std::forward<Args>(args)...));
+    return;
+}
+
+template<level Level = level::trace>
+void log(std::string const& str)
+{
+    if constexpr (detail::global_info::current_level <= Level)
+        detail::logstring(str);
+    return;
+}
+
+template<level Level = level::trace>
+void log(char const* str)
+{
+    if constexpr (detail::global_info::current_level <= Level)
+        detail::logstring(str);
+    return;
+}
 
 } // namespace slsfs::log
 

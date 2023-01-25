@@ -127,7 +127,7 @@ class tcp_connection : public std::enable_shared_from_this<tcp_connection>
     net::io_context& io_context_;
     topics& topics_;
     tcp::socket socket_;
-    slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
+    slsfs::socket_writer::socket_writer<slsfs::pack::packet, std::vector<slsfs::pack::unit_t>> writer_;
     slsfs::launcher::launcher& launcher_;
 
 public:
@@ -193,7 +193,7 @@ public:
                         break;
 
                     case slsfs::pack::msg_t::trigger:
-                        BOOST_LOG_TRIVIAL(debug) << "server get new trigger " << pack->header;
+                        BOOST_LOG_TRIVIAL(trace) << "server get new trigger " << pack->header;
                         self->start_trigger(pack);
                         break;
 
@@ -233,10 +233,6 @@ public:
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t /*length*/) {
                 if (not ec)
                 {
-//                    slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-//                    resp->header = pack->header;
-//                    resp->header.type = slsfs::pack::msg_t::ack;
-//                    self->start_write(resp);
                     self->launcher_.start_trigger_post(
                         *read_buf, pack,
                         [self, pack] (slsfs::pack::packet_pointer resp) {
@@ -309,7 +305,7 @@ public:
                 if (ec)
                     BOOST_LOG_TRIVIAL(error) << "tcp conn start write error: " << ec.message();
                 else
-                    BOOST_LOG_TRIVIAL(debug) << "tcp conn worker wrote msg";
+                    BOOST_LOG_TRIVIAL(trace) << "tcp conn wrote msg";
             });
 
         writer_.start_write_socket(pack, next);
@@ -414,7 +410,20 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
         break;
     }
 
-// case "const-limit-launch"_:
+    case "max-queue"_:
+    {
+        std::regex const pattern("(\\d+):(\\d+)");
+        std::smatch match;
+        if (std::regex_search(args, match, pattern))
+        {
+            int const max_outstanding_starting_request = std::stoi(match[1]);
+            std::uint64_t const max_average_queue = std::stoull(match[2]); // queue size
+            server.set_policy_launch<slsfs::launcher::policy::max_queue>(max_outstanding_starting_request, max_average_queue);
+        }
+        else
+            throw std::runtime_error("unable to parse args for launch policy; should be max_latency:min_process");
+        break;
+    }
 //     server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
 //     break;
 //    case "prestart-one"_:
@@ -508,26 +517,28 @@ void set_policy_keepalive(tcp_server& server, std::string const& policy, std::st
 
 int main(int argc, char* argv[])
 {
-    slsfs::basic::init_log();
+    boost::log::trivial::severity_level level = boost::log::trivial::info;
 
+    std::string verbosity_values;
     namespace po = boost::program_options;
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("listen,l", po::value<unsigned short>()->default_value(12000),           "listen on this port")
-        ("init",     po::bool_switch(),                                           "reset all system (clear zookeeper entries)")
-        ("initint",  po::value<int>()->default_value(0),                          "reset all system with 0, 1")
-        ("thread",   po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
-        ("announce", po::value<std::string>(),                                    "announce this ip address for other proxy to connect")
-        ("report",   po::value<std::string>()->default_value("/dev/null"),        "path to save report every seconds")
-        ("policy-filetoworker",      po::value<std::string>(),                    "file to worker policy name")
-        ("policy-filetoworker-args", po::value<std::string>()->default_value(""), "file to worker policy name extra args")
-        ("policy-launch",            po::value<std::string>(),                    "launch policy name")
-        ("policy-launch-args",       po::value<std::string>()->default_value(""), "launch policy name extra args")
-        ("policy-keepalive",         po::value<std::string>(),                    "keepalive policy name")
-        ("policy-keepalive-args",    po::value<std::string>()->default_value(""), "keepalive policy name extra args")
-        ("worker-config",            po::value<std::string>(),                    "worker config json file path to use")
-        ("blocksize",                po::value<int>()->default_value(4096),       "worker config blocksize");
+        ("listen,l",  po::value<unsigned short>()->default_value(12000),            "listen on this port")
+        ("verbose,v", po::value<std::string>(&verbosity_values)->implicit_value(""),"log verbosity")
+        ("init",      po::bool_switch(),                                            "reset all system (clear zookeeper entries)")
+        ("initint",   po::value<int>()->default_value(0),                           "reset all system with 0, 1")
+        ("thread",    po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
+        ("announce",  po::value<std::string>(),                                     "announce this ip address for other proxy to connect")
+        ("report",    po::value<std::string>()->default_value("/dev/null"),         "path to save report every seconds")
+        ("policy-filetoworker",      po::value<std::string>(),                      "file to worker policy name")
+        ("policy-filetoworker-args", po::value<std::string>()->default_value(""),   "file to worker policy name extra args")
+        ("policy-launch",            po::value<std::string>(),                      "launch policy name")
+        ("policy-launch-args",       po::value<std::string>()->default_value(""),   "launch policy name extra args")
+        ("policy-keepalive",         po::value<std::string>(),                      "keepalive policy name")
+        ("policy-keepalive-args",    po::value<std::string>()->default_value(""),   "keepalive policy name extra args")
+        ("worker-config",            po::value<std::string>(),                      "worker config json file path to use")
+        ("blocksize",                po::value<int>()->default_value(4096),         "worker config blocksize");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -540,6 +551,14 @@ int main(int argc, char* argv[])
         BOOST_LOG_TRIVIAL(info) << desc;
         return EXIT_FAILURE;
     }
+
+    if (vm.count("verbosity"))
+        verbosity_values += "v";
+
+    int const verbosity = verbosity_values.size();
+
+    slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
+    BOOST_LOG_TRIVIAL(info) << "set verbosity=" << verbosity;
 
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
@@ -566,9 +585,6 @@ int main(int argc, char* argv[])
         template_config << worker_configuration.rdbuf();
         worker_config = (boost::format(template_config.str()) % announce % port % blocksize).str();
     }
-
-//    std::string worker_config = vm["worker-config"].as<std::string>();
-//    std::cout << worker_config << std::endl;
 
     tcp_server server{ioc, port, server_id, announce, save_report};
 

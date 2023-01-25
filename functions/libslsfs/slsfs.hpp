@@ -33,7 +33,7 @@ namespace v1
 
 void send_kafka(std::string const& uuid, base::json const& data)
 {
-    slsfs::log::logstring("send_kafka start");
+    slsfs::log::log("send_kafka start");
 
     kafka::Properties props ({
         {"bootstrap.servers",  "zion01:9092"},
@@ -48,7 +48,7 @@ void send_kafka(std::string const& uuid, base::json const& data)
                                                            kafka::NullKey,
                                                            kafka::Value(line->c_str(), line->size()));
 
-    slsfs::log::logstring("send_kafka producer.send()");
+    slsfs::log::log("send_kafka producer.send()");
     producer.send(
         record,
         // The delivery report handler
@@ -61,25 +61,25 @@ void send_kafka(std::string const& uuid, base::json const& data)
             else
                 std::cerr << "% Message delivery failed: " << error.message() << "\n";
         });
-    slsfs::log::logstring("send_kafka end");
+    slsfs::log::log("send_kafka end");
 }
 
 auto listen_kafka(std::string const& channel) -> base::json
 {
-    slsfs::log::logstring("listen_kafka start");
+    slsfs::log::log("listen_kafka start");
 
     kafka::Properties props ({
         {"bootstrap.servers",  "zion01:9092"},
         {"enable.auto.commit", "true"}
     });
 
-    slsfs::log::logstring("listen_kafka start subscribe channel");
+    slsfs::log::log("listen_kafka start subscribe channel");
     kafka::clients::KafkaConsumer consumer(props);
     consumer.subscribe({channel});
     consumer.setLogLevel(0);
     std::cerr << "listen on " << channel << "\n";
 
-    slsfs::log::logstring("listen_kafka start poll()");
+    slsfs::log::log("listen_kafka start poll()");
     std::vector<kafka::clients::consumer::ConsumerRecord> records = consumer.poll(std::chrono::milliseconds(10000));
 
     //assert(records.size() == 1);
@@ -99,7 +99,7 @@ auto listen_kafka(std::string const& channel) -> base::json
             std::cerr << "    Headers  : " << kafka::toString(record.headers()) << std::endl;
             std::cerr << "    Key   [" << record.key().toString() << "]" << std::endl;
             std::cerr << "    Value [" << record.value().toString() << "]" << std::endl;
-            slsfs::log::logstring("listen_kafka end");
+            slsfs::log::log("listen_kafka end");
             return base::decode_kafkajson(record.value().toString());
         }
         else
@@ -111,7 +111,7 @@ auto listen_kafka(std::string const& channel) -> base::json
 
 int create(char const * filename)
 {
-    slsfs::log::logstring("create start");
+    slsfs::log::log("create start");
 
     std::string const uuid = filename;// uuid::gen_uuid(filename);
 
@@ -129,7 +129,7 @@ int create(char const * filename)
 
     std::string const triggerurl = "https://zion01/api/v1/namespaces/_/triggers/"s + triggername + "?overwrite=false";
 
-    slsfs::log::logstring("create put trigger");
+    slsfs::log::log("create put trigger");
     httpdo::put(triggerurl, triggerdata.dump());
 
     std::string const providerurl="https://zion01/api/v1/namespaces/whisk.system/actions/messaging/kafkaFeed?blocking=true&result=false";
@@ -144,9 +144,9 @@ int create(char const * filename)
     using namespace std::literals;
     providerjson["triggerName"] = "/_/"s + triggername;
 
-    slsfs::log::logstring("create post provider");
+    slsfs::log::log("create post provider");
     httpdo::post(providerurl, providerjson.dump());
-    slsfs::log::logstring("create post provider end");
+    slsfs::log::log("create post provider end");
 
     std::cerr << providerjson << "post data \n";
 
@@ -160,10 +160,10 @@ int create(char const * filename)
     //"https://zion01/api/v1/namespaces/_/rules/kaf2cpp?overwrite=false";
     std::string const ruleurl = "https://zion01/api/v1/namespaces/_/rules/"s + rulename + "?overwrite=false";
 
-    slsfs::log::logstring("create put rule");
+    slsfs::log::log("create put rule");
     httpdo::put(ruleurl, ruledata.dump());
 
-    slsfs::log::logstring("create end");
+    slsfs::log::log("create end");
     return 0;
 }
 
@@ -181,7 +181,7 @@ using boost::asio::ip::tcp;
 
 void send_kafka(pack::packet_pointer payload)
 {
-    slsfs::log::logstring("send_kafka start");
+    slsfs::log::log("send_kafka start");
     return;
 
     boost::asio::io_context io_context;
@@ -191,21 +191,21 @@ void send_kafka(pack::packet_pointer payload)
 
     auto buf = payload->serialize();
 
-    slsfs::log::logstring("send_kafka producer.send()");
+    slsfs::log::log("send_kafka producer.send()");
     boost::asio::write(s, boost::asio::buffer(buf->data(), buf->size()));
-    slsfs::log::logstring("send_kafka write end");
+    slsfs::log::log("send_kafka write end");
 
     pack::packet_pointer resp = std::make_shared<pack::packet>();
     std::vector<pack::unit_t> headerbuf(pack::packet_header::bytesize);
     boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
     resp->header.parse(headerbuf.data());
-    slsfs::log::logstring("send_kafka write confirmed");
+    slsfs::log::log("send_kafka write confirmed");
 }
 
 auto listen_kafka(pack::packet_pointer response) -> base::json
 {
-    slsfs::log::logstring("listen_kafka start");
+    slsfs::log::log("listen_kafka start");
     return {};
 
     boost::asio::io_context io_context;
@@ -231,14 +231,14 @@ auto listen_kafka(pack::packet_pointer response) -> base::json
 
     std::string v (resp->data.buf.begin(), resp->data.buf.end());
     base::json vj = base::json::parse(v);
-    slsfs::log::logstring("listen_kafka get response resp: " + v);
+    slsfs::log::log("listen_kafka get response resp: " + v);
     return vj;
 }
 
 int create(char const * filename)
 {
     return 0;
-//    slsfs::log::logstring("create start");
+//    slsfs::log::log("create start");
 //
 //    auto ptr = std::make_shared<pack::packet>();
 //    std::string const url="http://zion01:2016/api/v1/namespaces/_/actions/slsfs-datafunction?blocking=false&result=false";
@@ -257,14 +257,14 @@ int create(char const * filename)
 //
 //    boost::asio::write(s, boost::asio::buffer(buf->data(), buf->size()));
 //
-//    slsfs::log::logstring("create end");
+//    slsfs::log::log("create end");
 //    return 0;
 }
 
 auto write(char const * filename, char const *data, std::size_t size, off_t off, /*struct fuse_file_info*/ void* info)
     -> std::size_t
 {
-    slsfs::log::logstring("write start");
+    slsfs::log::log("write start");
 
     pack::packet_pointer request = std::make_shared<pack::packet>();
     pack::key_t const uuid = uuid::get_uuid(filename);
@@ -279,7 +279,7 @@ auto write(char const * filename, char const *data, std::size_t size, off_t off,
 
     std::stringstream ss;
     ss << response->header;
-    slsfs::log::logstring(ss.str());
+    slsfs::log::log(ss.str());
 
     base::json jsondata;
     jsondata["filename"] = filename;
@@ -293,19 +293,19 @@ auto write(char const * filename, char const *data, std::size_t size, off_t off,
     std::string v = jsondata.dump();
     request->data.buf = std::vector<pack::unit_t>(v.begin(), v.end());
 
-    slsfs::log::logstring("write send_kafka");
+    slsfs::log::log("write send_kafka");
     send_kafka(request);
 
-    slsfs::log::logstring("write listen_kafka");
+    slsfs::log::log("write listen_kafka");
     base::json const ret = listen_kafka(response);
-    slsfs::log::logstring("write end");
+    slsfs::log::log("write end");
     return 0;
 }
 
 auto read(char const * filename, char *data, std::size_t size, off_t off, /*struct fuse_file_info*/ void* info)
     -> std::size_t
 {
-    slsfs::log::logstring("read start");
+    slsfs::log::log("read start");
     pack::packet_pointer request = std::make_shared<pack::packet>();
 
     pack::key_t const uuid = uuid::get_uuid(filename);
@@ -328,17 +328,17 @@ auto read(char const * filename, char *data, std::size_t size, off_t off, /*stru
     std::string v = jsondata.dump();
     request->data.buf = std::vector<pack::unit_t>(v.begin(), v.end());
 
-    slsfs::log::logstring("read send_kafka");
+    slsfs::log::log("read send_kafka");
     send_kafka(request);
 
-    slsfs::log::logstring("read listen_kafka");
+    slsfs::log::log("read listen_kafka");
     base::json const ret = listen_kafka(response);
     std::string const read_data = ret["data"].get<std::string>();
 
     std::size_t readsize = std::min(size, read_data.size());
     std::copy_n(read_data.begin(), readsize, data);
 
-    slsfs::log::logstring("read end");
+    slsfs::log::log("read end");
     return readsize;
 }
 
