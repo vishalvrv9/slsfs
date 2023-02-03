@@ -150,23 +150,16 @@ void read(tcp::socket &s, int pos)
 
         std::string bodybuf(resp->header.datasize, 0);
         boost::asio::read(s, boost::asio::buffer(bodybuf.data(), bodybuf.size()));
-
-        //for (int i : bodybuf)
-        //    BOOST_LOG_TRIVIAL(debug) << i << " ";
-
-        //BOOST_LOG_TRIVIAL(debug) << bodybuf << "\n";
     } // read resp
 }
 
 int main()
 {
-    basic::init_log();
+    ssbd::basic::init_log();
     boost::asio::io_context io_context;
-    tcp::socket s(io_context);
-    tcp::resolver resolver(io_context);
+    ssbd::tcp::socket s(io_context);
+    ssbd::tcp::resolver resolver(io_context);
     boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
-
-    //record([&](){ ; }, "base");
 
     std::vector<leveldb_pack::unit_t> buf(4096);
     //using ulli = unsigned long long int;

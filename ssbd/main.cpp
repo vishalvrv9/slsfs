@@ -1,6 +1,7 @@
 #include "basic.hpp"
 #include "leveldb-serializer.hpp"
 #include "rawblocks.hpp"
+#include "socket-writer.hpp"
 
 #include <boost/program_options.hpp>
 #include <boost/log/trivial.hpp>
@@ -20,17 +21,15 @@
 #include <thread>
 #include <vector>
 
-using net::ip::tcp;
+namespace ssbd
+{
 
 class tcp_connection : public std::enable_shared_from_this<tcp_connection>
 {
     net::io_context& io_context_;
     tcp::socket      socket_;
-    net::io_context::strand write_io_strand_, db_io_strand_;
 
-    oneapi::tbb::concurrent_queue<leveldb_pack::packet_pointer> write_queue_;
-    std::atomic<bool> is_writing_ = false;
-
+    slsfs::socket_writer::socket_writer<leveldb_pack::packet, std::vector<leveldb_pack::unit_t>> writer_;
     leveldb::DB& db_;
 
 public:
@@ -39,8 +38,7 @@ public:
     tcp_connection(net::io_context& io, tcp::socket socket, leveldb::DB& db):
         io_context_{io},
         socket_{std::move(socket)},
-        write_io_strand_{io},
-        db_io_strand_{io},
+        writer_{io, socket_},
         db_{db} {}
 
     void start_read_header()
@@ -172,7 +170,6 @@ public:
             io_context_,
             [self=shared_from_this(), pack] {
                 std::string value;
-                //resp->buf;
                 std::string const key = pack->header.as_string();
 
                 self->db_.Get(leveldb::ReadOptions(), key, &value);
@@ -213,47 +210,25 @@ public:
                     resp->header.type = leveldb_pack::msg_t::err;
                 }
 
-                self->start_write_socket(resp);
+
+                //self->start_write_socket(resp);
             });
     }
 
     void start_write_socket(leveldb_pack::packet_pointer pack)
     {
-        write_queue_.push(pack);
-        if (not is_writing_)
-        {
-            is_writing_.store(true);
-            start_write_one_packet();
-        }
-    }
+        auto next = std::make_shared<slsfs::socket_writer::boost_callback>(
+            [self=shared_from_this(), pack] (boost::system::error_code ec, std::size_t transferred_size) {
+                if (ec)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "write error " << ec.message() << " while " << pack->header << " size=" << transferred_size;
+                    return;
+                }
 
-    void start_write_one_packet()
-    {
-        BOOST_LOG_TRIVIAL(trace) << "start_write_one_packet";
-        leveldb_pack::packet_pointer pack;
-        if (not write_queue_.try_pop(pack))
-            is_writing_.store(false);
-        else
-        {
-            auto buf_pointer = pack->serialize();
-            BOOST_LOG_TRIVIAL(trace) << "start_write_one_packet: " << pack->header;
-            net::async_write(
-                socket_,
-                net::buffer(buf_pointer->data(), buf_pointer->size()),
-                net::bind_executor(
-                    write_io_strand_,
-                    [self=shared_from_this(), buf_pointer, pack] (boost::system::error_code ec, std::size_t transferred_size) {
-                        if (ec)
-                        {
-                            BOOST_LOG_TRIVIAL(error) << "write error " << ec.message() << " while " << pack->header << " size=" << transferred_size;
-                            self->is_writing_.store(false);
-                            return;
-                        }
+                BOOST_LOG_TRIVIAL(trace) << "write sent " << transferred_size << " bytes, count=" << self.use_count() << " " << pack->header;
+            });
 
-                        BOOST_LOG_TRIVIAL(debug) << "write sent " << transferred_size << " bytes, count=" << self.use_count() << " " << pack->header;
-                        self->start_write_one_packet();
-                    }));
-        }
+        writer_.start_write_socket(pack, next);
     }
 };
 
@@ -303,9 +278,11 @@ public:
     }
 };
 
+} // namespace ssbd
+
 int main(int argc, char* argv[])
 {
-    basic::init_log();
+    ssbd::basic::init_log();
 
     namespace po = boost::program_options;
     po::options_description desc{"Options"};
@@ -327,8 +304,8 @@ int main(int argc, char* argv[])
     }
 
     int const worker = std::thread::hardware_concurrency();
-    net::io_context ioc {worker};
-    net::signal_set listener(ioc, SIGINT, SIGTERM);
+    ssbd::net::io_context ioc {worker};
+    ssbd::net::signal_set listener(ioc, SIGINT, SIGTERM);
     listener.async_wait(
         [&ioc](boost::system::error_code const&, int signal_number) {
             BOOST_LOG_TRIVIAL(info) << "Stopping... sig=" << signal_number;
@@ -340,7 +317,7 @@ int main(int argc, char* argv[])
 
     leveldb_pack::rawblocks {}.fullsize() = size;
 
-    tcp_server server{ioc, port, "/tmp/haressbd/db.db"};
+    ssbd::tcp_server server{ioc, port, "/tmp/haressbd/db.db"};
     BOOST_LOG_TRIVIAL(info) << "listen on " << port << " block size=" << size;
 
     std::vector<std::thread> v;

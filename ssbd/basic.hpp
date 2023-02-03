@@ -81,6 +81,9 @@
 #include <fstream>
 #include <charconv>
 
+namespace ssbd
+{
+
 namespace beast = boost::beast;         // from <boost/beast.hpp>
 namespace http  = boost::beast::http;   // from <boost/beast/http.hpp>
 namespace net   = boost::asio;          // from <boost/asio.hpp>
@@ -194,5 +197,7 @@ auto hash(StringView const & s) -> long long int { return hash(s.data(), s.size(
 using strhash = long long int;
 
 }// namespace basic
+
+}// namespace ssbd
 
 #endif // BASIC_HPP__

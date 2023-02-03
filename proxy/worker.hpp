@@ -207,27 +207,27 @@ public:
                     BOOST_LOG_TRIVIAL(trace) << "worker wrote msg";
             });
 
-//        writer_.start_write_socket(job->pack_, next);
+        writer_.start_write_socket(job->pack_, next);
 
-        job->timer_.cancel();
-        using namespace std::chrono_literals;
-        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
-        timer->expires_from_now(5ms);
-        timer->async_wait(
-            [self=shared_from_this(), timer, job] (boost::system::error_code error) {
-                switch (error.value())
-                {
-                case boost::system::errc::success: // timer timeout
-                {
-                    job->state_ = launcher::job::state::finished;
-                    job->on_completion_(job->pack_);
-
-                    break;
-                }
-                default:
-                    BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message() << " on launcher start_execute_policy()";
-                }
-            });
+//        job->timer_.cancel();
+//        using namespace std::chrono_literals;
+//        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+//        timer->expires_from_now(5ms);
+//        timer->async_wait(
+//            [self=shared_from_this(), timer, job] (boost::system::error_code error) {
+//                switch (error.value())
+//                {
+//                case boost::system::errc::success: // timer timeout
+//                {
+//                    job->state_ = launcher::job::state::finished;
+//                    job->on_completion_(job->pack_);
+//
+//                    break;
+//                }
+//                default:
+//                    BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message() << " on launcher start_execute_policy()";
+//                }
+//            });
     }
 
     void start_write(pack::packet_pointer pack)

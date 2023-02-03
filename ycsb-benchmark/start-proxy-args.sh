@@ -16,7 +16,7 @@ export CLIENT_TESTNAME=100-0
 
 export BACKEND_CONFIG=/backend/cassandra-repl3.json
 export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-#export BACKEND_CONFIG=/backend/ssbd-stripe.json
+export BACKEND_CONFIG=/backend/ssbd-stripe.json
 #export BACKEND_CONFIG=/backend/ssbd-basic.json
 
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')

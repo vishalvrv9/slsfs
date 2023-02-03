@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="NOBACKEND5_3pxy_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_60"
+TESTNAME="T${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_60"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
