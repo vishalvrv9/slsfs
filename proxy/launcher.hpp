@@ -70,8 +70,8 @@ class launcher
             [this] {
                 int const should_start = launcher_policy_.get_ideal_worker_count_delta();
 
-                if (should_start != 0)
-                    BOOST_LOG_TRIVIAL(debug) << "Ideal worker count delta " << should_start;
+                //if (should_start != 0)
+                //BOOST_LOG_TRIVIAL(debug) << "Ideal worker count delta " << should_start;
                 for (int i = 0; i < should_start; i++)
                 {
                     create_worker(launcher_policy_.get_worker_config());
@@ -129,7 +129,7 @@ public:
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
 
-        BOOST_LOG_TRIVIAL(info) << "Get new worker [" << id_ << "]. Active worker count: " << worker_set_.size();
+        BOOST_LOG_TRIVIAL(info) << "Get new worker [" << worker_ptr->id_ << "]. Active worker count: " << worker_set_.size();
 
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";

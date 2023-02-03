@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_2"
+TESTNAME="NOBACKEND5_3pxy_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_60"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
@@ -55,12 +55,12 @@ while ! nc -z -v -w1 192.168.0.135 12001 2>&1 | grep -q succeeded; do
 done
 
 while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy1 192.168.0.215:12001'
+    echo 'waiting proxy2 192.168.0.215:12001'
     sleep 1;
 done
 
 while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy1 192.168.0.149:12001'
+    echo 'waiting proxy3 192.168.0.149:12001'
     sleep 1;
 done
 

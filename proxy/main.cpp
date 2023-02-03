@@ -188,7 +188,7 @@ public:
                     }
 
                     case slsfs::pack::msg_t::worker_reg:
-                        BOOST_LOG_TRIVIAL(info) << "server add worker" << pack->header;
+                        BOOST_LOG_TRIVIAL(trace) << "server add worker" << pack->header;
                         self->launcher_.add_worker(std::move(self->socket_), pack);
                         break;
 
@@ -558,7 +558,7 @@ int main(int argc, char* argv[])
     int const verbosity = verbosity_values.size();
 
     slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
-    BOOST_LOG_TRIVIAL(info) << "set verbosity=" << verbosity;
+    BOOST_LOG_TRIVIAL(trace) << "set verbosity=" << verbosity;
 
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};

@@ -5,8 +5,10 @@
 #include "worker.hpp"
 #include "storage-conf.hpp"
 #include "storage-conf-cass.hpp"
+#include "storage-conf-swift.hpp"
 #include "storage-conf-ssbd.hpp"
 #include "storage-conf-ssbd-stripe.hpp"
+#include "storage-conf-ssbd-basic-async.hpp"
 #include "proxy-command.hpp"
 
 #include <slsfs.hpp>
@@ -106,6 +108,9 @@ try
         break;
     case "ssbd-stripe"_:
         conf = std::make_shared<slsfsdf::storage_conf_ssbd_stripe>(ioc);
+        break;
+    case "ssbd-basic-async"_:
+        conf = std::make_shared<slsfsdf::storage_conf_ssbd_basic_async>(ioc);
         break;
     case "cassandra"_:
         conf = std::make_shared<slsfsdf::storage_conf_cass>();

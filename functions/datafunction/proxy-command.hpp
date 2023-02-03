@@ -6,8 +6,6 @@
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <boost/signals2.hpp>
 
-#include "storage-conf-swift.hpp"
-
 #include <slsfs.hpp>
 
 namespace slsfsdf::server
@@ -365,7 +363,8 @@ public:
         return {};
     }
 
-    void start_storage_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& single_input, std::function<void(slsfs::base::buf)> next)
+    void start_storage_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& single_input,
+                               std::function<void(slsfs::base::buf)> next)
     {
         switch (single_input.type())
         {

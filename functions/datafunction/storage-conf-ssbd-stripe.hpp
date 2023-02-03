@@ -52,7 +52,8 @@ public:
 
     bool use_async() override { return true; }
 
-    void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
+    void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                       std::function<void(slsfs::base::buf)> next) override
     {
         switch (input.operation())
         {
@@ -222,8 +223,6 @@ public:
                             input,
                             nullptr);
                 });
-
-
         }
     }
 

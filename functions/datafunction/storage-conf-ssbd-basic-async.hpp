@@ -62,39 +62,11 @@ public:
 
     void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
     {
-        slsfs::base::buf response;
         switch (input.operation())
         {
         case slsfs::jsre::operation_t::write:
         {
-            auto const write_buf = input.data();
-
-            std::uint32_t realpos   = input.position();
-            std::uint32_t writesize = input.size(); // input["size"].get<std::size_t>();
-            std::uint32_t endpos    = realpos + writesize;
-            while (realpos < endpos)
-            {
-                std::uint32_t blockid = realpos / blocksize();
-                std::uint32_t offset  = realpos % blocksize();
-                std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - realpos, blocksize());
-
-                if (offset + writesize > blocksize())
-                    blockwritesize = blocksize() - offset;
-                realpos += blockwritesize;
-
-                auto buf_ptr = std::make_shared<slsfs::base::buf>(blockwritesize);
-
-                std::copy_n(write_buf, blockwritesize, buf_ptr->begin());
-
-                auto const uuid = input.uuid_shared();
-                std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
-
-                auto it = selected_host_index.begin();
-                std::shared_ptr<slsfs::storage::interface> host = hostlist_.at(*it);
-                host->write_key(*uuid, blockid, *buf_ptr, offset, 0);
-                it++;
-            }
-            response = {'O', 'K'};
+            start_write_key(input, std::move(next));
             break;
         }
 
@@ -105,53 +77,147 @@ public:
 
         case slsfs::jsre::operation_t::read:
         {
-            std::uint32_t realpos  = input.position();
-            std::uint32_t readsize = input.size(); // input["size"].get<std::size_t>();
-            std::uint32_t endpos   = realpos + readsize;
-            while (realpos < endpos)
-            {
-                std::uint32_t blockid = realpos / blocksize();
-                std::uint32_t offset  = realpos % blocksize();
-                slsfs::log::log("_data_ perform_single_request reading");
-
-                std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - realpos, blocksize());
-                if (offset + readsize > blocksize())
-                    blockreadsize = blocksize() - offset;
-                realpos += blockreadsize;
-
-                auto const uuid = input.uuid_shared();
-                std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
-
-                slsfs::log::log("_data_ read perform_single_request sending: {}, {}, {}", blockid, offset, blockreadsize);
-                auto it = selected_host_index.begin();
-                std::shared_ptr<slsfs::storage::interface> host = hostlist_.at(*it);
-                slsfs::base::buf resp = host->read_key(input.uuid(), blockid, offset, blockreadsize);
-                response.insert(response.end(), resp.begin(), resp.end());
-            }
+            start_read_key(input, std::move(next));
             break;
         }
         }
-
-        return response;
     }
 
     void start_write_key(slsfs::jsre::request_parser<slsfs::base::byte> const& input,
                          std::function<void(slsfs::base::buf)> next)
     {
-        auto buffer = std::make_shared<slsfs::base::buf>();
-        std::copy_n(input.data(), input.size(), std::back_inserter(*buffer));
-
-        std::vector<int> const selected_host_index = select_replica(*uuid, replication_size_);
+        //slsfs::log::log("ssbd basic async start_write_key, starting with index {}", write_index);
+        auto const uuid = input.uuid_shared();
+        auto selected = hostlist_.at(select_replica(*uuid, 1).front());
 
         auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
-        start_write_key(0, selected_host_index,
-                        uuid,
-                        version,
-                        buffer,
-                        input,
-                        next_ptr);
+
+        std::uint32_t const realpos = input.position();
+        std::uint32_t const endpos  = realpos + input.size();
+
+        std::uint32_t processpos  = realpos;
+        std::uint32_t index_count = 0;
+        for (std::uint32_t index = 0; processpos < endpos; index++)
+        {
+            std::uint32_t offset = processpos % blocksize();
+            std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
+            processpos += blockwritesize;
+            index_count++;
+        }
+
+        auto outstanding_writes = std::make_shared<std::atomic<int>>(index_count);
+
+        std::uint32_t currentpos = realpos, buf_pointer = 0;
+
+        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        {
+            std::uint32_t blockid = currentpos / blocksize();
+            std::uint32_t offset  = currentpos % blocksize();
+            slsfs::log::log("ssbd basic async perform_single_request writing");
+
+            std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - currentpos, blocksize() - offset);
+
+            slsfs::log::log("ssbd basic async write perform_single_request sending: {}, {}, {}", blockid, offset, blockwritesize);
+            auto partial_buf = std::make_shared<slsfs::base::buf> (blockwritesize);
+            std::copy_n(input.data() + buf_pointer, blockwritesize, partial_buf->begin());
+
+            currentpos  += blockwritesize;
+            buf_pointer += blockwritesize;
+
+            selected->start_write_key(
+                uuid, blockid,
+                partial_buf, offset,
+                0,
+                [this, outstanding_writes, partial_buf,
+                 uuid, input, next_ptr] (slsfs::base::buf return_val) {
+                    (*outstanding_writes)--;
+
+                    // still have outstanding writes
+                    if (outstanding_writes->load() != 0)
+                        return;
+
+                    std::invoke(*next_ptr, return_val);
+                });
+        }
     }
 
+    struct buf_stat_t
+    {
+        std::atomic<bool> ready = false;
+        slsfs::base::buf  buf;
+    };
+
+    void start_read_key(slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                        std::function<void(slsfs::base::buf)> next)
+    {
+        slsfs::log::log("ssbd start_read_key");
+
+        std::uint32_t const realpos  = input.position();
+        std::uint32_t const readsize = input.size(); // input["size"].get<std::size_t>();
+        std::uint32_t const endpos   = realpos + readsize;
+
+        if (readsize == 0)
+        {
+            std::invoke(next, slsfs::base::buf{});
+            return;
+        }
+
+        auto const uuid = input.uuid_shared();
+        auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(next);
+
+        // dry run
+        std::uint32_t processpos  = realpos;
+        std::uint32_t index_count = 0;
+        for (std::uint32_t index = 0; processpos < endpos; index++)
+        {
+            std::uint32_t offset  = processpos % blocksize();
+            std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
+            processpos += blockreadsize;
+            index_count++;
+        }
+
+        auto result_accumulator = std::make_shared<oneapi::tbb::concurrent_vector<buf_stat_t>>(index_count);
+
+        std::uint32_t currentpos = realpos;
+
+        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        {
+            std::uint32_t blockid = currentpos / blocksize();
+            std::uint32_t offset  = currentpos % blocksize();
+            slsfs::log::log("_data_ perform_single_request reading");
+            std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - currentpos, blocksize() - offset);
+
+            currentpos += blockreadsize;
+            slsfs::log::log("_data_ async read perform_single_request sending: {}, {}, {}", blockid, offset, blockreadsize);
+
+            auto selected = hostlist_.at(select_replica(*uuid, 1).front());
+
+            selected->start_read_key(
+                uuid, blockid,
+                offset, blockreadsize,
+                [index, result_accumulator, next_ptr] (slsfs::base::buf b) {
+                    result_accumulator->at(index).ready = true;
+                    result_accumulator->at(index).buf   = std::move(b);
+
+                    for (buf_stat_t& bufstat : *result_accumulator)
+                        if (not bufstat.ready)
+                        {
+                            slsfs::log::log("read data have incomplete transfer. Wait for next call");
+                            return;
+                        }
+
+                    slsfs::log::log("read executing next");
+                    slsfs::base::buf collect;
+                    for (buf_stat_t& bufstat : *result_accumulator)
+                        collect.insert(collect.begin(),
+                                       bufstat.buf.begin(),
+                                       bufstat.buf.end());
+
+                    slsfs::log::log("read executing next with bufsize = {}", collect.size());
+                    std::invoke(*next_ptr, std::move(collect));
+                });
+        }
+    }
 };
 
 } // namespace slsfsdf

@@ -29,6 +29,7 @@ using worker_id = std::size_t;
 
 class worker : public std::enable_shared_from_this<worker>
 {
+    net::io_context& io_context_;
     tcp::socket socket_;
     socket_writer::socket_writer<pack::packet, std::vector<pack::unit_t>> writer_;
     std::atomic<bool> valid_ = true;
@@ -47,6 +48,7 @@ public:
 public:
     template<typename Launcher> requires IsLauncher<Launcher>
     worker(net::io_context& io, tcp::socket socket, Launcher& l):
+        io_context_{io},
         socket_{std::move(socket)},
         writer_{io, socket_}
         {
@@ -200,13 +202,32 @@ public:
                 {
                     BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
                     self->close();
-                    //self->on_worker_reschedule_(job);
                 }
                 else
                     BOOST_LOG_TRIVIAL(trace) << "worker wrote msg";
             });
 
-        writer_.start_write_socket(job->pack_, next);
+//        writer_.start_write_socket(job->pack_, next);
+
+        job->timer_.cancel();
+        using namespace std::chrono_literals;
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        timer->expires_from_now(5ms);
+        timer->async_wait(
+            [self=shared_from_this(), timer, job] (boost::system::error_code error) {
+                switch (error.value())
+                {
+                case boost::system::errc::success: // timer timeout
+                {
+                    job->state_ = launcher::job::state::finished;
+                    job->on_completion_(job->pack_);
+
+                    break;
+                }
+                default:
+                    BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message() << " on launcher start_execute_policy()";
+                }
+            });
     }
 
     void start_write(pack::packet_pointer pack)
