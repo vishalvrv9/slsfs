@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=16
+export EACH_CLIENT_ISSUE=1
+export TOTAL_CLIENT=1
 export BUFSIZE=4096
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
@@ -12,7 +12,7 @@ export UNIFORM_DIST="--uniform-dist"
 #export CLIENT_TESTNAME=50-50
 export CLIENT_TESTNAME=fill
 export CLIENT_TESTNAME=100-0
-#export CLIENT_TESTNAME=0-100
+export CLIENT_TESTNAME=0-100
 
 export BACKEND_CONFIG=/backend/cassandra-repl3.json
 export BACKEND_CONFIG=/backend/ssbd-basic-async.json

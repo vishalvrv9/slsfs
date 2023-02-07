@@ -206,12 +206,9 @@ public:
                     resp->data.buf.swap(buf);
                 }
                 else
-                {
                     resp->header.type = leveldb_pack::msg_t::err;
-                }
 
-
-                //self->start_write_socket(resp);
+                self->start_write_socket(resp);
             });
     }
 
