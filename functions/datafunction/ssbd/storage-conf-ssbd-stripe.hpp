@@ -33,7 +33,7 @@ class storage_conf_ssbd_stripe : public storage_conf_ssbd
         static_engine().seed(seeds);
 
         std::uniform_int_distribution<> dist(0, hostlist_.size() - 1);
-        auto gen = [this, &dist] () { return dist(static_engine()); };
+        auto gen = [&dist] () { return dist(static_engine()); };
 
         std::vector<int> rv(count);
         std::generate(rv.begin(), rv.end(), gen);
@@ -166,7 +166,7 @@ public:
 
         std::uint32_t processpos  = realpos;
         std::uint32_t index_count = 0;
-        for (std::uint32_t index = 0; processpos < endpos; index++)
+        while (processpos < endpos)
         {
             std::uint32_t offset = processpos % blocksize();
             std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
@@ -178,7 +178,7 @@ public:
 
         std::uint32_t currentpos = realpos, buf_pointer = 0;
 
-        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        while (currentpos < endpos)
         {
             std::uint32_t blockid = currentpos / blocksize();
             std::uint32_t offset  = currentpos % blocksize();
@@ -252,7 +252,7 @@ public:
         // dry run
         std::uint32_t processpos  = realpos;
         std::uint32_t index_count = 0;
-        for (std::uint32_t index = 0; processpos < endpos; index++)
+        while (processpos < endpos)
         {
             std::uint32_t offset  = processpos % blocksize();
             std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);

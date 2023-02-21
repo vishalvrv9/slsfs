@@ -58,13 +58,13 @@ echo starting;
 ssh ow-invoker-1
 wait < <(jobs -p);
 
-mkdir -p trace_emulator_results/$TESTNAME-result;
+mkdir -p trace_emulator_12hour/$TESTNAME-result;
 
 cp start-proxy-args.sh trace_emulator_results/$TESTNAME-result/
-scp proxy-1:/tmp/proxy-report.json trace_emulator_results/$TESTNAME-result/proxy-report-1.json
-ssh proxy-1 docker logs proxy2 2> trace_emulator_results/$TESTNAME-result/docker-log-ow-invoker-1.backup.txt
+scp proxy-1:/tmp/proxy-report.json trace_emulator_12hour/$TESTNAME-result/proxy-report-1.json
+ssh proxy-1 docker logs proxy2 2> trace_emulator_12hour/$TESTNAME-result/docker-log-ow-invoker-1.backup.txt
 wait < <(jobs -p);
 
-cd "trace_emulator_results/$TESTNAME-result/"
+cd "trace_emulator_12hour/$TESTNAME-result/"
 scp ow-invoker-1:report.csv .
 echo -e "\a finish test: $TESTNAME"

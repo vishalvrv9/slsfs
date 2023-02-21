@@ -15,7 +15,7 @@
 #include <algorithm>
 #include <random>
 
-namespace leveldb_pack
+namespace slsfs::leveldb_pack
 {
 
 namespace
@@ -46,12 +46,13 @@ enum class msg_t: std::uint16_t
     err = 0b00000000,
     ack = 0b00000001,
     get = 0b00000010,
-    merge_ack_commit     = 0b00001000,
-    merge_request_commit = 0b00001001,
-    merge_vote_agree     = 0b00001010,
-    merge_vote_abort     = 0b00001011,
-    merge_execute_commit = 0b00001100,
-    merge_rollback_commit= 0b00001101,
+    two_pc_prepare         = 0b00001000,
+    two_pc_prepare_agree   = 0b00001010,
+    two_pc_prepare_abort   = 0b00001011,
+    two_pc_commit_execute  = 0b00001100,
+    two_pc_commit_rollback = 0b00001101,
+    two_pc_commit_ack      = 0b00001110,
+    replication            = 0b00001111,
 };
 
 auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream&
@@ -98,7 +99,9 @@ auto ntoh(Integer i) -> Integer
     }
 }
 
-#pragma pack (push, 1)
+struct packet_header;
+auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&;
+
 struct packet_header
 {
     msg_t type;
@@ -122,6 +125,14 @@ struct packet_header
         std::copy(uuid.begin(), uuid.end(), std::back_inserter(key));
         key += std::to_string(blockid);
         return key;
+    }
+
+    inline
+    auto print() -> std::string
+    {
+        std::stringstream ss;
+        ss << (*this);
+        return ss.str();
     }
 
     void parse(unit_t *pos)
@@ -201,7 +212,7 @@ struct packet_header
 
     void gen() { gen_salt(); }
 };
-#pragma pack (pop)
+
 
 struct packet_header_key_hash
 {
@@ -253,7 +264,6 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
     return os;
 }
 
-#pragma pack (push, 1)
 struct packet_data
 {
     std::vector<unit_t> buf;
@@ -284,9 +294,7 @@ struct packet_data
         return pos + buf.size();
     }
 };
-#pragma pack (pop)
 
-#pragma pack (push, 1)
 struct packet
 {
     packet_header header;
@@ -310,10 +318,26 @@ struct packet
         return r;
     }
 };
-#pragma pack (pop)
 
 using packet_pointer = std::shared_ptr<packet>;
 
-} // namespace pack
+auto create_request(leveldb_pack::key_t const& name,
+                    leveldb_pack::msg_t const type,
+                    std::size_t const  partition,
+                    std::size_t const  location,
+                    std::size_t const  size) -> packet_pointer
+{
+    packet_pointer req = std::make_shared<packet>();
+    req->header.gen();
+
+    req->header.type     = type;
+    req->header.uuid     = name;
+    req->header.blockid  = partition;
+    req->header.position = location;
+    req->header.datasize = size;
+    return req;
+}
+
+} // namespace slsfs::leveldb_pack
 
 #endif // CPP_LEVELDB_SERIALIZER_OBJECTPACK_HPP__

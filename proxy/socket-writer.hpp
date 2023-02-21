@@ -83,17 +83,21 @@ public:
 namespace v2
 {
 
-template<typename PacketPointer, typename BufType>
+template<typename Packet, typename BufType>
 class socket_writer
 {
     boost::asio::io_context & io_context_;
     boost::asio::io_context::strand write_io_strand_;
-    oneapi::tbb::concurrent_queue<write_job<PacketPointer, BufType>> write_queue_;
+    oneapi::tbb::concurrent_queue<write_job<Packet, BufType>> write_queue_;
     boost::asio::ip::tcp::socket& socket_;
 
-    void start_write_one_packet()
+    void start_write_packet_with_strand() {
+        boost::asio::post(write_io_strand_, [this]() { start_write_packet(); });
+    }
+
+    void start_write_packet()
     {
-        write_job<PacketPointer, BufType> job;
+        write_job<Packet, BufType> job;
 
         if (write_queue_.try_pop(job))
         {
@@ -103,18 +107,15 @@ class socket_writer
             boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(job.bufptr->data(), job.bufptr->size()),
-                boost::asio::bind_executor(
-                    write_io_strand_,
-                    [this, job] (boost::system::error_code ec, std::size_t transferred_size) {
-                        std::invoke(*job.next, ec, transferred_size);
-                        if (ec)
-                        {
-                            BOOST_LOG_TRIVIAL(error) << "socket writer start_write_one_packet() error: " << ec.message();
-                            return;
-                        }
-
-                        start_write_one_packet();
-                    }));
+                [this, job] (boost::system::error_code ec, std::size_t transferred_size) {
+                    std::invoke(*job.next, ec, transferred_size);
+                    if (ec)
+                    {
+                        BOOST_LOG_TRIVIAL(error) << "socket writer start_write_packet() error: " << ec.message();
+                        return;
+                    }
+                    start_write_packet_with_strand();
+                });
         }
     }
 
@@ -122,21 +123,19 @@ public:
     socket_writer(boost::asio::io_context &io, boost::asio::ip::tcp::socket &s):
         io_context_{io}, write_io_strand_{io}, socket_{s} {}
 
-    void start_write_socket(PacketPointer pack,
+    void start_write_socket(std::shared_ptr<Packet> pack,
                             std::shared_ptr<boost_callback> next,
                             std::shared_ptr<BufType> bufptr = nullptr)
     {
-        bool write_in_progress = !write_queue_.empty();
         write_queue_.push(write_job(pack, bufptr, next));
-        if (not write_in_progress)
-            start_write_one_packet();
+        start_write_packet_with_strand();
     }
 };
 
 } // namespace v2
 
-template<typename PacketPointer, typename BufType>
-using socket_writer = v1::socket_writer<PacketPointer, BufType>;
+template<typename Packet, typename BufType>
+using socket_writer = v2::socket_writer<Packet, BufType>;
 
 } // namespace slsfs
 

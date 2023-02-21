@@ -16,6 +16,8 @@ protected:
     std::uint32_t fullsize_ = 4096;
 
     std::vector<std::shared_ptr<slsfs::storage::interface>> hostlist_;
+
+    virtual
     void connect()
     {
         for (std::shared_ptr<slsfs::storage::interface>& host : hostlist_)
@@ -28,7 +30,6 @@ public:
     {
         if (config.contains("blocksize"))
             fullsize_ = config["blocksize"].get<std::uint32_t>();
-
         connect();
     }
 

@@ -93,6 +93,8 @@ auto ntoh(Integer i) -> Integer
     }
 }
 
+struct packet_header;
+auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&;
 
 struct packet_header
 {
@@ -133,6 +135,14 @@ struct packet_header
     {
         gen_random_salt();
         gen_sequence();
+    }
+
+    inline
+    auto print() -> std::string
+    {
+        std::stringstream ss;
+        ss << (*this);
+        return ss.str();
     }
 
     bool empty()
@@ -272,6 +282,7 @@ auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&
 struct packet_data
 {
     std::vector<unit_t> buf;
+    //boost::asio::const_buffer buffers;
 
     void parse(std::uint32_t const& size, unit_t *pos)
     {

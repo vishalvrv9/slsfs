@@ -25,7 +25,7 @@ class storage_conf_ssbd_basic_async : public storage_conf
         static_engine().seed(seeds);
 
         std::uniform_int_distribution<> dist(0, hostlist_.size() - 1);
-        auto gen = [this, &dist] () { return dist(static_engine()); };
+        auto gen = [&dist] () { return dist(static_engine()); };
 
         std::vector<int> rv(count);
         std::generate(rv.begin(), rv.end(), gen);
@@ -57,8 +57,8 @@ public:
         storage_conf::init(config);
     }
 
-    auto headersize() -> std::uint32_t   { return 4; } // byte
-    auto blocksize()  -> std::uint32_t   { return fullsize_ - headersize(); }
+    auto headersize() -> std::uint32_t          { return 4; } // byte
+    auto blocksize()  -> std::uint32_t override { return fullsize_ - headersize(); }
 
     void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) override
     {
@@ -97,7 +97,7 @@ public:
 
         std::uint32_t processpos  = realpos;
         std::uint32_t index_count = 0;
-        for (std::uint32_t index = 0; processpos < endpos; index++)
+        while (processpos < endpos)
         {
             std::uint32_t offset = processpos % blocksize();
             std::uint32_t blockwritesize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);
@@ -109,7 +109,7 @@ public:
 
         std::uint32_t currentpos = realpos, buf_pointer = 0;
 
-        for (std::uint32_t index = 0; currentpos < endpos; index++)
+        while (currentpos < endpos)
         {
             std::uint32_t blockid = currentpos / blocksize();
             std::uint32_t offset  = currentpos % blocksize();
@@ -128,7 +128,7 @@ public:
                 uuid, blockid,
                 partial_buf, offset,
                 0,
-                [this, outstanding_writes, partial_buf,
+                [outstanding_writes, partial_buf,
                  uuid, input, next_ptr] (slsfs::base::buf return_val) {
                     (*outstanding_writes)--;
 
@@ -168,7 +168,7 @@ public:
         // dry run
         std::uint32_t processpos  = realpos;
         std::uint32_t index_count = 0;
-        for (std::uint32_t index = 0; processpos < endpos; index++)
+        while (processpos < endpos)
         {
             std::uint32_t offset  = processpos % blocksize();
             std::uint32_t blockreadsize = std::min<std::uint32_t>(endpos - processpos, blocksize() - offset);

@@ -23,6 +23,7 @@ public:
     virtual auto read_key        (pack::key_t const& name, std::size_t partition, std::size_t location, std::size_t size) -> base::buf { return {}; };
     virtual void write_key       (pack::key_t const& name, std::size_t partition, base::buf const& buffer, std::size_t location, std::uint32_t version) {};
     virtual bool check_version_ok(pack::key_t const& name, std::size_t partition, std::uint32_t& version) { return true; };
+    //virtual bool check_version_ok(pack::key_t const& name, std::size_t partition, base::buf const& version_buffer) { return true; };
 
     virtual void start_read_key        (std::shared_ptr<pack::key_t> const name, std::size_t partition, std::size_t location, std::size_t size, std::function<void(base::buf)> completeion_handler) {};
     virtual void start_write_key       (std::shared_ptr<pack::key_t> const name, std::size_t partition, std::shared_ptr<base::buf> const buffer, std::size_t location, std::uint32_t version, std::function<void(base::buf)> completeion_handler) {};

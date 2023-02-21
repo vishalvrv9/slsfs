@@ -49,17 +49,22 @@ void stats(Iterator start, Iterator end, std::string const memo = "")
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 }
 
-void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
+auto genversion() -> std::uint32_t
 {
-    auto const p1 = std::chrono::high_resolution_clock::now();
-    auto vx = std::chrono::duration_cast<std::chrono::seconds>(p1.time_since_epoch()).count();
-    std::uint32_t version = static_cast<std::uint32_t>(vx);
-    version = leveldb_pack::hton(version);
+    std::uint64_t v = std::chrono::duration_cast<std::chrono::microseconds>(
+        std::chrono::system_clock::now().time_since_epoch()).count();
+    return static_cast<std::uint32_t>(v >> 6);
+}
+
+void write(tcp::socket &s, int pos, std::vector<slsfs::leveldb_pack::unit_t>& buf)
+{
+    std::uint32_t version = genversion();
+    version = slsfs::leveldb_pack::hton(version);
 
     { // send merge_request_commit;
-        leveldb_pack::packet_pointer ptr = std::make_shared<leveldb_pack::packet>();
-        ptr->header.type = leveldb_pack::msg_t::merge_request_commit;
-        ptr->header.uuid = leveldb_pack::key_t{
+        slsfs::leveldb_pack::packet_pointer ptr = std::make_shared<slsfs::leveldb_pack::packet>();
+        ptr->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare;
+        ptr->header.uuid = slsfs::leveldb_pack::key_t{
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
@@ -69,7 +74,7 @@ void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
         ptr->header.blockid = pos / 4096;
         ptr->header.position = pos % 4096;
 
-        ptr->data.buf = std::vector<leveldb_pack::unit_t> (sizeof(version));
+        ptr->data.buf = std::vector<slsfs::leveldb_pack::unit_t> (sizeof(version));
         std::memcpy(ptr->data.buf.data(), &version, sizeof(version));
 
         auto buf = ptr->serialize();
@@ -77,25 +82,26 @@ void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
     } // send merge_request_commit;
 
     { // read resp
-        leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
-        std::vector<leveldb_pack::unit_t> headerbuf(leveldb_pack::packet_header::bytesize);
+        BOOST_LOG_TRIVIAL(trace) << "reading two_pc_prepare resp ";
+        slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+        std::vector<slsfs::leveldb_pack::unit_t> headerbuf(slsfs::leveldb_pack::packet_header::bytesize);
 
         boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
         resp->header.parse(headerbuf.data());
 
-        //BOOST_LOG_TRIVIAL(info) << "put resp " << resp->header;
+        BOOST_LOG_TRIVIAL(trace) << "two_pc_prepare resp read " << resp->header;
 
-        std::vector<leveldb_pack::unit_t> bodybuf(resp->header.datasize);
+        std::vector<slsfs::leveldb_pack::unit_t> bodybuf(resp->header.datasize);
 
         boost::asio::read(s, boost::asio::buffer(bodybuf.data(), bodybuf.size()));
         resp->data.parse(resp->header.datasize, bodybuf.data());
     } // read resp
 
-
     { // send merge_execute_commit;
-        leveldb_pack::packet_pointer ptr = std::make_shared<leveldb_pack::packet>();
-        ptr->header.type = leveldb_pack::msg_t::merge_execute_commit;
-        ptr->header.uuid = leveldb_pack::key_t{
+        BOOST_LOG_TRIVIAL(trace) << "send two_pc_commit_execute ";
+        slsfs::leveldb_pack::packet_pointer ptr = std::make_shared<slsfs::leveldb_pack::packet>();
+        ptr->header.type = slsfs::leveldb_pack::msg_t::two_pc_commit_execute;
+        ptr->header.uuid = slsfs::leveldb_pack::key_t{
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
@@ -105,7 +111,7 @@ void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
         ptr->header.blockid = pos / 4096;
         ptr->header.position = pos % 4096;
 
-        ptr->data.buf = std::vector<leveldb_pack::unit_t> (sizeof(version)+buf.size());
+        ptr->data.buf = std::vector<slsfs::leveldb_pack::unit_t> (sizeof(version)+buf.size());
         std::memcpy(ptr->data.buf.data(), &version, sizeof(version));
 
         auto buf = ptr->serialize();
@@ -113,8 +119,8 @@ void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
     } // send merge_execute_commit;
 
     { // read resp
-        leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
-        std::vector<leveldb_pack::unit_t> headerbuf(leveldb_pack::packet_header::bytesize);
+        slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+        std::vector<slsfs::leveldb_pack::unit_t> headerbuf(slsfs::leveldb_pack::packet_header::bytesize);
         boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
         resp->header.parse(headerbuf.data());
@@ -124,9 +130,9 @@ void write(tcp::socket &s, int pos, std::vector<leveldb_pack::unit_t>& buf)
 void read(tcp::socket &s, int pos)
 {
     { // send get
-        leveldb_pack::packet_pointer ptr = std::make_shared<leveldb_pack::packet>();
-        ptr->header.type = leveldb_pack::msg_t::get;
-        ptr->header.uuid = leveldb_pack::key_t{
+        slsfs::leveldb_pack::packet_pointer ptr = std::make_shared<slsfs::leveldb_pack::packet>();
+        ptr->header.type = slsfs::leveldb_pack::msg_t::get;
+        ptr->header.uuid = slsfs::leveldb_pack::key_t{
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
             7, 8, 7, 8, 7, 8, 7, 8,
@@ -141,8 +147,8 @@ void read(tcp::socket &s, int pos)
     } // send merge_execute_commit;
 
     { // read resp
-        leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
-        std::vector<leveldb_pack::unit_t> headerbuf(leveldb_pack::packet_header::bytesize);
+        slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+        std::vector<slsfs::leveldb_pack::unit_t> headerbuf(slsfs::leveldb_pack::packet_header::bytesize);
         boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
         resp->header.parse(headerbuf.data());
@@ -161,47 +167,46 @@ int main()
     ssbd::tcp::resolver resolver(io_context);
     boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
 
-    std::vector<leveldb_pack::unit_t> buf(4096);
+    std::vector<slsfs::leveldb_pack::unit_t> buf(4096);
     //using ulli = unsigned long long int;
 
     std::list<double> records;
-    for (int i=0; i<10000; i++)
-        records.push_back(record([&](){ read(s, i); }));
+//    for (int i=0; i<10000; i++)
+//        records.push_back(record([&](){ read(s, i); }));
+//    stats(records.begin(), records.end(), "read");
 
-    stats(records.begin(), records.end(), "read");
-
-    records.clear();
-    for (int i=0; i<10000; i++)
+//    records.clear();
+    for (int i=0; i<100000; i++)
         records.push_back(record([&](){ write(s, i, buf); }));
     stats(records.begin(), records.end(), "write");
 
-    records.clear();
-    for (int i=0; i<10000; i++)
-        records.push_back(
-            record(
-                [&](){
-                    boost::asio::io_context io_context;
-                    tcp::socket s(io_context);
-                    tcp::resolver resolver(io_context);
-                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
-                    read(s, i);
-                }));
-
-    stats(records.begin(), records.end(), "readnewconn");
-
-    records.clear();
-    for (int i=0; i<10000; i++)
-        records.push_back(
-            record(
-                [&](){
-                    boost::asio::io_context io_context;
-                    tcp::socket s(io_context);
-                    tcp::resolver resolver(io_context);
-                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
-
-                    write(s, i, buf);
-                }));
-    stats(records.begin(), records.end(), "writenewconn");
+//    records.clear();
+//    for (int i=0; i<10000; i++)
+//        records.push_back(
+//            record(
+//                [&](){
+//                    boost::asio::io_context io_context;
+//                    tcp::socket s(io_context);
+//                    tcp::resolver resolver(io_context);
+//                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
+//                    read(s, i);
+//                }));
+//
+//    stats(records.begin(), records.end(), "readnewconn");
+//
+//    records.clear();
+//    for (int i=0; i<10000; i++)
+//        records.push_back(
+//            record(
+//                [&](){
+//                    boost::asio::io_context io_context;
+//                    tcp::socket s(io_context);
+//                    tcp::resolver resolver(io_context);
+//                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
+//
+//                    write(s, i, buf);
+//                }));
+//    stats(records.begin(), records.end(), "writenewconn");
 
     return EXIT_SUCCESS;
 }

@@ -6,7 +6,9 @@
 #include <vector>
 #include <cstdint>
 #include <sstream>
-#include "nlohmann/json.hpp"
+#include <chrono>
+
+#include <nlohmann/json.hpp>
 #include "cppcodec/base64_url.hpp"
 
 namespace slsfs::base
@@ -84,6 +86,12 @@ auto parsename(std::string const& path) -> std::pair<std::string, std::string>
 {
     auto pos = path.find_last_of('/') + 1;
     return {path.substr(0, pos), path.substr(pos)};
+}
+
+using time_point = std::chrono::high_resolution_clock::time_point;
+
+auto now() -> time_point {
+    return std::chrono::high_resolution_clock::now();
 }
 
 } // namespace base

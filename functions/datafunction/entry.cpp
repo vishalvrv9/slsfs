@@ -6,9 +6,10 @@
 #include "storage-conf.hpp"
 #include "storage-conf-cass.hpp"
 #include "storage-conf-swift.hpp"
-#include "storage-conf-ssbd.hpp"
-#include "storage-conf-ssbd-stripe.hpp"
-#include "storage-conf-ssbd-basic-async.hpp"
+//#include "storage-conf-ssbd.hpp"
+//#include "storage-conf-ssbd-stripe.hpp"
+//#include "storage-conf-ssbd-basic-async.hpp"
+#include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
 
 #include <slsfs.hpp>
@@ -75,7 +76,7 @@ try
     using json = slsfs::base::json;
     json input;
 
-    ow_out << "{\"started\": \"nyahalo\"}" << std::endl;
+    ow_out << "{\"nya\": \"halo\"}" << std::endl;
     std::cin >> input;
 
 #ifdef AS_ACTIONLOOP
@@ -103,14 +104,17 @@ try
     switch (slsfs::sswitch::hash(storagetype))
     {
     using namespace slsfs::sswitch;
-    case "ssbd-basic"_:
-        conf = std::make_shared<slsfsdf::storage_conf_ssbd>(ioc);
-        break;
-    case "ssbd-stripe"_:
-        conf = std::make_shared<slsfsdf::storage_conf_ssbd_stripe>(ioc);
-        break;
-    case "ssbd-basic-async"_:
-        conf = std::make_shared<slsfsdf::storage_conf_ssbd_basic_async>(ioc);
+//    case "ssbd-basic"_:
+//        conf = std::make_shared<slsfsdf::storage_conf_ssbd>(ioc);
+//        break;
+//    case "ssbd-stripe"_:
+//        conf = std::make_shared<slsfsdf::storage_conf_ssbd_stripe>(ioc);
+//        break;
+//    case "ssbd-basic-async"_:
+//        conf = std::make_shared<slsfsdf::storage_conf_ssbd_basic_async>(ioc);
+//        break;
+    case "ssbd-rewrite"_:
+        conf = std::make_shared<slsfsdf::storage_conf_ssbd_backend>(ioc);
         break;
     case "cassandra"_:
         conf = std::make_shared<slsfsdf::storage_conf_cass>();

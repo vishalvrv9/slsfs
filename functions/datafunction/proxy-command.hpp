@@ -48,7 +48,7 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     std::chrono::milliseconds waittime_ = 10s;
 
     std::shared_ptr<storage_conf> datastorage_conf_;
-    slsfs::socket_writer::socket_writer<slsfs::pack::packet_pointer, std::vector<slsfs::pack::unit_t>> writer_;
+    slsfs::socket_writer::socket_writer<slsfs::pack::packet, std::vector<slsfs::pack::unit_t>> writer_;
 
     queue_map& queue_map_;
     proxy_set& proxy_set_;
@@ -81,23 +81,22 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
         slsfs::log::log("timer_reset");
         recv_deadline_.cancel();
 
-//        {
-//            std::stringstream ss;
-//            ss << waittime_.count();
-//            slsfs::log::log("timer last update {} {}", log_timer(last_update_), ss.str());
-//        }
         std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
         recv_deadline_.expires_at(timeout_time);
-        slsfs::log::log("set timeout_time: {}", log_timer(timeout_time));
-
         recv_deadline_.async_wait(
-            [self=this->shared_from_this(), timeout_time] (boost::system::error_code ec) {
-                if (ec)
-                    slsfs::log::log<slsfs::log::level::debug>("now: {}, timertime: {}, msg: {}", log_timer(now()), log_timer(timeout_time), ec.message());
-                else
+            [self=this->shared_from_this()] (boost::system::error_code ec) {
+                switch (ec.value())
                 {
-                    slsfs::log::log<slsfs::log::level::error>("timer_reset: read header timeout. close connection()");
+                case boost::system::errc::success: // timer timeout
+                {
                     self->close();
+                    break;
+                }
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
+                default:
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: read header timeout. close connection()");
+                    break;
                 }
         });
     }
@@ -240,11 +239,7 @@ public:
                     ok->header = pack->header;
                     ok->header.type = slsfs::pack::msg_t::ack;
 
-                    {
-                        std::stringstream ss;
-                        ss << pack->header;
-                        slsfs::log::log<slsfs::log::level::debug>(fmt::format("return: {}", ss.str()));
-                    }
+                    slsfs::log::log<slsfs::log::level::debug>(fmt::format("return: {}", pack->header.print()));
 
                     self->start_write(ok);
                     if (pack->header.type != slsfs::pack::msg_t::set_timer)

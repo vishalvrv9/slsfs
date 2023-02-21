@@ -68,7 +68,7 @@ public:
     const char* c_str() const { return _buf.data(); }
 
 private:
-    std::array<char, MAX_CAPACITY> _buf;
+    std::array<char, MAX_CAPACITY> _buf{};
     char*                          _wptr;
 };
 
@@ -85,4 +85,3 @@ inline void NullLogger(int /*level*/, const char* /*filename*/, int /*lineno*/, 
 }
 
 } // end of KAFKA_API
-

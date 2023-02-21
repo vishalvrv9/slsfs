@@ -77,13 +77,13 @@ public:
                             return true;
                         };
 
-        minio::s3::GetObjectResponse resp = client.GetObject(args); 
+        minio::s3::GetObjectResponse resp = client.GetObject(args);
 
         if (resp) {
             return base::to_buf(ret_val.get_future().get());
 
         } else {
-            return base::to_buf("KEYNOTFOUND");   
+            return base::to_buf("KEYNOTFOUND");
         }
     }
 
@@ -103,9 +103,6 @@ public:
     bool check_version_ok(pack::key_t const & name, std::size_t partition, std::uint32_t& version) override {return false;}
 
     // list interface  [str] -> buf
-    void append_list_key(pack::key_t const& name, base::buf const& buffer) {}
-    void merge_list_key(pack::key_t const& name, std::function<void(std::vector<base::buf> const&)> reduce) {}
-
     auto get_list_key(pack::key_t const& name) -> base::buf override
     {
         minio::s3::ListObjectsArgs args;

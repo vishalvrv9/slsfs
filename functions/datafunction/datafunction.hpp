@@ -2,8 +2,8 @@
 #ifndef DATAFUNCTION_HPP__
 #define DATAFUNCTION_HPP__
 
-#include "storage-conf-cass.hpp"
-#include "storage-conf-ssbd.hpp"
+#include "storage-conf.hpp"
+//#include "storage-conf-ssbd.hpp"
 #include "version.hpp"
 
 #include <slsfs.hpp>

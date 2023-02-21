@@ -7,7 +7,7 @@
 
 #include <leveldb/db.h>
 
-namespace leveldb_pack
+namespace slsfs::leveldb_pack
 {
 
 class rawblocks

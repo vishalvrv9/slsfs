@@ -28,7 +28,7 @@ exec-actionloop: *.cpp *.hpp
     chmod +x exec
 
 exec-debug: *.cpp *.hpp
-	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
+	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly --progress=plain \
                                    --build-arg debug=true \
                                    -f Dockerfile .. && \
     docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
@@ -40,6 +40,7 @@ exec: *.cpp *.hpp
     docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
     chmod +x exec
 
+#    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/entry.cpp.json > entry.cpp.json && \
 #test_swift: *.cpp *.hpp
 #	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
 #                                   --build-arg debug=true \

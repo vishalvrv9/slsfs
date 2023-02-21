@@ -3,20 +3,21 @@
 source avaliable-host.sh
 export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=1
+export EACH_CLIENT_ISSUE=5000
 export TOTAL_CLIENT=1
 export BUFSIZE=4096
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
 #export CLIENT_TESTNAME=50-50
-export CLIENT_TESTNAME=fill
-export CLIENT_TESTNAME=100-0
+#export CLIENT_TESTNAME=fill
 export CLIENT_TESTNAME=0-100
+#export CLIENT_TESTNAME=0-100
 
 export BACKEND_CONFIG=/backend/cassandra-repl3.json
-export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-export BACKEND_CONFIG=/backend/ssbd-stripe.json
+#export BACKEND_CONFIG=/backend/ssbd-basic-async.json
+#export BACKEND_CONFIG=/backend/ssbd-rewrite.json
+#export BACKEND_CONFIG=/backend/ssbd-stripe.json
 #export BACKEND_CONFIG=/backend/ssbd-basic.json
 
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
@@ -46,7 +47,7 @@ export POLICY_LAUNCH_ARGS=10:8000
 #export POLICY_KEEPALIVE=const-time
 #export POLICY_KEEPALIVE_ARGS=100000
 export POLICY_KEEPALIVE=moving-interval-global
-export POLICY_KEEPALIVE_ARGS=100:60000:10:50
+export POLICY_KEEPALIVE_ARGS=50:60000:88:50
 
 export INITINT=1;
 export VERBOSE='-vv'

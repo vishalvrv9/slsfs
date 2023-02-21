@@ -25,7 +25,7 @@ class storage_conf_ssbd : public storage_conf
         static_engine().seed(seeds);
 
         std::uniform_int_distribution<> dist(0, hostlist_.size() - 1);
-        auto gen = [this, &dist] () { return dist(static_engine()); };
+        auto gen = [&dist] () { return dist(static_engine()); };
 
         std::vector<int> rv(count);
         std::generate(rv.begin(), rv.end(), gen);
@@ -55,8 +55,8 @@ public:
         storage_conf::init(config);
     }
 
-    auto headersize() -> std::uint32_t   { return 4; } // byte
-    auto blocksize()  -> std::uint32_t   { return fullsize_ - headersize(); }
+    auto headersize() -> std::uint32_t          { return 4; } // byte
+    auto blocksize()  -> std::uint32_t override { return fullsize_ - headersize(); }
 
     auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {

@@ -43,7 +43,7 @@ template<typename CharType>
 struct request_parser
 {
     pack::packet_pointer pack;
-    CharType const *refdata;
+    CharType *refdata;
     request_parser(pack::packet_pointer p): pack {p}, refdata {p->data.buf.data()} {}
 
     auto type() const -> type_t
@@ -92,9 +92,12 @@ struct request_parser
     {
         return refdata + sizeof(request);
     }
+
+    auto data() -> CharType*
+    {
+        return refdata + sizeof(request);
+    }
 };
-
-
 
 } // namespace jsre
 

@@ -1,7 +1,9 @@
 
 cmake_minimum_required(VERSION 3.5.1)
-#avoid cmake adds -Wl,-search_paths_first that makes mac compiled binary segmentation fault
-set(HAVE_FLAG_SEARCH_PATHS_FIRST 0)
+
+set(CMAKE_C_COMPILER "clang")
+set(CMAKE_CXX_COMPILER "clang++")
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 project(exec)
 
@@ -44,8 +46,13 @@ add_executable(exec entry.cpp)
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 target_precompile_headers(exec PRIVATE <boost/asio.hpp>)
 target_precompile_headers(exec PRIVATE <boost/signals2.hpp>)
-target_precompile_headers(exec PRIVATE <fmt/core.h>)
+target_precompile_headers(exec PRIVATE <boost/iostreams/stream.hpp>)
 target_precompile_headers(exec PRIVATE <oneapi/tbb/concurrent_hash_map.h>)
+target_precompile_headers(exec PRIVATE <fmt/core.h>)
+target_precompile_headers(exec PRIVATE <nlohmann/json.hpp>)
+target_precompile_headers(exec PRIVATE <miniocpp/client.h>)
+target_precompile_headers(exec PRIVATE <Poco/Crypto/DigestEngine.h>)
+
 
 set(CUSTOM_LIBRARIES "-ltbb -ltbbmalloc -lminiocpp -lcurlpp -lpugixml -linih")
 
