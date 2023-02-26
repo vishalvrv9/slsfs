@@ -1,9 +1,0 @@
-[2023-02-21 14:25:32.934218] (info): YlphNwzQbuHTW58hi619yWJ5MG9p9ALPUcGdZMBk8DY= listen on 12001
-[2023-02-21 14:25:32.956570] (info): init cluster + init zookeeper
-[2023-02-21 14:25:33.001394] (info): create /slsfs: create_result{name=/slsfs}
-[2023-02-21 14:25:33.016043] (info): create /slsfs/proxy: create_result{name=/slsfs/proxy}
-[2023-02-21 14:25:33.022941] (debug): create on /slsfs/proxy/YlphNwzQbuHTW58hi619yWJ5MG9p9ALPUcGdZMBk8DY=: create_result{name=/slsfs/proxy/YlphNwzQbuHTW58hi619yWJ5MG9p9ALPUcGdZMBk8DY=}
-[2023-02-21 14:27:29.958113] (info): start_transfer [t=0|k=00000000000000000000000000000000,seq=0000,salt=0000|d=0]
-[2023-02-21 14:27:30.020138] (info): openwhisk response: {"activationId":"49a3d7f7814a4c51a3d7f7814a6c5128"}
-[2023-02-21 14:27:33.163584] (info): Get new worker [aDvljAusjKXYsr7_GKt7suVToBYaaWsFa9rfKrq5VCs=]. Active worker count: 1
-[2023-02-21 14:31:21.180303] (info): worker [aDvljAusjKXYsr7_GKt7suVToBYaaWsFa9rfKrq5VCs=] closed

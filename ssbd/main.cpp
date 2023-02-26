@@ -90,7 +90,7 @@ public:
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_agree:
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_abort:
                     {
-                        BOOST_LOG_TRIVIAL(error) << "server should not get (" << pack->header.type << "). error: " << pack->header;
+                        BOOST_LOG_TRIVIAL(error) << "server should not get (" << pack->header.type << "). " << pack->header;
                         slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
                         resp->header = pack->header;
                         resp->header.type = slsfs::leveldb_pack::msg_t::err;
@@ -115,6 +115,8 @@ public:
                     BOOST_LOG_TRIVIAL(error) << "start_two_pc_prepare: " << ec.message();
                 else
                 {
+                    BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare process packet: " << pack->header;
+
                     pack->data.parse(length, read_buf->data());
 
                     slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
@@ -126,7 +128,7 @@ public:
                     resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
                     if (rb.bind(self->db_, key).ok())
                     {
-                        slsfs::leveldb_pack::rawblocks::versionint_t requested_version;
+                        slsfs::leveldb_pack::rawblocks::versionint_t requested_version = 0;
                         std::memcpy(&requested_version, pack->data.buf.data(), sizeof(requested_version));
                         requested_version = slsfs::leveldb_pack::ntoh(requested_version);
                         if (rb.version() > requested_version)
@@ -140,10 +142,17 @@ public:
                             resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_abort;
                         }
 
-                        BOOST_LOG_TRIVIAL(debug) << "local: " << rb.version() << " req: " << requested_version;
+                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare local: " << rb.version()
+                                                 << " req: " << requested_version;
+
+                        std::memcpy(&requested_version, pack->data.buf.data(), sizeof(requested_version));
+                        slsfs::leveldb_pack::rawblocks::versionint_t sendversion = rb.version();
+                        sendversion = slsfs::leveldb_pack::ntoh(sendversion);
+                        std::memcpy(pack->data.buf.data(), &sendversion, sizeof(sendversion));
                     }
 
                     self->db_log_.Put(leveldb::WriteOptions(), key, *read_buf);
+                    BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare return packet: " << pack->header;
                     self->start_write_socket(resp);
                     self->start_read_header();
                 }

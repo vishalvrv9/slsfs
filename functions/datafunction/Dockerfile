@@ -4,7 +4,7 @@ RUN apk update && \
     apk add --no-cache \
         py3-pip cmake make ccache git wget bash g++ gcc linux-headers perl pkgconf clang llvm \
         zlib-dev openssl-dev zstd-dev build-base ninja zip unzip curl-dev curl inih-dev jq gmp-dev && \
-    pip install conan
+    pip3 install "conan==1.59"
 
 RUN git clone --branch 2022.11.14 https://github.com/Microsoft/vcpkg.git /vcpkg && \
     bash -c 'export VCPKG_FORCE_SYSTEM_BINARIES=1; /vcpkg/bootstrap-vcpkg.sh -disableMetrics'

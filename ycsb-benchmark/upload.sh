@@ -11,4 +11,4 @@ tbx services google sheets sheet create \
 tbx services google sheets sheet import \
     -id $ID \
     -data "$datafile" \
-    -range "$testname!A1:ZZ100000"
+    -range "$testname!A1:ZZZ100000"

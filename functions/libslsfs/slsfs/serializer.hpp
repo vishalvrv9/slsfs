@@ -64,7 +64,9 @@ using waittime_type = std::uint32_t;
 template<typename Integer>
 auto hton(Integer i) -> Integer
 {
-    if constexpr (sizeof(Integer) == sizeof(decltype(htonl(i))))
+    if constexpr (std::is_enum_v<Integer>)
+        return static_cast<Integer>(hton(static_cast<std::underlying_type_t<Integer>>(i)));
+    else if constexpr (sizeof(Integer) == sizeof(decltype(htonl(i))))
         return htonl(i);
     else if constexpr (sizeof(Integer) == sizeof(decltype(htons(i))))
         return htons(i);
@@ -80,7 +82,9 @@ auto hton(Integer i) -> Integer
 template<typename Integer>
 auto ntoh(Integer i) -> Integer
 {
-    if constexpr (sizeof(Integer) == sizeof(decltype(ntohl(i))))
+    if constexpr (std::is_enum_v<Integer>)
+        return static_cast<Integer>(ntoh(static_cast<std::underlying_type_t<Integer>>(i)));
+    else if constexpr (sizeof(Integer) == sizeof(decltype(ntohl(i))))
         return ntohl(i);
     else if constexpr (sizeof(Integer) == sizeof(decltype(ntohs(i))))
         return ntohs(i);
@@ -275,7 +279,7 @@ auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&
     os << ",salt=";
     for (key_t::value_type v: pd.random_salt)
         os << std::hex << static_cast<int>(v);
-    os << "|d=" << pd.datasize << "]";
+    os << "|d=" << std::dec << pd.datasize << "]";
     return os;
 }
 

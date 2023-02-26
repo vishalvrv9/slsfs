@@ -91,11 +91,14 @@ class storage_conf_ssbd_backend : public storage_conf
                 blockwritesize);
 
             request->data.buf.resize(blockwritesize + headersize());
-            std::uint32_t const v = slsfs::leveldb_pack::hton(version());
-            std::memcpy(request->data.buf.data(), &v, sizeof(v));
+            std::uint32_t const version_number = slsfs::leveldb_pack::hton(version());
+            std::memcpy(request->data.buf.data(), &version_number, sizeof(version_number));
+
             boost::asio::buffer_copy(partial_buffer_view,
                                      boost::asio::buffer(
-                                         request->data.buf.data() + headersize(), blockwritesize));
+                                         request->data.buf.data() + headersize(),
+                                         blockwritesize));
+
             currentpos += blockwritesize;
             buffer_pointer_offset += blockwritesize;
 
@@ -107,6 +110,7 @@ class storage_conf_ssbd_backend : public storage_conf
                     switch (response->header.type)
                     {
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_agree:
+                        slsfs::log::log("2pc client agreed. Left {}", (*outstanding_requests - 1));
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_abort:
@@ -126,9 +130,9 @@ class storage_conf_ssbd_backend : public storage_conf
         }
     }
 
-    void start_2pc_commit(slsfs::jsre::request_parser<slsfs::base::byte> input,
-                          bool all_ssbd_agree,
-                          slsfs::backend::ssbd::handler_ptr next)
+    void start_2pc_commit (slsfs::jsre::request_parser<slsfs::base::byte> input,
+                           bool all_ssbd_agree,
+                           slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_2pc_commit");
         std::uint32_t const realpos = input.position();
@@ -189,8 +193,8 @@ class storage_conf_ssbd_backend : public storage_conf
         }
     }
 
-    void start_replication(slsfs::jsre::request_parser<slsfs::base::byte> input,
-                           slsfs::backend::ssbd::handler_ptr next)
+    void start_replication (slsfs::jsre::request_parser<slsfs::base::byte> input,
+                            slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_replication");
         std::uint32_t const realpos = input.position();
@@ -209,6 +213,8 @@ class storage_conf_ssbd_backend : public storage_conf
             boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
                                                              blockwritesize);
 
+            currentpos += blockwritesize;
+            buffer_pointer_offset += blockwritesize;
             // we already have one copy at replica_index 0 from the 2pc part, so start at replica 1
             for (int replica_index = 1; replica_index < replication_size_; replica_index++)
             {
@@ -221,9 +227,6 @@ class storage_conf_ssbd_backend : public storage_conf
                     blockid,
                     offset,
                     blockwritesize);
-
-                currentpos += blockwritesize;
-                buffer_pointer_offset += blockwritesize;
 
                 (*outstanding_requests)++;
                 selected->start_send_request(
@@ -323,6 +326,82 @@ class storage_conf_ssbd_backend : public storage_conf
         }
     }
 
+    void start_meta_addfile (slsfs::jsre::request_parser<slsfs::base::byte> const input,
+                             slsfs::backend::ssbd::handler_ptr next)
+    {
+        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+        ptr->header.gen();
+        ptr->header.key = input.uuid();
+
+        slsfs::jsre::request read_request {
+            .type      = slsfs::jsre::type_t::file,
+            .operation = slsfs::jsre::operation_t::read,
+            .uuid      = input.uuid(),
+            .position  = 0,
+            .size      = blocksize()
+        };
+
+        read_request.to_network_format();
+        ptr->data.buf.resize(sizeof (read_request));
+        std::memcpy(ptr->data.buf.data(), &read_request, sizeof (read_request));
+
+        /*
+           Read first block: in the first block for a directory,
+           end of file list (== number of files) (network format). i.e.
+           struct slsfsdf::ssbd::meta::stats {
+               std::uint32_t files;
+               std::uint32_t last;
+           }
+
+           0: 4K block
+           [[{meta::stats}: 64 bytes], [{owner, permission, filename}: 64 bytes], ...]
+        */
+
+        auto readnext = std::make_shared<slsfs::backend::ssbd::handler>(
+            [input, next, this]
+            (slsfs::base::buf file_content) {
+                slsfs::jsre::meta::stats stat;
+                if (file_content.size() < sizeof(stat))
+                {
+                    std::invoke(*next, slsfs::base::buf {'N', 'O', 'S', 'U', 'C', 'H', 'D', 'I', 'R'});
+                    return;
+                }
+
+                // get number of files
+                std::memcpy(std::addressof(stat), file_content.data(), sizeof(stat));
+                stat.to_host_format();
+
+                // get metadata (owner, permission, filename) from request (network format)
+                slsfs::jsre::meta::filemeta meta;
+                std::memcpy(std::addressof(meta), input.data(), sizeof(meta));
+
+                std::uint32_t const position = (stat.file_count) * sizeof(meta);
+
+                // put metadata to position
+                if (position < blocksize())
+                {// update at first block => reuse file_content
+
+                    // append stat
+                    std::memcpy(file_content.data() + position,
+                                std::addressof(meta), sizeof(meta));
+
+                    stat.file_count++;
+                    stat.to_network_format();
+
+                    // update at position 0
+                    std::memcpy(file_content.data(), std::addressof(stat), sizeof(stat));
+
+                    //slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+                    //slsfs::jsre::request_parser<slsfs::base::byte> read_request_input;
+                    //start_read(read_request_input, readnext);
+                    //start_2pc_prepare()
+                }
+            });
+
+        slsfs::jsre::request_parser<slsfs::base::byte> read_request_input {ptr};
+        start_read(read_request_input, readnext);
+    }
+
 public:
     storage_conf_ssbd_backend(boost::asio::io_context& io): io_context_{io} {}
 
@@ -348,8 +427,8 @@ public:
 
     bool use_async() override { return true; }
 
-    void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input,
-                       std::function<void(slsfs::base::buf)> next) override
+    void start_perform (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                        std::function<void(slsfs::base::buf)> next) override
     {
         switch (input.operation())
         {
@@ -358,11 +437,6 @@ public:
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
             slsfs::log::log("slsfs::jsre::operation_t::write");
             start_2pc_prepare(input, next_ptr);
-            break;
-        }
-
-        case slsfs::jsre::operation_t::create:
-        {
             break;
         }
 
@@ -375,103 +449,34 @@ public:
         }
         }
     }
+
+    void start_perform_metadata (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                                 std::function<void(slsfs::base::buf)> next) override
+    {
+        switch (input.meta_operation())
+        {
+        case slsfs::jsre::meta_operation_t::addfile:
+        {
+            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
+
+            break;
+        }
+
+        case slsfs::jsre::meta_operation_t::mkdir:
+        {
+            break;
+        }
+
+        case slsfs::jsre::meta_operation_t::ls:
+        {
+            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
+            break;
+        }
+        }
+    }
 };
 
 } // namespace slsfsdf
-
-//    void start_two_pc_prepare (std::shared_ptr<pack::key_t> const name,
-//                            std::size_t const partition,
-//                            std::size_t const location,
-//                            boost::asio::mutable_buffer buffer,
-//                            std::function<void(bool)> on_check_version)
-//    {
-//        leveldb_pack::packet_pointer request = std::make_shared<leveldb_pack::packet>();
-//        request->header.gen();
-//        request->header.type = leveldb_pack::msg_t::merge_request_commit;
-//        request->header.uuid = *name;
-//        request->header.blockid = partition;
-//        request->header.position = location;
-//        std::size_t bufsize = boost::asio::buffer_size(buffer);
-//        request->data.buf.resize(bufsize);
-//
-//        boost::asio::buffer_copy(buffer, boost::asio::buffer(request->data.buf.data(), bufsize));
-//
-//        detail::job_ptr newjob = std::make_shared<detail::job> (
-//            [on_check_version=std::move(on_check_version)] (leveldb_pack::packet_pointer resptr) {
-//                bool resp_ok = false;
-//                switch (resptr->header.type)
-//                {
-//                case leveldb_pack::msg_t::merge_vote_agree:
-//                    resp_ok = true;
-//                    break;
-//
-//                case leveldb_pack::msg_t::merge_vote_abort:
-//                    break;
-//
-//                default:
-//                    log::log("unwanted header type in check response: {}", resptr->header.print());
-//                    break;
-//                }
-//                std::invoke(on_check_version, resp_ok);
-//            });
-//
-//        [[maybe_unused]]
-//        bool ok = outstanding_jobs_.emplace(request->header, newjob);
-//        assert(ok);
-//
-//        auto next = std::make_shared<socket_writer::boost_callback>(
-//            [this, request] (boost::system::error_code ec, std::size_t) {
-//                log::log("write finish");
-//
-//                if (ec)
-//                {
-//                    log::log("ssbd backend: {} have boost error: {} on start_file_check() write header {}",
-//                             host_, ec.message(), request->header.print());
-//                    return;
-//                }
-//
-//                start_read_loop();
-//            });
-//
-//        writer_.start_write_socket(request, next);
-//    }
-//
-//    void start_file_abort (std::shared_ptr<pack::key_t> const name,
-//                           std::size_t const partition,
-//                           std::function<void(base::buf)> on_response)
-//    {
-//        leveldb_pack::packet_pointer request = std::make_shared<leveldb_pack::packet>();
-//        request->header.gen();
-//        request->header.type = leveldb_pack::msg_t::merge_rollback_commit;
-//        std::copy(name->begin(), name->end(), request->header.uuid.begin());
-//        request->header.blockid = partition;
-//        request->header.position = 0;
-//
-//        detail::job_ptr newjob = std::make_shared<detail::job>(
-//            [handler=std::move(on_response)] (leveldb_pack::packet_pointer resptr) {
-//                std::invoke(handler, resptr->data.buf);
-//            });
-//
-//        [[maybe_unused]]
-//        bool ok = outstanding_jobs_.emplace(request->header, newjob);
-//        assert(ok);
-//
-//        auto next = std::make_shared<socket_writer::boost_callback>(
-//            [this, request] (boost::system::error_code ec, std::size_t) {
-//                log::log("write finish");
-//
-//                if (ec)
-//                {
-//                    log::log("ssbd backend: {}, have boost error: {}, on start_file_abort() write header {}",
-//                             host_, ec.message(), request->header.print());
-//                    return;
-//                }
-//
-//                start_read_loop();
-//            });
-//
-//        writer_.start_write_socket(request, next);
-//    }
 
 
 #endif // STORAGE_CONF_SSBD_BACKEND_HPP__

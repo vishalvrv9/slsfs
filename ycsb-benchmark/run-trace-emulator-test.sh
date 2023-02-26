@@ -10,7 +10,7 @@ ssh proxy-1 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function;' &
 bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
@@ -55,16 +55,35 @@ done
 
 echo starting;
 
+wait < <(jobs -p);
+
+mkdir -p trace_emulator_rerun/$TESTNAME-result;
+mkdir -p trace_emulator_rerun/$TESTNAME-result/activation-list/;
+
+start-watching-ow()
+{
+    for i in {1..10000}; do
+        wsk -i activation list --limit 200 --skip 0 > trace_emulator_rerun/$TESTNAME-result/activation-list/ow-activation-list-$i.txt;
+        sleep 60;
+    done
+}
+
+start-watching-ow &
+OW_WATCHING=$!
+
 ssh ow-invoker-1
+
+cp start-proxy-args.sh             trace_emulator_rerun/$TESTNAME-result/
+scp proxy-1:/tmp/proxy-report.json trace_emulator_rerun/$TESTNAME-result/proxy-report-1.json;
+ssh proxy-1 docker logs proxy2 2>  trace_emulator_rerun/$TESTNAME-result/docker-log-ow-invoker-1.backup.txt;
+
+kill $OW_WATCHING >/dev/null 2>&1
+
 wait < <(jobs -p);
 
-mkdir -p trace_emulator_12hour/$TESTNAME-result;
+cat trace_emulator_rerun/$TESTNAME-result/activation-list/*.txt \
+    | awk '!seen[$0]++' > "trace_emulator_rerun/$TESTNAME-result/activation-list.txt" && \
+    rm -r trace_emulator_rerun/$TESTNAME-result/activation-list;
 
-cp start-proxy-args.sh trace_emulator_results/$TESTNAME-result/
-scp proxy-1:/tmp/proxy-report.json trace_emulator_12hour/$TESTNAME-result/proxy-report-1.json
-ssh proxy-1 docker logs proxy2 2> trace_emulator_12hour/$TESTNAME-result/docker-log-ow-invoker-1.backup.txt
-wait < <(jobs -p);
-
-cd "trace_emulator_12hour/$TESTNAME-result/"
-scp ow-invoker-1:report.csv .
+scp ow-invoker-1:report.csv "trace_emulator_rerun/$TESTNAME-result/report.csv"
 echo -e "\a finish test: $TESTNAME"

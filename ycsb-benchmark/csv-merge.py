@@ -85,7 +85,6 @@ if __name__ == "__main__":
 
     average_runtime = good_mean([int(x[:-2]) for x in client_run_duration if x != ""])
 
-
     client_run_duration.insert(1, "")
     client_run_duration.insert(1, "{:.2f}".format(average_runtime/1000000000))
 
@@ -159,6 +158,7 @@ if __name__ == "__main__":
         summary_table_value.append(distribution[key])
 
     with open(savename, "w") as f:
+        final_table = final_table[0:50]
         writer = csv.DictWriter(f, fieldnames=final_table, extrasaction="ignore")
 
         writer.writeheader()

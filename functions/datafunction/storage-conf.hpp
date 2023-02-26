@@ -26,7 +26,9 @@ protected:
 
 public:
     virtual ~storage_conf() {}
-    virtual void init(slsfs::base::json const& config)
+
+    virtual
+    void init(slsfs::base::json const& config)
     {
         if (config.contains("blocksize"))
             fullsize_ = config["blocksize"].get<std::uint32_t>();
@@ -35,14 +37,34 @@ public:
 
     virtual auto blocksize() -> std::uint32_t { return fullsize_; }
     virtual bool use_async() { return false; }
-    virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf
+
+    virtual
+    auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input)
+        -> slsfs::base::buf
     {
         assert(false && "to use perform, please override this function");
         return {};
-    };
-    virtual void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, std::function<void(slsfs::base::buf)> next) {
-        assert(false && "to use start perform, please override this function");
-    };
+    }
+
+    virtual
+    auto perform_metadata(slsfs::jsre::request_parser<slsfs::base::byte> const& input)
+        -> slsfs::base::buf
+    {
+        assert(false && "to use perform_metadata, please override this function");
+        return {};
+    }
+
+    virtual
+    void start_perform (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                        std::function<void(slsfs::base::buf)> next) {
+        assert(false && "to use start_perform, please override this function");
+    }
+
+    virtual
+    void start_perform_metadata (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
+                                 std::function<void(slsfs::base::buf)> next) {
+        assert(false && "to use start_perform_metadata, please override this function");
+    }
 };
 
 } // namespace slsfsdf

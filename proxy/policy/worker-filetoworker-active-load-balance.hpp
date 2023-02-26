@@ -103,7 +103,7 @@ public:
 
     void start_transfer() override
     {
-        BOOST_LOG_TRIVIAL(info) << "start_transfer " << most_count_file_;
+        BOOST_LOG_TRIVIAL(trace) << "start_transfer " << most_count_file_;
         transfering_.emplace(most_count_file_, 0);
         execute();
     }

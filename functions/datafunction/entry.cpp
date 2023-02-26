@@ -1,14 +1,8 @@
 
-
-#include "datafunction.hpp"
-//#include "metadatafunction.hpp"
 #include "worker.hpp"
 #include "storage-conf.hpp"
 #include "storage-conf-cass.hpp"
 #include "storage-conf-swift.hpp"
-//#include "storage-conf-ssbd.hpp"
-//#include "storage-conf-ssbd-stripe.hpp"
-//#include "storage-conf-ssbd-basic-async.hpp"
 #include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
 
@@ -97,6 +91,11 @@ try
         }
     }
     */
+    {
+        std::stringstream ss;
+        ss << input;
+        slsfs::log::log("input json {}", ss.str());
+    }
 
     std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
 
@@ -104,16 +103,7 @@ try
     switch (slsfs::sswitch::hash(storagetype))
     {
     using namespace slsfs::sswitch;
-//    case "ssbd-basic"_:
-//        conf = std::make_shared<slsfsdf::storage_conf_ssbd>(ioc);
-//        break;
-//    case "ssbd-stripe"_:
-//        conf = std::make_shared<slsfsdf::storage_conf_ssbd_stripe>(ioc);
-//        break;
-//    case "ssbd-basic-async"_:
-//        conf = std::make_shared<slsfsdf::storage_conf_ssbd_basic_async>(ioc);
-//        break;
-    case "ssbd-rewrite"_:
+    case "ssbd"_:
         conf = std::make_shared<slsfsdf::storage_conf_ssbd_backend>(ioc);
         break;
     case "cassandra"_:
@@ -137,7 +127,6 @@ try
     {
         using namespace std::chrono_literals;
         function_timeout.expires_from_now(298s);
-///        function_timeout.expires_from_now(20s);
         function_timeout.async_wait(
             [proxy_command_ptr] (boost::system::error_code ec) {
                 slsfs::log::log("time to die: get code: {}", ec.message());
@@ -189,7 +178,6 @@ int main(int argc, char *argv[])
     while (true)
     {
         slsfs::log::log("starting as action loop");
-        //records.push_back(record([&](){ slsfsdf::do_datafunction(ow_out); }));
         int error = slsfsdf::do_datafunction(ow_out);
         if (error != 0)
             return error;

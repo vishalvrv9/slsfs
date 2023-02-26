@@ -22,6 +22,13 @@ enum class operation_t : std::int8_t
     create,
 };
 
+enum class meta_operation_t : std::int8_t
+{
+    addfile,
+    ls,
+    mkdir,
+};
+
 using key_t = pack::key_t;
 
 struct request
@@ -43,7 +50,7 @@ template<typename CharType>
 struct request_parser
 {
     pack::packet_pointer pack;
-    CharType const *refdata;
+    CharType *refdata;
     request_parser(pack::packet_pointer p): pack {p}, refdata {p->data.buf.data()} {}
 
     auto type() const -> type_t
@@ -58,6 +65,10 @@ struct request_parser
         std::underlying_type_t<operation_t> op;
         std::memcpy(&op, refdata + offsetof(request, operation), sizeof(op));
         return static_cast<operation_t>(pack::ntoh(op));
+    }
+
+    auto meta_operation() const -> meta_operation_t {
+        return static_cast<meta_operation_t>(operation());
     }
 
     auto uuid() const -> key_t
@@ -92,9 +103,12 @@ struct request_parser
     {
         return refdata + sizeof(request);
     }
+
+    auto data() -> CharType*
+    {
+        return refdata + sizeof(request);
+    }
 };
-
-
 
 } // namespace jsre
 

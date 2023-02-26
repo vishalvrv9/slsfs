@@ -424,28 +424,6 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
             throw std::runtime_error("unable to parse args for launch policy; should be max_latency:min_process");
         break;
     }
-//     server.set_policy_launch<slsfs::launcher::policy::const_limit_launch>(std::stoi(args));
-//     break;
-//    case "prestart-one"_:
-//    {
-//        server.set_policy_launch<slsfs::launcher::policy::prestart_one>(std::stoi(args));
-//        break;
-//    }
-//    case "adaptive-max-load"_:
-//    {
-//        std::regex pattern("(\\d+):(\\d+):(\\d+)");
-//        std::smatch match;
-//        if (std::regex_search(args, match, pattern))
-//        {
-//            int const max_latency      = std::stoi(match[1]);
-//            int const min_process_rate = std::stoi(match[2]);
-//            unsigned int const max_outstanding_starting_request = std::stoi(match[3]);
-//            server.set_policy_launch<slsfs::launcher::policy::adaptive_max_load>(max_latency, min_process_rate, max_outstanding_starting_request);
-//        }
-//        else
-//            throw std::runtime_error("unable to parse args; should be max_latency:min_process");
-//        break;
-//    }
     default:
         using namespace std::string_literals;
         throw std::runtime_error("unknown launch policy: "s + policy);

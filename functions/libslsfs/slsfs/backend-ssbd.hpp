@@ -3,7 +3,6 @@
 #ifndef SLSFS_BACKEND_SSBD_HPP__
 #define SLSFS_BACKEND_SSBD_HPP__
 
-//#include "backend.hpp"
 #include "storage.hpp"
 #include "basetypes.hpp"
 #include "scope-exit.hpp"
@@ -73,14 +72,16 @@ class ssbd
     {
         leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
         auto headerbuf = std::make_shared<std::vector<leveldb_pack::unit_t>> (leveldb_pack::packet_header::bytesize);
-        log::log("async_read read head called headersize: {}", leveldb_pack::packet_header::bytesize);
+        log::log("backend ssbd start_read_one called headersize: {}", leveldb_pack::packet_header::bytesize);
         boost::asio::async_read(
             socket_,
             boost::asio::buffer(headerbuf->data(), headerbuf->size()),
-            [this, resp, headerbuf] (boost::system::error_code const& ec, std::size_t transferred_size) {
+            [this, resp, headerbuf]
+            (boost::system::error_code const& ec, std::size_t transferred_size) {
                 if (ec)
                 {
-                    log::log("ssbd backend: {} have boost error: {} on start_read_one() header {}", host_, ec.message(), resp->header.print());
+                    log::log("ssbd backend: {} have boost error: {} on start_read_one() header {}",
+                             host_, ec.message(), resp->header.print());
                     start_read_one();
                     return;
                 }
@@ -128,7 +129,8 @@ public:
         host_{host}, port_{port},
         writer_{io, socket_} {}
 
-    using handler_ptr = std::shared_ptr<std::function<void(base::buf)>>;
+    using handler     = std::function<void(base::buf)>;
+    using handler_ptr = std::shared_ptr<handler>;
 
     void connect()
     {
@@ -140,6 +142,7 @@ public:
     void start_send_request (leveldb_pack::packet_pointer request,
                              std::function<void(leveldb_pack::packet_pointer)> on_response)
     {
+        log::log("ssbd backend start_send_request: {}", request->header.print());
         detail::job_ptr newjob = std::make_shared<detail::job>(
             [on_response=std::move(on_response)] (leveldb_pack::packet_pointer resp) {
                 std::invoke(on_response, resp);
@@ -159,12 +162,17 @@ public:
                 }
                 start_read_loop();
             });
-        writer_.start_write_socket(request, next, request->serialize_header());
-    }
 
-    void start_meta_append (std::shared_ptr<pack::key_t> const name, boost::asio::mutable_buffer buffer, std::function<void(base::buf)> on_metadata_addend) {}
-    void start_meta_update (std::shared_ptr<pack::key_t> const name, boost::asio::mutable_buffer buffer, std::function<void(base::buf)> on_metadata_update) {}
-    void start_meta_remove (std::shared_ptr<pack::key_t> const name, std::function<void(base::buf)> on_metadata_remove) {}
+        switch (request->header.type)
+        {
+        case leveldb_pack::msg_t::get:
+            // read request use header size as data size to read
+            writer_.start_write_socket(request, next, request->serialize_header());
+            break;
+        default:
+            writer_.start_write_socket(request, next);
+        }
+    }
 };
 
 } // namespace slsfs::backend

@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="L2${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_P+skip_H+${#hosts[@]}_TH+${TOTAL_CLIENT}_60"
+TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
@@ -10,7 +10,7 @@ ssh proxy-3 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function;' &
 bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
 start-proxy-remote()
@@ -68,7 +68,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c '/tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 

@@ -46,11 +46,6 @@ public:
             break;
         }
 
-        case slsfs::jsre::operation_t::create:
-        {
-            break;
-        }
-
         case slsfs::jsre::operation_t::read:
         {
             int const realpos = input.position();

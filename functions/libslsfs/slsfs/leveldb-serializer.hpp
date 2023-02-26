@@ -260,7 +260,7 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
     os << ",salt=";
     for (int i : pd.salt)
         os << std::hex << i;
-    os << "|datasize=" << pd.datasize << "]";
+    os << "|datasize=" << std::dec << pd.datasize << "]";
     return os;
 }
 

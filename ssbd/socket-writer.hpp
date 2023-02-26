@@ -104,6 +104,8 @@ class socket_writer
             if (job.bufptr == nullptr)
                 job.bufptr = job.pack->serialize();
 
+            BOOST_LOG_TRIVIAL(trace) << "Writing packet to socket:" << job.pack->header << "datasize=" << job.pack->data.buf.size();
+
             boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(job.bufptr->data(), job.bufptr->size()),

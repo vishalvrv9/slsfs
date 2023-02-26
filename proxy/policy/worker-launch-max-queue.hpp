@@ -20,13 +20,13 @@ class max_queue : public worker_launch
 public:
     max_queue(int max_outstanding_starting_request, std::uint64_t max_queue):
         worker_launch{max_outstanding_starting_request},
-        max_average_queue_ {max_queue /*kbps*/ * 1024} {}
+        max_average_queue_ {max_queue /*kb*/ * 1024} {}
 
     void execute() override
     {
         ideal_worker_count_.store(queue_size_ / max_average_queue_);
 
-        BOOST_LOG_TRIVIAL(trace) << "queue size: " << queue_size_
+        BOOST_LOG_TRIVIAL(debug) << "queue size: " << queue_size_
                                  << " get_ideal_worker_count: " << ideal_worker_count_;
     }
 

@@ -7,6 +7,51 @@
 namespace slsfs::jsre
 {
 
+namespace meta
+{
+
+constexpr int filemeta_size = 64;
+
+struct stats
+{
+    std::uint32_t file_count;
+    std::array<slsfs::base::byte,
+               filemeta_size - sizeof(file_count)> reserved;
+
+    void to_network_format() {
+        file_count = slsfs::pack::hton(file_count);
+    }
+
+    void to_host_format() {
+        file_count = slsfs::pack::ntoh(file_count);
+    }
+};
+
+struct filemeta
+{
+    std::uint16_t owner;
+    std::uint16_t permission;
+    std::uint16_t reserved;
+    std::array<slsfs::base::byte,
+               filemeta_size - sizeof(owner) - sizeof(permission)> filename;
+
+    void to_network_format()
+    {
+        owner      = slsfs::pack::hton(owner);
+        permission = slsfs::pack::hton(permission);
+        reserved   = slsfs::pack::hton(reserved);
+    }
+
+    void to_host_format()
+    {
+        owner      = slsfs::pack::ntoh(owner);
+        permission = slsfs::pack::ntoh(permission);
+        reserved   = slsfs::pack::ntoh(reserved);
+    }
+};
+
+} // namespace meta
+
 enum class type_t : std::int8_t
 {
     file,
@@ -19,7 +64,13 @@ enum class operation_t : std::int8_t
 {
     write,
     read,
-    create,
+};
+
+enum class meta_operation_t : std::int8_t
+{
+    addfile,
+    ls,
+    mkdir,
 };
 
 using key_t = pack::key_t;
@@ -34,8 +85,18 @@ struct request
 
     void to_network_format()
     {
+        type     = pack::hton<type_t>(type);
+        operation= pack::hton<operation_t>(operation);
         position = pack::hton(position);
         size     = pack::hton(size);
+    }
+
+    void to_host_format()
+    {
+        type     = pack::ntoh<type_t>(type);
+        operation= pack::ntoh<operation_t>(operation);
+        position = pack::ntoh(position);
+        size     = pack::ntoh(size);
     }
 };
 
@@ -45,6 +106,17 @@ struct request_parser
     pack::packet_pointer pack;
     CharType *refdata;
     request_parser(pack::packet_pointer p): pack {p}, refdata {p->data.buf.data()} {}
+
+    auto copy_request() -> request
+    {
+        return request {
+            .type      = type(),
+            .operation = operation(),
+            .uuid      = uuid(),
+            .position  = position(),
+            .size      = size(),
+        };
+    }
 
     auto type() const -> type_t
     {
@@ -58,6 +130,10 @@ struct request_parser
         std::underlying_type_t<operation_t> op;
         std::memcpy(&op, refdata + offsetof(request, operation), sizeof(op));
         return static_cast<operation_t>(pack::ntoh(op));
+    }
+
+    auto meta_operation() const -> meta_operation_t {
+        return static_cast<meta_operation_t>(operation());
     }
 
     auto uuid() const -> key_t

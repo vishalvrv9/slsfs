@@ -161,7 +161,9 @@ public:
             [self=this->shared_from_this(), readbuf] (boost::system::error_code ec, std::size_t /*length*/) {
                 slsfs::log::log("start_listen_commands get cmd");
 
-                if (not ec)
+                if (ec)
+                    slsfs::log::log("error listen command {}", ec.message());
+                else
                 {
                     slsfs::log::log("start_listen_commands cancel timer");
 
@@ -174,8 +176,6 @@ public:
 
                     self->start_listen_commands_body(pack);
                 }
-                else
-                    slsfs::log::log("error listen command {}", ec.message());
             });
     }
 
@@ -239,14 +239,11 @@ public:
                     ok->header = pack->header;
                     ok->header.type = slsfs::pack::msg_t::ack;
 
-                    slsfs::log::log<slsfs::log::level::debug>(fmt::format("return: {}", pack->header.print()));
+                    slsfs::log::log<slsfs::log::level::debug>(fmt::format("ACK ok for: {}", pack->header.print()));
 
                     self->start_write(ok);
                     if (pack->header.type != slsfs::pack::msg_t::set_timer)
-                    {
                         self->last_update_ = now();
-                        //slsfs::log::log("last update set to: {}", log_timer(self->last_update_));
-                    }
 
                     self->timer_reset();
                     self->start_listen_commands();
@@ -266,7 +263,8 @@ public:
         slsfs::log::log("start write");
 
         auto next_warpper = std::make_shared<slsfs::socket_writer::boost_callback>(
-            [self=this->shared_from_this(), next=std::move(next)] (boost::system::error_code ec, std::size_t length) {
+            [self=this->shared_from_this(), next=std::move(next)]
+            (boost::system::error_code ec, std::size_t length) {
                 if (not ec)
                     slsfs::log::log("worker sent msg");
                 std::invoke(next, ec, length);
@@ -295,6 +293,8 @@ public:
                     auto const start = std::chrono::high_resolution_clock::now();
 
                     slsfs::jsre::request_parser<slsfs::base::byte> input {pack};
+
+                    slsfs::log::log("process request: {}", pack->header.print());
 
                     if (self->datastorage_conf_->use_async())
                     {
@@ -334,26 +334,16 @@ public:
         switch (single_input.type())
         {
         case slsfs::jsre::type_t::file:
-        {
-            return slsfsdf::perform_single_request(*datastorage_conf_.get(), single_input);
+            return datastorage_conf_->perform(single_input);
             break;
-        }
 
         case slsfs::jsre::type_t::metadata:
-        {
+            return datastorage_conf_->perform(single_input);
             break;
-        }
 
         case slsfs::jsre::type_t::wakeup:
-        {
-            break;
-        }
-
         case slsfs::jsre::type_t::storagetest:
-        {
-            slsfs::log::log("end read from storage (1000)");
-        }
-
+            break;
         }
         return {};
     }
@@ -364,26 +354,18 @@ public:
         switch (single_input.type())
         {
         case slsfs::jsre::type_t::file:
-        {
             datastorage_conf_->start_perform(single_input, std::move(next));
             break;
-        }
 
         case slsfs::jsre::type_t::metadata:
-        {
+            datastorage_conf_->start_perform(single_input, std::move(next));
             break;
-        }
 
         case slsfs::jsre::type_t::wakeup:
-        {
             break;
-        }
 
         case slsfs::jsre::type_t::storagetest:
-        {
             slsfs::log::log("end read from storage (1000)");
-        }
-
         }
     }
 };

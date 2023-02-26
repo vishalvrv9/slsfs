@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts1[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=5000
-export TOTAL_CLIENT=1
+export EACH_CLIENT_ISSUE=2000
+export TOTAL_CLIENT=16
 export BUFSIZE=4096
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
@@ -14,11 +14,15 @@ export UNIFORM_DIST="--uniform-dist"
 export CLIENT_TESTNAME=0-100
 #export CLIENT_TESTNAME=0-100
 
-export BACKEND_CONFIG=/backend/cassandra-repl3.json
+#export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-#export BACKEND_CONFIG=/backend/ssbd-rewrite.json
+export BACKEND_CONFIG=/backend/ssbd.json
+#export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json
 #export BACKEND_CONFIG=/backend/ssbd-basic.json
+
+export MEMO="Proxy3+2kb"
+export MEMO="T"
 
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
 export BACKEND_BLOCKSIZE=4096
@@ -39,9 +43,7 @@ export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
 export POLICY_LAUNCH=max-queue
-export POLICY_LAUNCH_ARGS=10:80
-export POLICY_LAUNCH_ARGS=10:8000
-#export POLICY_LAUNCH_ARGS=10:3
+export POLICY_LAUNCH_ARGS=10:2 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -50,4 +52,4 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=50:60000:88:50
 
 export INITINT=1;
-export VERBOSE='-vv'
+export VERBOSE='-v'
