@@ -5,4 +5,6 @@ args.txt
 
 ycsb-benchmark/*result*
 ycsb-benchmark/block-mappings-to-psb
-ycsb-benchmark/trace_emulator_csv
+ycsb-benchmark/trace_emulator_csv/
+ycsb-benchmark/trace_emulator_12hour/
+ycsb-benchmark/trace_emulator_rerun/
