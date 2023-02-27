@@ -49,7 +49,7 @@ export POLICY_LAUNCH_ARGS=10:2 #average queue = 2kb
 #export POLICY_KEEPALIVE=const-time
 #export POLICY_KEEPALIVE_ARGS=100000
 export POLICY_KEEPALIVE=moving-interval-global
-export POLICY_KEEPALIVE_ARGS=50:60000:88:50
+export POLICY_KEEPALIVE_ARGS=100:60000:10:50
 
 export INITINT=1;
 export VERBOSE='-v'

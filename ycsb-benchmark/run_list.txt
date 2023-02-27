@@ -1,5 +1,5 @@
-01qqaww4_2_files.csv 
-7xjpt3h0_normal.csv
+01qqaww4_2_files.csv   [finish]
+7xjpt3h0_normal.csv    [running]
 66wilvut_sparse_15.csv
 Oinsggn2_peak_hour.csv
 klaljqcy_constload.csv
