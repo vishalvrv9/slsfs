@@ -8,9 +8,9 @@ ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function;' &
+bash -c 'cd ../functions/datafunction; make function-debug;' &
 bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd;  make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
 start-proxy-remote()
@@ -28,8 +28,8 @@ start-proxy-remote()
 echo starting remote hosts
 
 start-proxy-remote proxy-1
-start-proxy-remote proxy-2 noinit
-start-proxy-remote proxy-3 noinit
+#start-proxy-remote proxy-2 noinit
+#start-proxy-remote proxy-3 noinit
 #./start-proxy.sh
 
 rm -f /tmp/slsfs-client;
@@ -37,8 +37,8 @@ docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /t
 chmod +x /tmp/slsfs-client
 
 for h in "${hosts[@]}"; do
-    ssh $h rm -f /tmp/slsfs-client || exit 0;
-    scp /tmp/slsfs-client "$h":/tmp/slsfs-client &
+    ssh $h rm -f /tmp/slsfs-client;
+    scp /tmp/slsfs-client "$h":/tmp/slsfs-client;
 done
 wait < <(jobs -p);
 
@@ -54,15 +54,15 @@ while ! nc -z -v -w1 192.168.0.135 12001 2>&1 | grep -q succeeded; do
     sleep 1;
 done
 
-while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy2 192.168.0.215:12001'
-    sleep 1;
-done
-
-while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy3 192.168.0.149:12001'
-    sleep 1;
-done
+#while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
+#    echo 'waiting proxy2 192.168.0.215:12001'
+#    sleep 1;
+#done
+#
+#while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
+#    echo 'waiting proxy3 192.168.0.149:12001'
+#    sleep 1;
+#done
 
 echo starting;
 

@@ -158,7 +158,7 @@ public:
 
     void process_job(job_ptr job)
     {
-        BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
+        //BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
 
         df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(job->pack_);
         if (!worker_ptr || not worker_ptr->is_valid())
@@ -168,7 +168,7 @@ public:
             // no available worker. Re-scheduling request
             if (!worker_ptr || not worker_ptr->is_valid())
             {
-                BOOST_LOG_TRIVIAL(trace) << "No available worker. Re-scheduling request";
+                //BOOST_LOG_TRIVIAL(trace) << "No available worker. Re-scheduling request";
                 //start_create_worker_with_policy();
                 reschedule(job);
                 return;

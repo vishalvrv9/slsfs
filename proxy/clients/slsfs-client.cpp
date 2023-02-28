@@ -152,7 +152,7 @@ auto iotest (int const times, int const bufsize,
 
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
-        if (rwdist.at(dist(engine)))
+        if (rwdist.at(dist(engine)) == 1)
             r.operation = slsfs::jsre::operation_t::read;
         else
             r.operation = slsfs::jsre::operation_t::write;

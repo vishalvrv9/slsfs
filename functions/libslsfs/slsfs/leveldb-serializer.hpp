@@ -39,6 +39,7 @@ void hash_range(std::size_t& seed, It first, It last)
 using unit_t = unsigned char; // exp
 static_assert(sizeof(unit_t) == 8/8);
 using buffer_t = std::vector<unit_t>;
+using versionint_t = std::uint32_t;
 
 // key = [32] byte main key // sha256 bit
 using key_t = std::array<unit_t, 256 / 8 / sizeof(unit_t)>;
@@ -110,7 +111,7 @@ struct packet_header
     std::uint32_t blockid;
     std::uint16_t position;
     std::uint32_t datasize;
-    std::uint32_t version;
+    versionint_t version;
     std::array<unit_t, 4> salt;
 
     static constexpr int bytesize =
@@ -267,8 +268,8 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
         os << std::hex << static_cast<int>(v);
     os << ",blkid=" << std::hex << pd.blockid;
     os << ",position=" << std::hex << pd.position;
+    os << ",version=" << std::hex << pd.version;
     os << ",salt=";
-    os << ",version=" << std::dec << pd.version;
     for (int i : pd.salt)
         os << std::hex << i;
     os << "|datasize=" << std::dec << pd.datasize << "]";
@@ -314,7 +315,7 @@ struct packet
     packet() = default;
     packet(leveldb_pack::key_t const& name,
            leveldb_pack::msg_t const  type,
-           std::uint32_t       const  version,
+           versionint_t        const  version,
            std::size_t         const  partition,
            std::size_t         const  location,
            std::size_t         const  size)
@@ -352,7 +353,7 @@ using packet_pointer = std::shared_ptr<packet>;
 
 auto create_request(leveldb_pack::key_t const& name,
                     leveldb_pack::msg_t const  type,
-                    std::uint32_t       const  version,
+                    versionint_t        const  version,
                     std::size_t         const  partition,
                     std::size_t         const  location,
                     std::size_t         const  size) -> packet_pointer {

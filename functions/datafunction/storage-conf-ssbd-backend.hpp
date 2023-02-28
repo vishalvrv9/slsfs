@@ -171,7 +171,7 @@ class storage_conf_ssbd_backend : public storage_conf
             (*outstanding_requests)++;
             selected->start_send_request(
                 request,
-                [outstanding_requests, input, next, all_ssbd_agree, this]
+                [outstanding_requests, input, all_ssbd_agree, selected_version, next, this]
                 (slsfs::leveldb_pack::packet_pointer response) {
                     switch (response->header.type)
                     {
@@ -191,7 +191,7 @@ class storage_conf_ssbd_backend : public storage_conf
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
 
                         if (all_ssbd_agree)
-                            start_replication(input, nullptr);
+                            start_replication(input, selected_version, nullptr);
                     }
                 });
         }
@@ -297,7 +297,7 @@ class storage_conf_ssbd_backend : public storage_conf
             std::uint32_t const offset  = currentpos % blocksize();
             std::uint32_t const blockreadsize = std::min<std::uint32_t>(endpos - currentpos,
                                                                         blocksize() - offset);
-            slsfs::log::log("start_replication: {}, {}, {}",
+            slsfs::log::log("start_read: {}, {}, {}",
                             blockid, offset, blockreadsize);
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
@@ -346,7 +346,6 @@ class storage_conf_ssbd_backend : public storage_conf
             .type      = slsfs::jsre::type_t::file,
             .operation = slsfs::jsre::operation_t::read,
             .uuid      = input.uuid(),
-            .version   = 0,
             .position  = 0,
             .size      = blocksize()
         };

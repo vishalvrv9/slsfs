@@ -268,8 +268,8 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
         os << std::hex << static_cast<int>(v);
     os << ",blkid=" << std::hex << pd.blockid;
     os << ",position=" << std::hex << pd.position;
+    os << ",version=" << std::hex << pd.version;
     os << ",salt=";
-    os << ",version=" << std::dec << pd.version;
     for (int i : pd.salt)
         os << std::hex << i;
     os << "|datasize=" << std::dec << pd.datasize << "]";

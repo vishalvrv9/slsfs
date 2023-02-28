@@ -1,11 +1,11 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=2000
-export TOTAL_CLIENT=16
-export BUFSIZE=4096
+export EACH_CLIENT_ISSUE=1
+export TOTAL_CLIENT=1
+export BUFSIZE=$(( 4096 * 4096 ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
@@ -16,7 +16,8 @@ export CLIENT_TESTNAME=0-100
 
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-export BACKEND_CONFIG=/backend/ssbd.json
+#export BACKEND_CONFIG=/backend/ssbd.json
+export BACKEND_CONFIG=/backend/ssbd-debug.json
 #export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json
 #export BACKEND_CONFIG=/backend/ssbd-basic.json
@@ -43,7 +44,7 @@ export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
 export POLICY_LAUNCH=max-queue
-export POLICY_LAUNCH_ARGS=10:2000 #average queue = 2kb
+export POLICY_LAUNCH_ARGS=10:200 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -52,4 +53,4 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=50:60000:88:50
 
 export INITINT=1;
-export VERBOSE='-v'
+export VERBOSE='-vvv'
