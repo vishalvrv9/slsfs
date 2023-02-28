@@ -12,27 +12,13 @@ namespace slsfs::leveldb_pack
 
 class rawblocks
 {
-    // [4bytes=version(big-endian), rest is data]
+    // [data]
     std::string buf_;
 
 public:
-    using versionint_t = std::uint32_t;
     auto fullsize()   -> std::size_t& { static std::size_t s = 4 * 1024; return s; } // byte
-    auto headersize() -> std::size_t  { return sizeof(versionint_t); } // byte
+    auto headersize() -> std::size_t  { return 0; } // byte
     auto blocksize()  -> std::size_t  { return fullsize() - headersize(); }
-
-    auto version() -> versionint_t
-    {
-        versionint_t i;
-        std::memcpy(&i, buf_.data(), sizeof(i));
-        return ntoh(i);
-    }
-
-    void update_version(versionint_t i)
-    {
-        i = hton(i);
-        std::memcpy(buf_.data(), &i, sizeof(i));
-    }
 
     template<typename InputIterator>
     void write(std::size_t logic_position, InputIterator it, std::size_t size) {

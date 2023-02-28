@@ -73,17 +73,18 @@ OW_WATCHING=$!
 
 ssh ow-invoker-1
 
-cp start-proxy-args.sh             trace_emulator_rerun/$TESTNAME-result/
-scp proxy-1:/tmp/proxy-report.json trace_emulator_rerun/$TESTNAME-result/proxy-report-1.json;
-ssh proxy-1 docker logs proxy2 2>  trace_emulator_rerun/$TESTNAME-result/docker-log-ow-invoker-1.backup.txt;
+cd "trace_emulator_rerun/$TESTNAME-result/";
+
+cp ../../start-proxy-args.sh .
+scp proxy-1:/tmp/proxy-report.json proxy-report-1.json;
+ssh proxy-1 docker logs proxy2 2>  docker-log-ow-invoker-1.backup.txt;
+scp ow-invoker-1:report.csv "report.csv"
+cat activation-list/*.txt \
+    | awk '!seen[$0]++' > "activation-list.txt" && \
+    rm -r activation-list;
 
 kill $OW_WATCHING >/dev/null 2>&1
 
 wait < <(jobs -p);
 
-cat trace_emulator_rerun/$TESTNAME-result/activation-list/*.txt \
-    | awk '!seen[$0]++' > "trace_emulator_rerun/$TESTNAME-result/activation-list.txt" && \
-    rm -r trace_emulator_rerun/$TESTNAME-result/activation-list;
-
-scp ow-invoker-1:report.csv "trace_emulator_rerun/$TESTNAME-result/report.csv"
 echo -e "\a finish test: $TESTNAME"

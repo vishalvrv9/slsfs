@@ -165,7 +165,7 @@ int main()
     boost::asio::io_context io_context;
     ssbd::tcp::socket s(io_context);
     ssbd::tcp::resolver resolver(io_context);
-    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
+    boost::asio::connect(s, resolver.resolve("localhost", "12000"));
 
     std::vector<slsfs::leveldb_pack::unit_t> buf(4096);
     //using ulli = unsigned long long int;

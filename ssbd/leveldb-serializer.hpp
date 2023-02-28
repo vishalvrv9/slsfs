@@ -38,6 +38,8 @@ void hash_range(std::size_t& seed, It first, It last)
 
 using unit_t = unsigned char; // exp
 static_assert(sizeof(unit_t) == 8/8);
+using buffer_t = std::vector<unit_t>;
+using versionint_t = std::uint32_t;
 
 // key = [32] byte main key // sha256 bit
 using key_t = std::array<unit_t, 256 / 8 / sizeof(unit_t)>;
@@ -109,6 +111,7 @@ struct packet_header
     std::uint32_t blockid;
     std::uint16_t position;
     std::uint32_t datasize;
+    versionint_t version;
     std::array<unit_t, 4> salt;
 
     static constexpr int bytesize =
@@ -117,6 +120,7 @@ struct packet_header
         sizeof(blockid) +
         sizeof(position) +
         sizeof(datasize) +
+        sizeof(version) +
         sizeof(salt);
 
     auto as_string() -> std::string
@@ -160,6 +164,11 @@ struct packet_header
         pos += sizeof(datasize);
         datasize = ntoh(datasize);
 
+        // |version|
+        std::memcpy(std::addressof(version), pos, sizeof(version));
+        pos += sizeof(version);
+        version = ntoh(version);
+
         // |salt|
         std::memcpy(salt.data(), pos, salt.size());
         pos += sizeof(salt);
@@ -189,6 +198,11 @@ struct packet_header
         decltype(datasize) datasize_copy = hton(datasize);
         std::memcpy(pos, std::addressof(datasize_copy), sizeof(datasize_copy));
         pos += sizeof(datasize);
+
+        // |version|
+        decltype(version) version_copy = hton(version);
+        std::memcpy(pos, std::addressof(version_copy), sizeof(version_copy));
+        pos += sizeof(version);
 
         std::memcpy(pos, salt.data(), salt.size());
         pos += salt.size();
@@ -237,18 +251,15 @@ struct packet_header_key_compare
 struct packet_header_key_hash_compare
 {
     static
-    auto hash (packet_header const& key) -> std::size_t
-    {
+    auto hash (packet_header const& key) -> std::size_t {
         return packet_header_key_hash{}(key);
     }
 
     static
-    bool equal (packet_header const& key1, packet_header const& key2)
-    {
+    bool equal (packet_header const& key1, packet_header const& key2) {
         return packet_header_key_compare{}(key1, key2);
     }
 };
-
 
 auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
 {
@@ -258,6 +269,7 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
     os << ",blkid=" << std::hex << pd.blockid;
     os << ",position=" << std::hex << pd.position;
     os << ",salt=";
+    os << ",version=" << std::dec << pd.version;
     for (int i : pd.salt)
         os << std::hex << i;
     os << "|datasize=" << std::dec << pd.datasize << "]";
@@ -266,7 +278,7 @@ auto operator << (std::ostream &os, packet_header const& pd) -> std::ostream&
 
 struct packet_data
 {
-    std::vector<unit_t> buf;
+    buffer_t buf;
 
     auto as_string() -> std::string
     {
@@ -300,10 +312,28 @@ struct packet
     packet_header header;
     packet_data data;
 
-    auto serialize() -> std::shared_ptr<std::vector<unit_t>>
+    packet() = default;
+    packet(leveldb_pack::key_t const& name,
+           leveldb_pack::msg_t const  type,
+           versionint_t        const  version,
+           std::size_t         const  partition,
+           std::size_t         const  location,
+           std::size_t         const  size)
+    {
+        header.gen();
+
+        header.type     = type;
+        header.version  = version;
+        header.uuid     = name;
+        header.blockid  = partition;
+        header.position = location;
+        header.datasize = size;
+    }
+
+    auto serialize() -> std::shared_ptr<buffer_t>
     {
         header.datasize = data.buf.size();
-        auto r = std::make_shared<std::vector<unit_t>>(packet_header::bytesize + header.datasize);
+        auto r = std::make_shared<buffer_t>(packet_header::bytesize + header.datasize);
 
         unit_t* pos = header.dump(r->data());
         data.dump(pos);
@@ -311,9 +341,9 @@ struct packet
         return r;
     }
 
-    auto serialize_header() -> std::shared_ptr<std::vector<unit_t>>
+    auto serialize_header() -> std::shared_ptr<buffer_t>
     {
-        auto r = std::make_shared<std::vector<unit_t>>(packet_header::bytesize);
+        auto r = std::make_shared<buffer_t>(packet_header::bytesize);
         header.dump(r->data());
         return r;
     }
@@ -322,20 +352,12 @@ struct packet
 using packet_pointer = std::shared_ptr<packet>;
 
 auto create_request(leveldb_pack::key_t const& name,
-                    leveldb_pack::msg_t const type,
-                    std::size_t const  partition,
-                    std::size_t const  location,
-                    std::size_t const  size) -> packet_pointer
-{
-    packet_pointer req = std::make_shared<packet>();
-    req->header.gen();
-
-    req->header.type     = type;
-    req->header.uuid     = name;
-    req->header.blockid  = partition;
-    req->header.position = location;
-    req->header.datasize = size;
-    return req;
+                    leveldb_pack::msg_t const  type,
+                    versionint_t        const  version,
+                    std::size_t         const  partition,
+                    std::size_t         const  location,
+                    std::size_t         const  size) -> packet_pointer {
+    return std::make_shared<packet>(name, type, version, partition, location, size);
 }
 
 } // namespace slsfs::leveldb_pack

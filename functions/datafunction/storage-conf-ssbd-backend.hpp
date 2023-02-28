@@ -65,6 +65,7 @@ class storage_conf_ssbd_backend : public storage_conf
         slsfs::log::log("start_2pc_prepare");
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
+        std::uint32_t const selected_version = version();
 
         auto outstanding_requests = std::make_shared<std::atomic<int>>(0);
         auto all_ssbd_agree       = std::make_shared<std::atomic<bool>>(true);
@@ -86,13 +87,12 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
                 slsfs::leveldb_pack::msg_t::two_pc_prepare,
+                selected_version,
                 blockid,
                 offset,
                 blockwritesize);
 
             request->data.buf.resize(blockwritesize + headersize());
-            std::uint32_t const version_number = slsfs::leveldb_pack::hton(version());
-            std::memcpy(request->data.buf.data(), &version_number, sizeof(version_number));
 
             boost::asio::buffer_copy(partial_buffer_view,
                                      boost::asio::buffer(
@@ -105,7 +105,7 @@ class storage_conf_ssbd_backend : public storage_conf
             (*outstanding_requests)++;
             selected->start_send_request(
                 request,
-                [outstanding_requests, input, next, all_ssbd_agree, this]
+                [outstanding_requests, input, all_ssbd_agree, selected_version, next, this]
                 (slsfs::leveldb_pack::packet_pointer response) {
                     switch (response->header.type)
                     {
@@ -125,13 +125,14 @@ class storage_conf_ssbd_backend : public storage_conf
                     }
 
                     if (--(*outstanding_requests) == 0)
-                        start_2pc_commit(input, *all_ssbd_agree, next);
+                        start_2pc_commit(input, *all_ssbd_agree, selected_version, next);
                 });
         }
     }
 
     void start_2pc_commit (slsfs::jsre::request_parser<slsfs::base::byte> input,
-                           bool all_ssbd_agree,
+                           bool          const all_ssbd_agree,
+                           std::uint32_t const selected_version,
                            slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_2pc_commit");
@@ -159,6 +160,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 all_ssbd_agree?
                     slsfs::leveldb_pack::msg_t::two_pc_commit_execute:
                     slsfs::leveldb_pack::msg_t::two_pc_commit_rollback,
+                selected_version,
                 blockid,
                 offset,
                 /*blockwritesize*/ 0);
@@ -178,6 +180,8 @@ class storage_conf_ssbd_backend : public storage_conf
 
                     default:
                         slsfs::log::log("start_2pc_commit unwanted header type {}", response->header.print());
+                        if (next)
+                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
                         break;
                     }
 
@@ -194,6 +198,7 @@ class storage_conf_ssbd_backend : public storage_conf
     }
 
     void start_replication (slsfs::jsre::request_parser<slsfs::base::byte> input,
+                            std::uint32_t const selected_version,
                             slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_replication");
@@ -224,6 +229,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                     input.uuid(),
                     slsfs::leveldb_pack::msg_t::replication,
+                    selected_version,
                     blockid,
                     offset,
                     blockwritesize);
@@ -241,7 +247,9 @@ class storage_conf_ssbd_backend : public storage_conf
                         default:
                             slsfs::log::log("start_replication unwanted header type {}",
                                             response->header.print());
-                            break;
+                            if (next)
+                                std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                            return;
                         }
 
                         if (--(*outstanding_requests) == 0 and next)
@@ -295,6 +303,7 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
                 slsfs::leveldb_pack::msg_t::get,
+                0 /* version number. not use for read request */,
                 blockid,
                 offset,
                 blockreadsize);
@@ -337,6 +346,7 @@ class storage_conf_ssbd_backend : public storage_conf
             .type      = slsfs::jsre::type_t::file,
             .operation = slsfs::jsre::operation_t::read,
             .uuid      = input.uuid(),
+            .version   = 0,
             .position  = 0,
             .size      = blocksize()
         };
@@ -405,7 +415,7 @@ class storage_conf_ssbd_backend : public storage_conf
 public:
     storage_conf_ssbd_backend(boost::asio::io_context& io): io_context_{io} {}
 
-    auto headersize() -> std::uint32_t { return sizeof(std::uint32_t); };
+    auto headersize() -> std::uint32_t { return 0; };
     virtual
     auto blocksize() -> std::uint32_t override {
         return storage_conf::blocksize() - headersize();

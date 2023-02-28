@@ -2,6 +2,7 @@
 #include "leveldb-serializer.hpp"
 #include "rawblocks.hpp"
 #include "socket-writer.hpp"
+#include "persistent-log.hpp"
 
 #include <boost/program_options.hpp>
 #include <boost/log/trivial.hpp>
@@ -30,16 +31,18 @@ class tcp_connection : public std::enable_shared_from_this<tcp_connection>
     tcp::socket      socket_;
 
     slsfs::socket_writer::socket_writer<slsfs::leveldb_pack::packet, std::vector<slsfs::leveldb_pack::unit_t>> writer_;
-    leveldb::DB& db_, &db_log_;
+    leveldb::DB&    db_;
+    persistent_log& db_log_;
 
 public:
     using pointer = std::shared_ptr<tcp_connection>;
 
-    tcp_connection(net::io_context& io, tcp::socket socket, leveldb::DB& db, leveldb::DB& db_log):
+    tcp_connection(net::io_context& io, tcp::socket socket, leveldb::DB& db, persistent_log& db_log):
         io_context_{io},
         socket_{std::move(socket)},
         writer_{io, socket_},
-        db_{db}, db_log_{db_log} {}
+        db_{db},
+        db_log_{db_log} {}
 
     void start_read_header()
     {
@@ -128,30 +131,23 @@ public:
                     resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
                     if (rb.bind(self->db_, key).ok())
                     {
-                        slsfs::leveldb_pack::rawblocks::versionint_t requested_version = 0;
-                        std::memcpy(&requested_version, pack->data.buf.data(), sizeof(requested_version));
-                        requested_version = slsfs::leveldb_pack::ntoh(requested_version);
-                        if (rb.version() > requested_version)
-                            resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_abort;
+                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare committed version: " << self->db_log_.get_committed_version(key)
+                                                 << "start_two_pc_prepare pending version:   " << self->db_log_.get_pending_prepare_version(key)
+                                                 << " req: " << pack->header.version;
 
-                        std::string log_entry;
-                        self->db_log_.Get(leveldb::ReadOptions(), key, &log_entry);
-                        if (not log_entry.empty())
+                        if (self->db_log_.have_pending_log(key))
                         {
-                            BOOST_LOG_TRIVIAL(error) << "Abort for prepare request due to non empty log";
+                            // failed
                             resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_abort;
                         }
-
-                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare local: " << rb.version()
-                                                 << " req: " << requested_version;
-
-                        std::memcpy(&requested_version, pack->data.buf.data(), sizeof(requested_version));
-                        slsfs::leveldb_pack::rawblocks::versionint_t sendversion = rb.version();
-                        sendversion = slsfs::leveldb_pack::ntoh(sendversion);
-                        std::memcpy(pack->data.buf.data(), &sendversion, sizeof(sendversion));
+                        else
+                        {
+                            // OK
+                            self->db_log_.put_pending_prepare(key, *read_buf, pack->header.version);
+                        }
+                        pack->header.version = self->db_log_.get_committed_version(key);
                     }
 
-                    self->db_log_.Put(leveldb::WriteOptions(), key, *read_buf);
                     BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare return packet: " << pack->header;
                     self->start_write_socket(resp);
                     self->start_read_header();
@@ -174,11 +170,6 @@ public:
                     pack->data.parse(length, read_buf->data());
                     std::string const key = pack->header.as_string();
 
-                    std::string value;
-                    self->db_log_.Get(leveldb::ReadOptions(), key, &value);
-                    self->db_.Put(leveldb::WriteOptions(), key, value);
-                    self->db_log_.Put(leveldb::WriteOptions(), key, "");
-
                     slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
                     resp->header = pack->header;
                     resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_commit_ack;
@@ -193,7 +184,8 @@ public:
     {
         BOOST_LOG_TRIVIAL(trace) << "start_two_pc_commit_rollback " << pack->header;
         std::string const key = pack->header.as_string();
-        db_log_.Put(leveldb::WriteOptions(), key, "");
+
+        db_log_.put_pending_prepare(key, "", 0);
 
         slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
         resp->header = pack->header;
@@ -230,7 +222,6 @@ public:
             });
     }
 
-
     void start_db_write(slsfs::leveldb_pack::packet_pointer pack)
     {
         BOOST_LOG_TRIVIAL(trace) << "start_db_write";
@@ -253,7 +244,7 @@ public:
             });
     }
 
-    void start_db_read(slsfs::leveldb_pack::packet_pointer pack)
+    void start_db_read (slsfs::leveldb_pack::packet_pointer pack)
     {
         BOOST_LOG_TRIVIAL(trace) << "start_db_read";
         net::post(
@@ -303,42 +294,27 @@ class tcp_server
 {
     net::io_context& io_context_;
     tcp::acceptor acceptor_;
-    std::unique_ptr<leveldb::DB> db_ = nullptr, db_log_ = nullptr;
+    std::unique_ptr<leveldb::DB> db_ = nullptr;
+    persistent_log db_log_;
 
 public:
     tcp_server(net::io_context& io_context, net::ip::port_type port, char const * dbname)
         : io_context_(io_context),
-          acceptor_(io_context, tcp::endpoint(tcp::v4(), port))
+          acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
+          db_log_{std::string(dbname) + "_log"}
     {
-        { // init db_
-            leveldb::DB* db = nullptr;
-            leveldb::Options options;
-            options.create_if_missing = true;
-            leveldb::Status status = leveldb::DB::Open(options, dbname, &db);
-            if (not status.ok())
-            {
-                BOOST_LOG_TRIVIAL(error) << status.ToString() << "\n";
-                throw std::runtime_error("cannot open db");
-            }
-
-            BOOST_LOG_TRIVIAL(debug) << "open db ptr: " << db << "\n";
-            db_.reset(db);
+        leveldb::DB* db = nullptr;
+        leveldb::Options options;
+        options.create_if_missing = true;
+        leveldb::Status status = leveldb::DB::Open(options, dbname, &db);
+        if (not status.ok())
+        {
+            BOOST_LOG_TRIVIAL(error) << status.ToString() << "\n";
+            throw std::runtime_error("cannot open db");
         }
-        { // init db_log_
-            leveldb::DB* db = nullptr;
-            leveldb::Options options;
-            options.create_if_missing = true;
-            std::string const dblog = std::string(dbname) + "_log";
-            leveldb::Status status = leveldb::DB::Open(options, dblog, &db);
-            if (not status.ok())
-            {
-                BOOST_LOG_TRIVIAL(error) << status.ToString() << "\n";
-                throw std::runtime_error("cannot open db");
-            }
 
-            BOOST_LOG_TRIVIAL(debug) << "open db log ptr: " << db << "\n";
-            db_log_.reset(db);
-        }
+        BOOST_LOG_TRIVIAL(debug) << "open db ptr: " << db << "\n";
+        db_.reset(db);
         start_accept();
     }
 
@@ -355,7 +331,7 @@ public:
                         io_context_,
                         std::move(socket),
                         *db_,
-                        *db_log_);
+                        db_log_);
                     accepted->start_read_header();
                     start_accept();
                 }
@@ -402,9 +378,9 @@ int main(int argc, char* argv[])
 
     slsfs::leveldb_pack::rawblocks {}.fullsize() = size;
 
+    BOOST_LOG_TRIVIAL(trace) << "trace enabled";
     ssbd::tcp_server server{ioc, port, "/tmp/haressbd/db.db"};
     BOOST_LOG_TRIVIAL(info) << "listen on " << port << " block size=" << size;
-    BOOST_LOG_TRIVIAL(trace) << "trace enabled";
 
     std::vector<std::thread> v;
     v.reserve(worker);
