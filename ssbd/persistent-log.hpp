@@ -67,6 +67,7 @@ public:
 
         {
             std::string const log_key = key + "-data";
+            //BOOST_LOG_TRIVIAL(trace) << "saved to pending request " << value;
             db_log_->Put(leveldb::WriteOptions(), log_key, value);
         }
     }
@@ -76,6 +77,7 @@ public:
         std::string const log_key = key + "-data";
         std::string result;
         db_log_->Get(leveldb::ReadOptions(), log_key, &result);
+        //BOOST_LOG_TRIVIAL(trace) << "read pending data " << result;
         return result;
     }
 
@@ -95,6 +97,7 @@ public:
     void commit_pending_prepare (std::string const& key, leveldb::DB& save_dest)
     {
         std::string const value = get_pending_prepare_data(key);
+        //BOOST_LOG_TRIVIAL(trace) << "commit pending prepare data: " << value;
         slsfs::leveldb_pack::versionint_t const version = get_pending_prepare_version(key);
 
         put_committed_version(key, version);

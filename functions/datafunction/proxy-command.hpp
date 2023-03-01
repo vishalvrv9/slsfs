@@ -358,7 +358,7 @@ public:
             break;
 
         case slsfs::jsre::type_t::metadata:
-            datastorage_conf_->start_perform(single_input, std::move(next));
+            datastorage_conf_->start_perform_metadata(single_input, std::move(next));
             break;
 
         case slsfs::jsre::type_t::wakeup:

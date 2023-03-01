@@ -78,9 +78,6 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::log::log("start_2pc_prepare sending: {}, {}, {}",
                             blockid, offset, blockwritesize);
 
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
-
             int const backend_index = select_replica(input.uuid(), blockid, 0);
             auto selected = backendlist_.at(backend_index);
 
@@ -94,10 +91,9 @@ class storage_conf_ssbd_backend : public storage_conf
 
             request->data.buf.resize(blockwritesize + headersize());
 
-            boost::asio::buffer_copy(partial_buffer_view,
-                                     boost::asio::buffer(
-                                         request->data.buf.data() + headersize(),
-                                         blockwritesize));
+            std::memcpy(request->data.buf.data() + headersize(),
+                        input.data() + buffer_pointer_offset,
+                        blockwritesize);
 
             currentpos += blockwritesize;
             buffer_pointer_offset += blockwritesize;
@@ -149,8 +145,6 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::log::log("start_2pc_commit: {}, {}, {}",
                             blockid, offset, blockwritesize);
 
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
 
             int const selected_index = select_replica(input.uuid(), blockid, 0);
             auto selected = backendlist_.at(selected_index);
@@ -190,7 +184,7 @@ class storage_conf_ssbd_backend : public storage_conf
                         if (next)
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
 
-                        if (all_ssbd_agree)
+                        if (all_ssbd_agree && replication_size_ > 1)
                             start_replication(input, selected_version, nullptr);
                     }
                 });
@@ -214,9 +208,6 @@ class storage_conf_ssbd_backend : public storage_conf
                                                                          blocksize() - offset);
             slsfs::log::log("start_replication: {}, {}, {}",
                             blockid, offset, blockwritesize);
-
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
 
             currentpos += blockwritesize;
             buffer_pointer_offset += blockwritesize;
@@ -253,7 +244,10 @@ class storage_conf_ssbd_backend : public storage_conf
                         }
 
                         if (--(*outstanding_requests) == 0 and next)
+                        {
+                            slsfs::log::log("replication finished {}", response->header.print());
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                        }
                     });
             }
         }
@@ -317,6 +311,11 @@ class storage_conf_ssbd_backend : public storage_conf
                     result_accumulator->at(index).ready = true;
                     result_accumulator->at(index).buf   = std::move(resp->data.buf);
 
+                    std::stringstream ss;
+                    for (char c : result_accumulator->at(index).buf)
+                        ss << c;
+                    slsfs::log::log("read result_accumulator: {}", ss.str());
+
                     for (buf_stat_t& bufstat : *result_accumulator)
                         if (not bufstat.ready)
                             return;
@@ -324,11 +323,11 @@ class storage_conf_ssbd_backend : public storage_conf
                     slsfs::base::buf collect;
                     collect.reserve((result_accumulator->size() + 2 /* head and tail */) * blocksize());
                     for (buf_stat_t& bufstat : *result_accumulator)
-                        collect.insert(collect.begin(),
+                        collect.insert(collect.end(),
                                        bufstat.buf.begin(),
                                        bufstat.buf.end());
 
-                    slsfs::log::log("read executing next with bufsize = {}", collect.size());
+                    slsfs::log::log("executing next with bufsize = {}", collect.size());
                     std::invoke(*next, std::move(collect));
                 });
             currentpos += blockreadsize;
@@ -444,7 +443,7 @@ public:
         case slsfs::jsre::operation_t::write:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-            slsfs::log::log("slsfs::jsre::operation_t::write");
+            slsfs::log::log("start_perform -> slsfs::jsre::operation_t::write");
             start_2pc_prepare(input, next_ptr);
             break;
         }
@@ -452,7 +451,7 @@ public:
         case slsfs::jsre::operation_t::read:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-            slsfs::log::log("slsfs::jsre::operation_t::read");
+            slsfs::log::log("start_perform -> slsfs::jsre::operation_t::read");
             start_read(input, next_ptr);
             break;
         }
@@ -467,7 +466,6 @@ public:
         case slsfs::jsre::meta_operation_t::addfile:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-
             break;
         }
 

@@ -131,9 +131,9 @@ public:
                     resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
                     if (rb.bind(self->db_, key).ok())
                     {
-                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare committed version: " << self->db_log_.get_committed_version(key)
-                                                 << "start_two_pc_prepare pending version:   " << self->db_log_.get_pending_prepare_version(key)
-                                                 << " req: " << pack->header.version;
+                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare committed version: " << self->db_log_.get_committed_version(key);
+                        BOOST_LOG_TRIVIAL(debug) << "start_two_pc_prepare pending version:   " << self->db_log_.get_pending_prepare_version(key);
+                        BOOST_LOG_TRIVIAL(debug) << " req: " << pack->header.version;
 
                         if (self->db_log_.have_pending_log(key))
                         {
@@ -143,7 +143,19 @@ public:
                         else
                         {
                             // OK
-                            self->db_log_.put_pending_prepare(key, *read_buf, pack->header.version);
+                            //BOOST_LOG_TRIVIAL(debug) << "request buf: " << *read_buf;
+
+                            std::string old_block (std::move(rb.buf_)); // move the unused data in .buf_ to here
+                            old_block.resize(
+                                std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
+                                                        old_block.size())); // make sure all buffer can write to old_block
+
+                            std::copy(read_buf->begin(), read_buf->end(),
+                                      std::next(old_block.begin(), pack->header.position));
+
+                            //BOOST_LOG_TRIVIAL(trace) << "final block: " << old_block;
+
+                            self->db_log_.put_pending_prepare(key, old_block, pack->header.version);
                         }
                         pack->header.version = self->db_log_.get_committed_version(key);
                     }
@@ -170,6 +182,8 @@ public:
                     pack->data.parse(length, read_buf->data());
                     std::string const key = pack->header.as_string();
 
+                    self->db_log_.commit_pending_prepare(key, self->db_);
+
                     slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
                     resp->header = pack->header;
                     resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_commit_ack;
@@ -195,6 +209,7 @@ public:
         start_read_header();
     }
 
+    // note: assumes the every replication are stored in different SSBD
     void start_replication(slsfs::leveldb_pack::packet_pointer pack)
     {
         BOOST_LOG_TRIVIAL(trace) << "start_replication " << pack->header;
@@ -213,34 +228,21 @@ public:
                     resp->header = pack->header;
                     resp->header.type = slsfs::leveldb_pack::msg_t::ack;
 
-                    std::string const key = pack->header.as_string();
+                    std::string const key = pack->header.as_string() + "repl";
+                    std::string old_block;
+                    self->db_.Get(leveldb::ReadOptions(), key, &old_block);
 
-                    self->db_.Put(leveldb::WriteOptions(), key, *read_buf);
+                    old_block.resize(
+                        std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
+                                                old_block.size())); // make sure all buffer can write to old_block
+
+                    std::copy(read_buf->begin(), read_buf->end(),
+                              std::next(old_block.begin(), pack->header.position));
+
+                    self->db_.Put(leveldb::WriteOptions(), key, old_block);
                     self->start_write_socket(resp);
                     self->start_read_header();
                 }
-            });
-    }
-
-    void start_db_write(slsfs::leveldb_pack::packet_pointer pack)
-    {
-        BOOST_LOG_TRIVIAL(trace) << "start_db_write";
-        net::post(
-            io_context_,
-            [self=shared_from_this(), pack] {
-                std::string value;
-                std::string const key = pack->header.as_string();
-
-                self->db_.Get(leveldb::ReadOptions(), key, &value);
-                std::copy(pack->data.buf.begin(), pack->data.buf.end(),
-                          std::next(value.begin(), pack->header.position));
-                self->db_.Put(leveldb::WriteOptions(), key, value);
-
-                slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
-                resp->header = pack->header;
-                resp->header.type = slsfs::leveldb_pack::msg_t::ack;
-                resp->data.buf = std::vector<slsfs::leveldb_pack::unit_t>{'O', 'K'};
-                self->start_write_socket(resp);
             });
     }
 
@@ -262,6 +264,7 @@ public:
                     std::vector<slsfs::leveldb_pack::unit_t> buf(resp->header.datasize);
 
                     rb.read(pack->header.position, buf.begin(), resp->header.datasize);
+                    BOOST_LOG_TRIVIAL(trace) << "start_db_read return : " << rb.buf_;
 
                     resp->data.buf.swap(buf);
                 }

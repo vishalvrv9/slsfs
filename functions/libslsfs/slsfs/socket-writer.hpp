@@ -105,6 +105,7 @@ class socket_writer
 
             log::log("Writing packet to socket: {}, datasize={}",
                      job.pack->header.print(), job.pack->data.buf.size());
+
             boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(job.bufptr->data(), job.bufptr->size()),

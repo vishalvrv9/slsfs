@@ -12,10 +12,10 @@ namespace slsfs::leveldb_pack
 
 class rawblocks
 {
+public:
     // [data]
     std::string buf_;
 
-public:
     auto fullsize()   -> std::size_t& { static std::size_t s = 4 * 1024; return s; } // byte
     auto headersize() -> std::size_t  { return 0; } // byte
     auto blocksize()  -> std::size_t  { return fullsize() - headersize(); }

@@ -59,9 +59,43 @@ enum class msg_t: std::uint16_t
 
 auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream&
 {
-    using under_t = std::underlying_type<msg_t>::type;
-    std::bitset<sizeof(under_t) * 8> m (static_cast<char>(msg));
-    os << m;
+    switch (msg)
+    {
+    case msg_t::err:
+        os << "ERR";
+        break;
+    case msg_t::ack:
+        os << "ACK";
+        break;
+    case msg_t::get:
+        os << "GET";
+        break;
+    case msg_t::two_pc_prepare:
+        os << "2_PRE";
+        break;
+    case msg_t::two_pc_prepare_agree:
+        os << "2PAGR";
+        break;
+    case msg_t::two_pc_prepare_abort:
+        os << "2PABO";
+        break;
+    case msg_t::two_pc_commit_execute:
+        os << "2CEXE";
+        break;
+    case msg_t::two_pc_commit_rollback:
+        os << "2CROL";
+        break;
+    case msg_t::two_pc_commit_ack:
+        os << "2CACK";
+        break;
+    case msg_t::replication:
+        os << "REPLI";
+        break;
+    }
+
+    //using under_t = std::underlying_type<msg_t>::type;
+    //std::bitset<sizeof(under_t) * 8> m (static_cast<char>(msg));
+    //os << m;
     return os;
 }
 

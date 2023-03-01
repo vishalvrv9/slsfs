@@ -152,10 +152,16 @@ auto iotest (int const times, int const bufsize,
 
         slsfs::jsre::request r;
         r.type = slsfs::jsre::type_t::file;
-        if (rwdist.at(dist(engine)) == 1)
+        if (rwdist.at(dist(engine)))
+        {
+            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::read;";
             r.operation = slsfs::jsre::operation_t::read;
+        }
         else
+        {
+            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::write;";
             r.operation = slsfs::jsre::operation_t::write;
+        }
 
         r.uuid = ptr->header.key;
         r.position = genpos(i);
