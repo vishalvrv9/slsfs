@@ -2,7 +2,7 @@ FROM gcc:12 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev gdb && \
-    pip3 install conan
+    pip3 install conan==1.59
 
 RUN conan profile new default --detect &&\
     conan profile update settings.compiler.libcxx=libstdc++11 default

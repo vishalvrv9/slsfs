@@ -247,8 +247,8 @@ auto make_trigger(net::io_context& io) -> std::shared_ptr<invoker<beast::ssl_str
     static std::mt19937 rng;
     std::random_device rd;
     rng.seed(rd());
-    //std::uniform_int_distribution<> dist(0, 15); // 15 invokers available
-    std::uniform_int_distribution<> dist(0, 0);    // single invokers available
+    std::uniform_int_distribution<> dist(0, 15); // 15 invokers available
+    //std::uniform_int_distribution<> dist(0, 0);    // single invokers available
 
     std::string const url = fmt::format("https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction-{}?blocking=false&result=false", dist(rng));
     return std::make_shared<

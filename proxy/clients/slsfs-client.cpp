@@ -15,6 +15,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <array>
 #include <memory>
 #include <array>
 #include <list>

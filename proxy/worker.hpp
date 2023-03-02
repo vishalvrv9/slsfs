@@ -119,7 +119,7 @@ public:
                     case pack::msg_t::trigger:
                     case pack::msg_t::trigger_reject:
                     {
-                        BOOST_LOG_TRIVIAL(error) << "worker packet error" << pack->header;
+                        BOOST_LOG_TRIVIAL(error) << "worker packet error " << pack->header;
                         self->start_read_header();
                         break;
                     }

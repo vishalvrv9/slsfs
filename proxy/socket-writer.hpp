@@ -111,7 +111,7 @@ class socket_writer
                     std::invoke(*job.next, ec, transferred_size);
                     if (ec)
                     {
-                        BOOST_LOG_TRIVIAL(error) << "socket writer start_write_packet() error: " << ec.message();
+                        BOOST_LOG_TRIVIAL(error) << "socket writer writing to error: " << ec.message();
                         return;
                     }
                     start_write_packet_with_strand();
