@@ -52,4 +52,4 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=100:60000:10:50
 
 export INITINT=1;
-export VERBOSE='-vv'
+export VERBOSE='-vvv'

@@ -298,18 +298,24 @@ public:
 
                     if (self->datastorage_conf_->use_async())
                     {
-                        self->start_storage_perform(
-                            input,
-                            [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
-                                pack->header.type = slsfs::pack::msg_t::worker_response;
-                                pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
-                                std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
 
-                                self->start_write(pack);
-                                auto const end = std::chrono::high_resolution_clock::now();
-                                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                                slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
-                            });
+                        pack->header.type = slsfs::pack::msg_t::worker_response;
+                        pack->data.buf = std::vector<slsfs::pack::unit_t>{65, 66};
+                        slsfs::log::log<slsfs::log::level::debug>("write back");
+                        self->start_write(pack);
+
+                        //self->start_storage_perform(
+                        //    input,
+                        //    [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
+                        //        pack->header.type = slsfs::pack::msg_t::worker_response;
+                        //        pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
+                        //        std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
+                        //
+                        //        self->start_write(pack);
+                        //        auto const end = std::chrono::high_resolution_clock::now();
+                        //        auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                        //        slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
+                        //    });
                     }
                     else
                     {

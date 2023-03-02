@@ -232,7 +232,7 @@ public:
 
     void start_write(pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "worker start_write with pack";
+        BOOST_LOG_TRIVIAL(trace) << "worker start_write with " << pack->header;
 
         auto next = std::make_shared<socket_writer::boost_callback>(
             [self=shared_from_this(), pack] (boost::system::error_code ec, std::size_t /*length*/) {

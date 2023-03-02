@@ -194,7 +194,7 @@ public:
                     reschedule(job);
                 }
             });
-        BOOST_LOG_TRIVIAL(trace) << "start job " << job->pack_->header;
+        BOOST_LOG_TRIVIAL(trace) << "job started" << job->pack_->header;
     }
 
     template<typename Callback>
