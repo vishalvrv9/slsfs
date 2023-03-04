@@ -8,6 +8,8 @@ CXX ?= c++
 
 from-docker:
 	DOCKER_BUILDKIT=1 docker build -t hare1039/ssbd:0.0.1 .
+	docker run --rm --entrypoint cat hare1039/ssbd:0.0.1 /final/build/bin/run > run
+	chmod +x run
 	docker run --rm --entrypoint cat hare1039/ssbd:0.0.1 /final/build/bin/client > client
 	chmod +x client
 

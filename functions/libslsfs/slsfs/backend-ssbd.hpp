@@ -82,7 +82,6 @@ class ssbd
                 {
                     log::log("ssbd backend: {} have boost error: {} on start_read_one() header {}",
                              host_, ec.message(), resp->header.print());
-                    start_read_one();
                     return;
                 }
 
@@ -137,6 +136,11 @@ public:
         log::log("connect to {}:{}", host_, port_);
         boost::asio::ip::tcp::resolver resolver (io_context_);
         boost::asio::connect (socket_, resolver.resolve(host_, port_));
+    }
+
+    void close()
+    {
+        socket_.close();
     }
 
     void start_send_request (leveldb_pack::packet_pointer request,

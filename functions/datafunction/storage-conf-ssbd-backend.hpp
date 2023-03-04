@@ -26,8 +26,15 @@ class storage_conf_ssbd_backend : public storage_conf
 
     void connect() override
     {
-        for (std::shared_ptr<slsfs::backend::ssbd>& host : backendlist_)
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
             host->connect();
+    }
+
+    void close() override
+    {
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
+            host->close();
+        //io_context_.close();
     }
 
     static

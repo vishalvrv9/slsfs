@@ -37,6 +37,8 @@ exec-debug: *.cpp *.hpp
 exec: *.cpp *.hpp
 	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
                                    -f Dockerfile .. && \
+    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/test-storage > test-storage && \
+    chmod +x test-storage && \
     docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
     chmod +x exec
 

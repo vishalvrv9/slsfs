@@ -28,6 +28,9 @@ public:
     virtual ~storage_conf() {}
 
     virtual
+    void close() {}
+
+    virtual
     void init(slsfs::base::json const& config)
     {
         if (config.contains("blocksize"))
