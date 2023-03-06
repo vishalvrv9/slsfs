@@ -1,17 +1,17 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts10[@]}")
 
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=64
-export BUFSIZE=16384
+export EACH_CLIENT_ISSUE=10000
+export TOTAL_CLIENT=1
+export BUFSIZE=8192
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-#export CLIENT_TESTNAME=50-50
+export CLIENT_TESTNAME=50-50
 #export CLIENT_TESTNAME=fill
-export CLIENT_TESTNAME=100-0
+#export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=0-100
 
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
@@ -44,13 +44,13 @@ export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
 export POLICY_LAUNCH=max-queue
-export POLICY_LAUNCH_ARGS=10:20 #average queue = 2kb
+export POLICY_LAUNCH_ARGS=10:3000 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
 #export POLICY_KEEPALIVE_ARGS=100000
 export POLICY_KEEPALIVE=moving-interval-global
-export POLICY_KEEPALIVE_ARGS=100:60000:10:50
+export POLICY_KEEPALIVE_ARGS=50:60000:88:50
 
 export INITINT=1;
 export VERBOSE='-v'

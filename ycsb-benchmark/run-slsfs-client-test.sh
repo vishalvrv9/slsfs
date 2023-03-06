@@ -8,7 +8,7 @@ ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function-debug;' &
+bash -c 'cd ../functions/datafunction; make function;' &
 bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
 bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);

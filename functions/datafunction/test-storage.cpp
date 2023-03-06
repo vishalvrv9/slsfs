@@ -85,24 +85,20 @@ int do_datafunction()
     boost::asio::io_context ioc;
     tcp::resolver resolver(ioc);
 
+    boost::asio::steady_timer timer;
+    timer.expires_from_now(std::chrono::seconds(2));
+    timer.async_wait([] (boost::system::error_code) {});
+
     using json = slsfs::base::json;
     json input;
     std::cin >> input;
 
-    /* example json config
-    {
-        "type": "wakeup",
-        "proxyhost": "192.168.1.1",
-        "proxyport": "12000",
-        "storagetype": "ssbd-basic",
-        "storageconfig": {
-            "hosts": [{
-                "host": "192.168.2.1",
-                "port": "12000"
-            }]
-        }
-    }
-    */
+    std::vector<std::thread> workers;
+    unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
+    workers.reserve(worker);
+    for(unsigned int i = 0; i < worker; i++)
+        workers.emplace_back([&ioc] { ioc.run(); });
+
     std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
 
     std::string const storagetype = input["storagetype"].get<std::string>();
@@ -124,9 +120,10 @@ int do_datafunction()
 
     slsfs::log::log<slsfs::log::level::info>("starting");
 
-    std::atomic<int> outstanding_requests = 10000;
+    int const outstanding_requests = 10000;
+    std::atomic<int> counter = outstanding_requests;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
-    for (int i = 0; i < outstanding_requests.load(); i++)
+    for (int i = 0; i < outstanding_requests; i++)
     {
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
         ptr->header.gen();
@@ -141,7 +138,7 @@ int do_datafunction()
             .operation = slsfs::jsre::operation_t::write,
             .uuid      = ptr->header.key,
             .position  = 0,
-            .size      = 4096,
+            .size      = buf.size(),
         };
         request.to_network_format();
 
@@ -157,17 +154,12 @@ int do_datafunction()
             std::memcpy(ptr->data.buf.data() + sizeof (request), buf.data(), buf.size());
         }
 
-        send_request(conf, ptr, outstanding_requests, result_vector);
+        send_request(conf, ptr, counter, result_vector);
     }
 
 //    auto const start = std::chrono::high_resolution_clock::now();
-    std::vector<std::thread> v;
-    unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
-    v.reserve(worker);
-    for(unsigned int i = 0; i < worker; i++)
-        v.emplace_back([&ioc] { ioc.run(); });
 
-    for (std::thread& th : v)
+    for (std::thread& th : workers)
         th.join();
 
     stats(result_vector.begin(), result_vector.end());
