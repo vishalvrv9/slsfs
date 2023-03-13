@@ -33,6 +33,7 @@ class tcp_connection : public std::enable_shared_from_this<tcp_connection>
     slsfs::socket_writer::socket_writer<slsfs::leveldb_pack::packet, std::vector<slsfs::leveldb_pack::unit_t>> writer_;
     leveldb::DB&    db_;
     persistent_log& db_log_;
+    std::chrono::steady_clock::time_point start_read_header_timestamp_ = std::chrono::steady_clock::now();
 
 public:
     using pointer = std::shared_ptr<tcp_connection>;
@@ -46,7 +47,8 @@ public:
 
     void start_read_header()
     {
-        BOOST_LOG_TRIVIAL(trace) << "start_read_header";
+//        BOOST_LOG_TRIVIAL(trace) << "start_read_header. delta=" << std::chrono::steady_clock::now() - start_read_header_timestamp_;
+        start_read_header_timestamp_ = std::chrono::steady_clock::now();
         auto read_buf = std::make_shared<std::array<slsfs::leveldb_pack::unit_t, slsfs::leveldb_pack::packet_header::bytesize>>();
         net::async_read(
             socket_,
@@ -58,27 +60,27 @@ public:
                 {
                     slsfs::leveldb_pack::packet_pointer pack = std::make_shared<slsfs::leveldb_pack::packet>();
                     pack->header.parse(read_buf->data());
-                    BOOST_LOG_TRIVIAL(trace) << "start_read_header start with header: " << pack->header;
+                    //BOOST_LOG_TRIVIAL(trace) << "start_read_header start with header: " << pack->header;
 
                     switch (pack->header.type)
                     {
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare:
-                        BOOST_LOG_TRIVIAL(debug) << "two_pc_prepare " << pack->header;
+                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_prepare " << pack->header;
                         self->start_two_pc_prepare(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_commit_execute:
-                        BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_execute " << pack->header;
+                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_execute " << pack->header;
                         self->start_two_pc_commit_execute(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_commit_rollback:
-                        BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_rollback " << pack->header;
+                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_rollback " << pack->header;
                         self->start_two_pc_commit_rollback(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::replication:
-                        BOOST_LOG_TRIVIAL(debug) << "replication " << pack->header;
+                        //BOOST_LOG_TRIVIAL(debug) << "replication " << pack->header;
                         self->start_replication(pack);
                         break;
 
@@ -212,7 +214,7 @@ public:
     // note: assumes the every replication are stored in different SSBD
     void start_replication(slsfs::leveldb_pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "start_replication " << pack->header;
+        //BOOST_LOG_TRIVIAL(trace) << "start_replication " << pack->header;
         auto read_buf = std::make_shared<std::string>(pack->header.datasize, 0);
         net::async_read(
             socket_,
@@ -286,7 +288,8 @@ public:
                     return;
                 }
 
-                BOOST_LOG_TRIVIAL(trace) << "write sent " << transferred_size << " bytes, count=" << self.use_count() << " " << pack->header;
+                //BOOST_LOG_TRIVIAL(trace) << "write sent " << transferred_size << " bytes, count=" << self.use_count() << " " << pack->header;
+                //BOOST_LOG_TRIVIAL(trace) << "write took " << std::chrono::system_clock::now() - start;
             });
 
         writer_.start_write_socket(pack, next);
@@ -383,7 +386,7 @@ int main(int argc, char* argv[])
 
     BOOST_LOG_TRIVIAL(trace) << "trace enabled";
     ssbd::tcp_server server{ioc, port, "/tmp/haressbd/db.db"};
-    BOOST_LOG_TRIVIAL(info) << "listen on " << port << " block size=" << size;
+    BOOST_LOG_TRIVIAL(info) << "listen :" << port << " blocksize=" << size << " thread=" << worker;
 
     std::vector<std::thread> v;
     v.reserve(worker);

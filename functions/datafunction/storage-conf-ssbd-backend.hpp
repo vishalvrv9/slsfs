@@ -34,7 +34,6 @@ class storage_conf_ssbd_backend : public storage_conf
     {
         for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
             host->close();
-        //io_context_.close();
     }
 
     static
@@ -128,7 +127,13 @@ class storage_conf_ssbd_backend : public storage_conf
                     }
 
                     if (--(*outstanding_requests) == 0)
-                        start_2pc_commit(input, *all_ssbd_agree, selected_version, next);
+                    {
+                        if (*all_ssbd_agree)
+                            std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                        else
+                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                        start_2pc_commit(input, *all_ssbd_agree, selected_version, nullptr);
+                    }
                 });
         }
     }
@@ -151,7 +156,6 @@ class storage_conf_ssbd_backend : public storage_conf
                                                                          blocksize() - offset);
             slsfs::log::log("start_2pc_commit: {}, {}, {}",
                             blockid, offset, blockwritesize);
-
 
             int const selected_index = select_replica(input.uuid(), blockid, 0);
             auto selected = backendlist_.at(selected_index);

@@ -71,7 +71,7 @@ auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream&
         os << "GET";
         break;
     case msg_t::two_pc_prepare:
-        os << "2_PRE";
+        os << "2PPRE";
         break;
     case msg_t::two_pc_prepare_agree:
         os << "2PAGR";

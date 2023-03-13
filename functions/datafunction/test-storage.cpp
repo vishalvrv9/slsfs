@@ -49,10 +49,29 @@ namespace slsfsdf
 
 using boost::asio::ip::tcp;
 
-void send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
-                  slsfs::pack::packet_pointer ptr,
-                  std::atomic<int> &outstanding_requests,
-                  oneapi::tbb::concurrent_vector<std::uint64_t> &result)
+template<typename NextFunc>
+void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
+                                  slsfs::pack::packet_pointer ptr,
+                                  NextFunc && next)
+{
+    slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
+
+    auto const start = std::chrono::high_resolution_clock::now();
+    conf->start_perform(
+        input,
+        [input, start, conf, next]
+        (slsfs::base::buf buf) {
+            auto const end = std::chrono::high_resolution_clock::now();
+            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+            std::invoke(next, relativetime);
+        });
+}
+
+void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
+                        slsfs::pack::packet_pointer ptr,
+                        std::atomic<int> &outstanding_requests,
+                        oneapi::tbb::concurrent_vector<std::uint64_t> &result)
 {
     slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
 
@@ -71,12 +90,6 @@ void send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
                 slsfs::log::log<slsfs::log::level::info>("conf->close()");
                 conf->close();
             }
-
-            //slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
-            //std::stringstream ss;
-            //for (char c : buf)
-            //    ss << c;
-            //slsfs::log::log("read response: '{}'", ss.str());
         });
 }
 
@@ -85,7 +98,7 @@ int do_datafunction()
     boost::asio::io_context ioc;
     tcp::resolver resolver(ioc);
 
-    boost::asio::steady_timer timer;
+    boost::asio::steady_timer timer(ioc);
     timer.expires_from_now(std::chrono::seconds(2));
     timer.async_wait([] (boost::system::error_code) {});
 
@@ -96,7 +109,7 @@ int do_datafunction()
     std::vector<std::thread> workers;
     unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
     workers.reserve(worker);
-    for(unsigned int i = 0; i < worker; i++)
+    for (unsigned int i = 0; i < worker; i++)
         workers.emplace_back([&ioc] { ioc.run(); });
 
     std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
@@ -120,11 +133,14 @@ int do_datafunction()
 
     slsfs::log::log<slsfs::log::level::info>("starting");
 
+    //start_send_request_sequence
+
     int const outstanding_requests = 10000;
     std::atomic<int> counter = outstanding_requests;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
     for (int i = 0; i < outstanding_requests; i++)
     {
+        // static_cast<unsigned char>(rand()%16)
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
         ptr->header.gen();
         ptr->header.key = slsfs::pack::key_t{2, 2, 2, 2, 2, 2, 2, 2,
@@ -138,7 +154,7 @@ int do_datafunction()
             .operation = slsfs::jsre::operation_t::write,
             .uuid      = ptr->header.key,
             .position  = 0,
-            .size      = buf.size(),
+            .size      = static_cast<std::uint32_t>(buf.size()),
         };
         request.to_network_format();
 
@@ -154,10 +170,8 @@ int do_datafunction()
             std::memcpy(ptr->data.buf.data() + sizeof (request), buf.data(), buf.size());
         }
 
-        send_request(conf, ptr, counter, result_vector);
+        start_send_request(conf, ptr, counter, result_vector);
     }
-
-//    auto const start = std::chrono::high_resolution_clock::now();
 
     for (std::thread& th : workers)
         th.join();

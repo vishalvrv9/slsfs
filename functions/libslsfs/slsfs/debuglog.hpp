@@ -3,7 +3,10 @@
 #define SLSFS_DEBUGLOG_HPP__
 
 #include "http-verb.hpp"
-#include "fmt/core.h"
+#include <fmt/core.h>
+#include <fmt/ostream.h>
+#include <fmt/std.h>
+#include <fmt/chrono.h>
 
 #include <curl/curl.h>
 
@@ -57,10 +60,10 @@ void logstring(std::string const & msg)
     auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(now - info.start).count();
 
     if constexpr (global_info::current_level <= Level)
-    {
-        std::string const finalmsg = fmt::format("[{0:12d} {1}] {2}", relativetime, (*info.signature), msg);
-        std::cerr << finalmsg << std::endl;
-    }
+        fmt::print(stderr,
+                   "[{0:12d} {1}] {2}\n",
+                   relativetime, (*info.signature), msg);
+    // std::to_string(std::hash<std::thread::id>{}(std::this_thread::get_id()))
     return;
 }
 
