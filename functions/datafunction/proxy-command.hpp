@@ -3,6 +3,9 @@
 #ifndef PROXY_COMMAND_HPP__
 #define PROXY_COMMAND_HPP__
 
+// temp remove for compile
+//#include "caching.hpp"
+
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <boost/signals2.hpp>
 
@@ -52,6 +55,8 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
 
     queue_map& queue_map_;
     proxy_set& proxy_set_;
+
+//    cache& cache_engine_;
 
     static
     auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
@@ -340,6 +345,20 @@ public:
         switch (single_input.type())
         {
         case slsfs::jsre::type_t::file:
+//            if (single_input.operation() == slsfs::jsre::operation_t::write) {
+//                cache_engine_.write_to_cache(single_input);
+//                return datastorage_conf_->perform(single_input);
+//            }
+//            else {
+//                auto cached_file = cache_engine_.read_from_cache(single_input);
+//                if (cached_file != nullptr) {
+//                    return cached_file.data();
+//                }
+//                else {
+//                    cache_engine_.write_to_cache(single_input);
+//                    return datastorage_conf_->perform(single_input);
+//                }
+//            }
             return datastorage_conf_->perform(single_input);
             break;
 

@@ -22,6 +22,7 @@
 #include <map>
 #include <ctime>
 
+int constexpr requestsize = 16384;
 
 template<typename Iterator>
 void stats(Iterator start, Iterator end, std::string const memo = "")
@@ -63,7 +64,6 @@ void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
         (slsfs::base::buf buf) {
             auto const end = std::chrono::high_resolution_clock::now();
             auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-
             std::invoke(next, relativetime);
         });
 }
@@ -93,6 +93,63 @@ void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
         });
 }
 
+auto create_request (slsfs::jsre::operation_t operation) -> slsfs::pack::packet_pointer
+{
+    slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+    ptr->header.gen();
+    ptr->header.key = slsfs::pack::key_t{2, 2, 2, 2, 2, 2, 2, 2,
+                                         2, 2, 2, 2, 2, 2, 2, 2,
+                                         2, 2, 2, 2, 2, 2, 2, 2,
+                                         2, 2, 2, 2, 2, 2, 2, 2};
+
+    std::string buf (requestsize, 'E');
+    slsfs::jsre::request request {
+        .type      = slsfs::jsre::type_t::file,
+        .operation = operation,
+        .uuid      = ptr->header.key,
+        .position  = 0,
+        .size      = static_cast<std::uint32_t>(buf.size()),
+    };
+    request.to_network_format();
+
+    if (request.operation == slsfs::jsre::operation_t::read)
+    {
+        ptr->data.buf.resize(sizeof (request));
+        std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
+    }
+    else
+    {
+        ptr->data.buf.resize(sizeof (request) + buf.size());
+        std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
+        std::memcpy(ptr->data.buf.data() + sizeof (request), buf.data(), buf.size());
+    }
+
+    return ptr;
+}
+
+
+template<typename Finish>
+void send_one_request (int left_request,
+                       std::shared_ptr<slsfsdf::storage_conf> conf,
+                       oneapi::tbb::concurrent_vector<std::uint64_t>& result_vector,
+                       Finish && on_finish)
+{
+    if (left_request <= 0)
+    {
+        std::invoke (on_finish, conf, result_vector);
+        return;
+    }
+
+    auto ptr = create_request(slsfs::jsre::operation_t::write);
+    start_send_request_sequence (
+        conf, ptr,
+        [left_request, conf, &result_vector, &on_finish] (std::uint64_t duration) {
+            result_vector.push_back(duration);
+            send_one_request (left_request - 1, conf, result_vector, on_finish);
+            slsfs::log::log<slsfs::log::level::info>("left: {}", left_request - 1);
+        });
+}
+
 int do_datafunction()
 {
     boost::asio::io_context ioc;
@@ -117,7 +174,7 @@ int do_datafunction()
     std::string const storagetype = input["storagetype"].get<std::string>();
     switch (slsfs::sswitch::hash(storagetype))
     {
-    using namespace slsfs::sswitch;
+        using namespace slsfs::sswitch;
     case "ssbd"_:
         conf = std::make_shared<slsfsdf::storage_conf_ssbd_backend>(ioc);
         break;
@@ -132,51 +189,38 @@ int do_datafunction()
     conf->init(input["storageconfig"]);
 
     slsfs::log::log<slsfs::log::level::info>("starting");
-
-    //start_send_request_sequence
-
-    int const outstanding_requests = 10000;
-    std::atomic<int> counter = outstanding_requests;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
-    for (int i = 0; i < outstanding_requests; i++)
-    {
-        // static_cast<unsigned char>(rand()%16)
-        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-        ptr->header.gen();
-        ptr->header.key = slsfs::pack::key_t{2, 2, 2, 2, 2, 2, 2, 2,
-                                             2, 2, 2, 2, 2, 2, 2, 2,
-                                             2, 2, 2, 2, 2, 2, 2, 2,
-                                             2, 2, 2, 2, 2, 2, 2, 2};
 
-        std::string buf (4096, 'E');
-        slsfs::jsre::request request {
-            .type      = slsfs::jsre::type_t::file,
-            .operation = slsfs::jsre::operation_t::write,
-            .uuid      = ptr->header.key,
-            .position  = 0,
-            .size      = static_cast<std::uint32_t>(buf.size()),
-        };
-        request.to_network_format();
+    auto const start = std::chrono::high_resolution_clock::now();
+    send_one_request(
+        100000, conf, result_vector,
+        [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
+            oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
+            auto const end = std::chrono::high_resolution_clock::now();
+            conf->close();
 
-        if (request.operation == slsfs::jsre::operation_t::read)
-        {
-            ptr->data.buf.resize(sizeof (request));
-            std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
-        }
-        else
-        {
-            ptr->data.buf.resize(sizeof (request) + buf.size());
-            std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
-            std::memcpy(ptr->data.buf.data() + sizeof (request), buf.data(), buf.size());
-        }
+            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+            std::cout << " time: " << relativetime << "\n";
+            std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
+            std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
+            stats(result.begin(), result.end());
+        });
 
-        start_send_request(conf, ptr, counter, result_vector);
-    }
+//    {
+//        int const outstanding_requests = 10000;
+//        std::atomic<int> counter = outstanding_requests;
+//        oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
+//        for (int i = 0; i < outstanding_requests; i++)
+//        {
+//            auto ptr = create_request(slsfs::jsre::operation_t::write);
+//            start_send_request(conf, ptr, counter, result_vector);
+//        }
+//    }
 
     for (std::thread& th : workers)
         th.join();
 
-    stats(result_vector.begin(), result_vector.end());
+//    stats(result_vector.begin(), result_vector.end());
 
     return 0;
 }
