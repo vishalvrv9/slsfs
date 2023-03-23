@@ -79,7 +79,6 @@ struct request
 {
     type_t        type;
     operation_t   operation;
-    key_t         uuid;
     std::uint32_t position;
     std::uint32_t size;
 
@@ -112,10 +111,24 @@ struct request_parser
         return request {
             .type      = type(),
             .operation = operation(),
-            .uuid      = uuid(),
             .position  = position(),
             .size      = size(),
         };
+    }
+
+    auto uuid() const -> key_t const & {
+        return pack->header.key;
+    }
+
+    auto create_uuid() const -> key_t {
+        return pack->header.key;
+    }
+
+    auto uuid_shared() const -> std::shared_ptr<key_t>
+    {
+        auto k = std::make_shared<key_t>();
+        *k = pack->header.key;
+        return k;
     }
 
     auto type() const -> type_t
@@ -136,20 +149,6 @@ struct request_parser
         return static_cast<meta_operation_t>(operation());
     }
 
-    auto uuid() const -> key_t
-    {
-        key_t k;
-        std::memcpy(k.data(), refdata + offsetof(request, uuid), k.size());
-        return k;
-    }
-
-    auto uuid_shared() const -> std::shared_ptr<key_t>
-    {
-        auto k = std::make_shared<key_t>();
-        std::memcpy(k->data(), refdata + offsetof(request, uuid), k->size());
-        return k;
-    }
-
     auto position() const -> std::uint32_t
     {
         std::uint32_t pos;
@@ -164,13 +163,11 @@ struct request_parser
         return pack::ntoh(s);
     }
 
-    auto data() const -> const CharType*
-    {
+    auto data() const -> const CharType* {
         return refdata + sizeof(request);
     }
 
-    auto data() -> CharType*
-    {
+    auto data() -> CharType* {
         return refdata + sizeof(request);
     }
 };

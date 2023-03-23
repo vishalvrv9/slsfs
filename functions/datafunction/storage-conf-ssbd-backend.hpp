@@ -422,7 +422,6 @@ class storage_conf_ssbd_backend : public storage_conf
         slsfs::jsre::request read_request {
             .type      = slsfs::jsre::type_t::file,
             .operation = slsfs::jsre::operation_t::read,
-            .uuid      = input.uuid(),
             .position  = 0,
             .size      = blocksize()
         };

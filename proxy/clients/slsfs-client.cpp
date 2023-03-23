@@ -164,7 +164,6 @@ auto iotest (int const times, int const bufsize,
             r.operation = slsfs::jsre::operation_t::write;
         }
 
-        r.uuid = ptr->header.key;
         r.position = genpos(i);
         r.size = buf.size();
         r.to_network_format();

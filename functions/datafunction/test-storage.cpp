@@ -124,7 +124,6 @@ auto create_request (slsfs::jsre::operation_t operation) -> slsfs::pack::packet_
     slsfs::jsre::request request {
         .type      = slsfs::jsre::type_t::file,
         .operation = operation,
-        .uuid      = ptr->header.key,
         .position  = 0,
         .size      = static_cast<std::uint32_t>(buf.size()),
     };
