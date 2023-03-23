@@ -28,8 +28,8 @@ start-proxy-remote()
 echo starting remote hosts
 
 start-proxy-remote proxy-1
-#start-proxy-remote proxy-2 noinit
-#start-proxy-remote proxy-3 noinit
+start-proxy-remote proxy-2 noinit
+start-proxy-remote proxy-3 noinit
 #./start-proxy.sh
 
 rm -f /tmp/slsfs-client;
@@ -54,15 +54,15 @@ while ! nc -z -v -w1 192.168.0.135 12001 2>&1 | grep -q succeeded; do
     sleep 1;
 done
 
-#while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
-#    echo 'waiting proxy2 192.168.0.215:12001'
-#    sleep 1;
-#done
-#
-#while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
-#    echo 'waiting proxy3 192.168.0.149:12001'
-#    sleep 1;
-#done
+while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
+    echo 'waiting proxy2 192.168.0.215:12001'
+    sleep 1;
+done
+
+while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
+    echo 'waiting proxy3 192.168.0.149:12001'
+    sleep 1;
+done
 
 echo starting;
 

@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts10[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=10000
-export TOTAL_CLIENT=1
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=16
 export BUFSIZE=8192
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
@@ -21,8 +21,11 @@ export BACKEND_CONFIG=/backend/ssbd.json
 #export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json
 #export BACKEND_CONFIG=/backend/ssbd-basic.json
+#export BACKEND_CONFIG=/backend/swift.json
 
-export MEMO="Proxy3+20kb-$BUFSIZE"
+
+
+export MEMO="TST-$BUFSIZE"
 
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
 export BACKEND_BLOCKSIZE=4096
@@ -54,3 +57,4 @@ export POLICY_KEEPALIVE_ARGS=50:60000:88:50
 
 export INITINT=1;
 export VERBOSE='-v'
+export MAX_FUNCTION_COUNT=15

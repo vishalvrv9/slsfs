@@ -16,11 +16,39 @@
 namespace slsfsdf
 {
 
+namespace
+{
+
+class recoder
+{
+    using filecheckmap =
+        oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
+                                         int /* not used */,
+                                         slsfs::uuid::hash_compare<slsfs::uuid::uuid>>;
+    filecheckmap map_;
+
+public:
+    bool is_checked(slsfs::uuid::uuid const& uuid)
+    {
+        filecheckmap::accessor it;
+        return map_.find(it, uuid);
+    }
+
+    void mark_checked(slsfs::uuid::uuid const& uuid)
+    {
+        map_.emplace(uuid, 0);
+    }
+};
+
+} // namespace
+
+
 // Storage backend configuration for SSBD stripe
 class storage_conf_ssbd_backend : public storage_conf
 {
     boost::asio::io_context& io_context_;
     int replication_size_ = 3;
+
 
     std::vector<std::shared_ptr<slsfs::backend::ssbd>> backendlist_;
 
@@ -69,6 +97,27 @@ class storage_conf_ssbd_backend : public storage_conf
                             slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_2pc_prepare");
+
+        auto request_dearline_timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        using namespace std::chrono_literals;
+
+        // every request must finish in 30s
+        request_dearline_timer->expires_from_now(30s);
+        request_dearline_timer->async_wait(
+            [next, request_dearline_timer] (boost::system::error_code ec) {
+                switch (ec.value())
+                {
+                case boost::system::errc::success: // timer timeout
+                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    break;
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
+                default:
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    break;
+                }
+        });
+
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
         std::uint32_t const selected_version = version();
@@ -107,7 +156,7 @@ class storage_conf_ssbd_backend : public storage_conf
             (*outstanding_requests)++;
             selected->start_send_request(
                 request,
-                [outstanding_requests, input, all_ssbd_agree, selected_version, next, this]
+                [outstanding_requests, input, all_ssbd_agree, selected_version, request_dearline_timer, next, this]
                 (slsfs::leveldb_pack::packet_pointer response) {
                     switch (response->header.type)
                     {
@@ -128,6 +177,8 @@ class storage_conf_ssbd_backend : public storage_conf
 
                     if (--(*outstanding_requests) == 0)
                     {
+                        request_dearline_timer->cancel();
+
                         if (*all_ssbd_agree)
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
                         else
@@ -274,6 +325,23 @@ class storage_conf_ssbd_backend : public storage_conf
                      slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("ssbd start_read");
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        using namespace std::chrono_literals;
+        timer->expires_from_now(30s);
+        timer->async_wait(
+            [next, timer] (boost::system::error_code ec) {
+                switch (ec.value())
+                {
+                case boost::system::errc::success: // timer timeout
+                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    break;
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
+                default:
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    break;
+                }
+        });
 
         std::uint32_t const realpos  = input.position();
         std::uint32_t const readsize = input.size();
@@ -282,6 +350,7 @@ class storage_conf_ssbd_backend : public storage_conf
         if (readsize == 0)
         {
             std::invoke(*next, slsfs::base::buf{});
+            timer->cancel();
             return;
         }
 
@@ -317,20 +386,18 @@ class storage_conf_ssbd_backend : public storage_conf
             auto selected = backendlist_.at(selected_index);
             selected->start_send_request(
                 request,
-                [result_accumulator, input, next, index, this]
+                [result_accumulator, input, next, index, timer, this]
                 (slsfs::leveldb_pack::packet_pointer resp) {
                     result_accumulator->at(index).ready = true;
                     result_accumulator->at(index).buf   = std::move(resp->data.buf);
 
-                    std::stringstream ss;
-                    for (char c : result_accumulator->at(index).buf)
-                        ss << c;
-                    slsfs::log::log("read result_accumulator: {}", ss.str());
+                    slsfs::log::log("read one result");
 
                     for (buf_stat_t& bufstat : *result_accumulator)
                         if (not bufstat.ready)
                             return;
 
+                    timer->cancel();
                     slsfs::base::buf collect;
                     collect.reserve((result_accumulator->size() + 2 /* head and tail */) * blocksize());
                     for (buf_stat_t& bufstat : *result_accumulator)

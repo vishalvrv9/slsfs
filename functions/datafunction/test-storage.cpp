@@ -5,6 +5,7 @@
 #include "storage-conf-swift.hpp"
 #include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
+#include "uuid-gen.hpp"
 
 #include <slsfs.hpp>
 
@@ -15,6 +16,9 @@
 #include <boost/iostreams/stream.hpp>
 #include <boost/asio.hpp>
 
+#include <Poco/SHA2Engine.h>
+#include <Poco/DigestStream.h>
+
 #include <iostream>
 #include <memory>
 #include <thread>
@@ -23,6 +27,19 @@
 #include <ctime>
 
 int constexpr requestsize = 16384;
+
+auto get_uuid(std::string const& buffer) -> slsfs::pack::key_t
+{
+    slsfs::pack::key_t k;
+    Poco::SHA2Engine eng;
+    Poco::DigestOutputStream outstr(eng);
+    outstr << buffer;
+    outstr.flush();
+
+    Poco::DigestEngine::Digest const& digest = eng.digest();
+    std::memcpy(k.data(), digest.data(), digest.size());
+    return k;
+}
 
 template<typename Iterator>
 void stats(Iterator start, Iterator end, std::string const memo = "")
@@ -56,6 +73,7 @@ void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
                                   NextFunc && next)
 {
     slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
+
 
     auto const start = std::chrono::high_resolution_clock::now();
     conf->start_perform(
@@ -191,36 +209,51 @@ int do_datafunction()
     slsfs::log::log<slsfs::log::level::info>("starting");
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
 
-    auto const start = std::chrono::high_resolution_clock::now();
-    send_one_request(
-        100000, conf, result_vector,
-        [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
-            oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
-            auto const end = std::chrono::high_resolution_clock::now();
-            conf->close();
+    if (conf->use_async())
+    {
+        auto const start = std::chrono::high_resolution_clock::now();
+        send_one_request(
+            100000, conf, result_vector,
+            [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
+                     oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
+                auto const end = std::chrono::high_resolution_clock::now();
+                conf->close();
 
-            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-            std::cout << " time: " << relativetime << "\n";
-            std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
-            std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
-            stats(result.begin(), result.end());
-        });
+                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                std::cout << " time: " << relativetime << "\n";
+                std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
+                std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
+                stats(result.begin(), result.end());
+            });
+    }
+    else
+    {
+        auto const start = std::chrono::high_resolution_clock::now();
+        int const outstanding_requests = 100000;
+        oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
+        for (int i = 0; i < outstanding_requests; i++)
+        {
+            auto ptr = create_request(slsfs::jsre::operation_t::write);
 
-//    {
-//        int const outstanding_requests = 10000;
-//        std::atomic<int> counter = outstanding_requests;
-//        oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
-//        for (int i = 0; i < outstanding_requests; i++)
-//        {
-//            auto ptr = create_request(slsfs::jsre::operation_t::write);
-//            start_send_request(conf, ptr, counter, result_vector);
-//        }
-//    }
+            auto const single_start = std::chrono::high_resolution_clock::now();
+            conf->perform(ptr);
+            auto const single_end = std::chrono::high_resolution_clock::now();
+
+            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(single_end - single_start).count();
+            result_vector.push_back(relativetime);
+        }
+
+        auto const end = std::chrono::high_resolution_clock::now();
+        auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+        std::cout << " time: " << relativetime << "\n";
+        std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
+        std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
+
+        stats(result_vector.begin(), result_vector.end());
+    }
 
     for (std::thread& th : workers)
         th.join();
-
-//    stats(result_vector.begin(), result_vector.end());
 
     return 0;
 }
@@ -229,6 +262,9 @@ int do_datafunction()
 
 int main(int argc, char *argv[])
 {
+    std::cout << slsfs::uuid::encode_base64(get_uuid("1wx5dgohq1kiwjum"));
+    std::cout << slsfs::uuid::encode_base64(get_uuid("i5ms01i56ue2v7nt"));
+    return 0;
     std::string name = fmt::format("DF:{0:4d}", slsfs::uuid::gen_rand_number());
     char const* name_cstr = name.c_str();
     slsfs::log::init(name_cstr);

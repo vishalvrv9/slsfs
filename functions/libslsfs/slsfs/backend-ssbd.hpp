@@ -67,9 +67,7 @@ class ssbd
 
     std::once_flag read_started_flag_;
     jobmap outstanding_jobs_;
-
     using jobmap_accessor = decltype(outstanding_jobs_)::accessor;
-
     socket_writer::socket_writer<leveldb_pack::packet, std::vector<leveldb_pack::unit_t>> writer_;
 
     void start_read_loop() {

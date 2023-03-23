@@ -46,6 +46,14 @@ public:
             starter_ = 0;
     }
 
+    void reschedule_a_job (worker_set& ws, job_ptr) override
+    {
+        if (ws.empty())
+            starter_ = 1;
+        else
+            starter_ = 0;
+    }
+
     virtual
     int get_ideal_worker_count(worker_set &) {
         return starter_.load();

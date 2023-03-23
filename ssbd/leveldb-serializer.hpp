@@ -49,6 +49,7 @@ enum class msg_t: std::uint16_t
     ack = 0b00000001,
     get = 0b00000010,
     two_pc_prepare         = 0b00001000,
+    two_pc_prepare_quick   = 0b00001001,
     two_pc_prepare_agree   = 0b00001010,
     two_pc_prepare_abort   = 0b00001011,
     two_pc_commit_execute  = 0b00001100,
@@ -71,7 +72,10 @@ auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream&
         os << "GET";
         break;
     case msg_t::two_pc_prepare:
-        os << "2PPRE";
+        os << "2PPPR";
+        break;
+    case msg_t::two_pc_prepare_quick:
+        os << "2PPRQ";
         break;
     case msg_t::two_pc_prepare_agree:
         os << "2PAGR";

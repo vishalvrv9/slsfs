@@ -27,7 +27,7 @@ public:
         ideal_worker_count_.store(queue_size_ / max_average_queue_);
 
         BOOST_LOG_TRIVIAL(debug) << "queue size: " << queue_size_
-                                 << " get_ideal_worker_count: " << ideal_worker_count_;
+                                 << " internal count: " << ideal_worker_count_;
     }
 
     void finished_a_job (df::worker *, job_ptr job) override {
@@ -36,6 +36,7 @@ public:
 
     void schedule_a_new_job (worker_set& ws, job_ptr job) override
     {
+
         queue_size_.fetch_add(job->pack_->header.datasize, std::memory_order_seq_cst);
         worker_launch::schedule_a_new_job(ws, job);
     }

@@ -27,8 +27,7 @@ protected:
 public:
     virtual ~storage_conf() {}
 
-    virtual
-    void close() {}
+    virtual void close() {}
 
     virtual
     void init(slsfs::base::json const& config)

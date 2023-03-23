@@ -21,6 +21,13 @@ public:
         storage_conf::init(config);
     }
 
+    virtual bool use_async() { return false; }
+
+    virtual void start_perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input, 
+    std::function<void(slsfs::base::buf)> next) override {
+        next(perform(input));
+    }
+
     virtual auto perform(slsfs::jsre::request_parser<slsfs::base::byte> const& input) -> slsfs::base::buf override
     {
         slsfs::base::buf response;

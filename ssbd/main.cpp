@@ -365,7 +365,7 @@ int main(int argc, char* argv[])
     desc.add_options()
         ("help,h", "Print this help messages")
         ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
-        ("db,d",     po::value<std::string>()->default_value("/tmp/haressbd/db.db"), "leveldb save path")
+        ("db,d",     po::value<std::string>()->default_value("/tmp/haressbd/db"), "leveldb save path")
         ("blocksize,b", po::value<std::size_t>()->default_value(4 * 1024), "set block size (in bytes)");
     po::positional_options_description pos_po;
     po::variables_map vm;

@@ -36,12 +36,18 @@ public:
         std::string commit_version_buffer;// (sizeof(slsfs::leveldb_pack::versionint_t), '\0');
         db_log_->Get(leveldb::ReadOptions(), commit_version_key, &commit_version_buffer);
 
-        //slsfs::leveldb_pack::versionint_t version = 0;
-        //std::memcpy(&version, commit_version_buffer.data(), sizeof(slsfs::leveldb_pack::versionint_t));
+        if (commit_version_buffer.empty())
+            return 0;
 
-        // get from network format
-        //return slsfs::leveldb_pack::ntoh(version);
-        return std::stoll(commit_version_buffer);
+        try
+        {
+            return std::stoll(commit_version_buffer);
+        } catch (std::exception&) {
+            BOOST_LOG_TRIVIAL(error) << "in get_committed_version, error on converting '" << commit_version_buffer << "' to number";
+            commit_version_buffer = "0";
+            db_log_->Put(leveldb::WriteOptions(), commit_version_key, commit_version_buffer);
+            return 0;
+        }
     }
 
     void put_committed_version (std::string const& key, slsfs::leveldb_pack::versionint_t version)
@@ -91,12 +97,18 @@ public:
 
         db_log_->Get(leveldb::ReadOptions(), version_key, &version_value);
 
-        return std::stoll(version_value);
+        if (version_value.empty())
+            return 0;
 
-        // network format => host
-        //slsfs::leveldb_pack::versionint_t version = 0;
-        //std::memcpy(version_value.data(), &version, sizeof(slsfs::leveldb_pack::versionint_t));
-        //return slsfs::leveldb_pack::ntoh(version);
+        try
+        {
+            return std::stoll(version_value);
+        } catch (std::exception&) {
+            BOOST_LOG_TRIVIAL(error) << "in get_pending_prepare_version, error on converting '" << version_value << "' to number";
+            version_value = "0";
+            db_log_->Put(leveldb::WriteOptions(), version_key, version_value);
+            return 0;
+        }
     }
 
     void commit_pending_prepare (std::string const& key, leveldb::DB& save_dest)

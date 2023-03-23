@@ -4,12 +4,13 @@
 #define PROXY_COMMAND_HPP__
 
 // temp remove for compile
-//#include "caching.hpp"
+#include "caching.hpp"
 
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <boost/signals2.hpp>
 
 #include <slsfs.hpp>
+#include <optional>
 
 namespace slsfsdf::server
 {
@@ -22,7 +23,7 @@ namespace
 
 using queue_map = oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
                                                    std::shared_ptr<boost::asio::io_context::strand>,
-                                                   slsfs::uuid::hash_compare>;
+                                                   slsfs::uuid::hash_compare<slsfs::uuid::uuid>>;
 using queue_map_accessor = queue_map::accessor;
 
 //std::invocable<slsfs::base::buf(slsfsdf::storage_conf*, jsre::request_parser<base::byte> const&)>;
@@ -56,7 +57,7 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
-//    cache& cache_engine_;
+    cache::cache cache_engine_;
 
     static
     auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
@@ -305,22 +306,22 @@ public:
                     {
 
                         pack->header.type = slsfs::pack::msg_t::worker_response;
-                        pack->data.buf = std::vector<slsfs::pack::unit_t>{65, 66};
-                        slsfs::log::log<slsfs::log::level::debug>("write back");
-                        self->start_write(pack);
+                        //pack->data.buf = std::vector<slsfs::pack::unit_t>{65, 66};
+                        //slsfs::log::log<slsfs::log::level::debug>("write back");
+                        //self->start_write(pack);
 
-                        //self->start_storage_perform(
-                        //    input,
-                        //    [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
-                        //        pack->header.type = slsfs::pack::msg_t::worker_response;
-                        //        pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
-                        //        std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
-                        //
-                        //        self->start_write(pack);
-                        //        auto const end = std::chrono::high_resolution_clock::now();
-                        //        auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                        //        slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
-                        //    });
+                        self->start_storage_perform(
+                            input,
+                            [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
+                                pack->header.type = slsfs::pack::msg_t::worker_response;
+                                pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
+                                std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
+
+                                self->start_write(pack);
+                                auto const end = std::chrono::high_resolution_clock::now();
+                                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                                slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
+                            });
                     }
                     else
                     {
@@ -345,21 +346,26 @@ public:
         switch (single_input.type())
         {
         case slsfs::jsre::type_t::file:
-//            if (single_input.operation() == slsfs::jsre::operation_t::write) {
-//                cache_engine_.write_to_cache(single_input);
-//                return datastorage_conf_->perform(single_input);
-//            }
-//            else {
-//                auto cached_file = cache_engine_.read_from_cache(single_input);
-//                if (cached_file != nullptr) {
-//                    return cached_file.data();
-//                }
-//                else {
-//                    cache_engine_.write_to_cache(single_input);
-//                    return datastorage_conf_->perform(single_input);
-//                }
-//            }
-            return datastorage_conf_->perform(single_input);
+            if (single_input.operation() == slsfs::jsre::operation_t::write)
+            {
+                // cache_engine_.write_to_cache(single_input);
+                return datastorage_conf_->perform(single_input);
+            }
+            else
+            {
+                // TODO: switch it to real type later please!!!!!!!
+                auto cached_file = cache_engine_.read_from_cache(single_input);
+
+                if (cached_file)
+                    return cached_file.value();
+                else // Cache miss
+                {
+                    // write to cache
+                    auto data = datastorage_conf_->perform(single_input);
+                    cache_engine_.write_to_cache(single_input, data);
+                    return data;
+                }
+            }
             break;
 
         case slsfs::jsre::type_t::metadata:

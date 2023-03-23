@@ -35,13 +35,13 @@ namespace policy
 struct info
 {
     virtual void execute() {}
-    virtual void schedule_a_new_job(worker_set&, job_ptr) {}
-    virtual void reschedule_a_job(worker_set&, job_ptr) {}
-    virtual void started_a_new_job(df::worker*, job_ptr) {}
-    virtual void finished_a_job(df::worker*, job_ptr) {}
+    virtual void schedule_a_new_job (worker_set&, job_ptr) {}
+    virtual void reschedule_a_job   (worker_set&, job_ptr) {}
+    virtual void started_a_new_job  (df::worker*, job_ptr) {}
+    virtual void finished_a_job     (df::worker*, job_ptr) {}
     virtual void starting_a_new_worker() {}
     virtual void registered_a_new_worker(df::worker*) {}
-    virtual void deregistered_a_worker(df::worker*) {}
+    virtual void deregistered_a_worker  (df::worker*) {}
 };
 
 } // policy

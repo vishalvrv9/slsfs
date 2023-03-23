@@ -70,20 +70,22 @@ class launcher
             [this] {
                 int const should_start = launcher_policy_.get_ideal_worker_count_delta();
 
-                //if (should_start != 0)
-                //BOOST_LOG_TRIVIAL(debug) << "Ideal worker count delta " << should_start;
+                if (should_start != 0)
+                    BOOST_LOG_TRIVIAL(trace) << "Starting worker of size: " << should_start;
                 for (int i = 0; i < should_start; i++)
                 {
-                    create_worker(launcher_policy_.get_worker_config());
+                    create_worker (
+                        launcher_policy_.get_worker_config().post_string,
+                        launcher_policy_.get_worker_config().max_func_count);
                     launcher_policy_.start_transfer();
                 }
             });
     }
 
-    void create_worker(std::string const& body)
+    void create_worker (std::string const& body, int const max_func_count = 0)
     {
         launcher_policy_.starting_a_new_worker();
-        trigger::make_trigger(io_context_)->start_post(body);
+        trigger::make_trigger(io_context_, max_func_count)->start_post(body);
     }
 
 public:
@@ -102,7 +104,7 @@ public:
     }
 
     template<typename PolicyType, typename ... Args>
-    void set_policy_filetoworker(Args&& ... args) {
+    void set_policy_filetoworker (Args&& ... args) {
         launcher_policy_.filetoworker_policy_ = std::make_unique<PolicyType>(std::forward<Args>(args)...);
     }
 
@@ -111,20 +113,21 @@ public:
     }
 
     template<typename PolicyType, typename ... Args>
-    void set_policy_launch(Args&& ... args) {
+    void set_policy_launch (Args&& ... args) {
         launcher_policy_.launch_policy_       = std::make_unique<PolicyType>(std::forward<Args>(args)...);
     }
 
     template<typename PolicyType, typename ... Args>
-    void set_policy_keepalive(Args&& ... args) {
+    void set_policy_keepalive (Args&& ... args) {
         launcher_policy_.keepalive_policy_    = std::make_unique<PolicyType>(std::forward<Args>(args)...);
     }
 
-    void set_worker_config(std::string const& config) {
-        launcher_policy_.worker_config_ = config;
+    template<typename ... Args>
+    void set_worker_config (Args && ... args) {
+        launcher_policy_.worker_config_ = worker_config(std::forward<Args>(args)...);
     }
 
-    void add_worker(tcp::socket socket, pack::packet_pointer worker_info)
+    void add_worker (tcp::socket socket, [[maybe_unused]] pack::packet_pointer worker_info)
     {
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
         bool ok = worker_set_.emplace(worker_ptr, 0);
@@ -138,28 +141,26 @@ public:
         worker_ptr->start_read_header();
     }
 
-    void on_worker_reschedule(job_ptr job)
+    void on_worker_reschedule (job_ptr job)
     {
-        BOOST_LOG_TRIVIAL(trace) << "job " << job->pack_->header << " reschedule";
+        BOOST_LOG_TRIVIAL(trace) << "job " << job->pack_->header << " reschedule due to worker close";
         fileid_to_worker().erase(job->pack_->header);
-        reschedule(job);
+        reschedule (job);
     }
 
-    void on_worker_close(df::worker_ptr worker)
+    void on_worker_close (df::worker_ptr worker)
     {
         BOOST_LOG_TRIVIAL(trace) << "worker close: " << worker.get();
         worker_set_.erase(worker);
         launcher_policy_.deregistered_a_worker(worker.get());
     }
 
-    void on_worker_finished_a_job(df::worker* worker, job_ptr job) {
+    void on_worker_finished_a_job (df::worker* worker, job_ptr job) {
         launcher_policy_.finished_a_job(worker, job);
     }
 
-    void process_job(job_ptr job)
+    void process_job (job_ptr job)
     {
-        //BOOST_LOG_TRIVIAL(trace) << "Starting jobs";
-
         df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(job->pack_);
         if (!worker_ptr || not worker_ptr->is_valid())
         {
@@ -198,7 +199,7 @@ public:
     }
 
     template<typename Callback>
-    void start_trigger_post(std::string const& body, pack::packet_pointer original_pack, Callback next)
+    void start_trigger_post (std::string const& body, pack::packet_pointer original_pack, Callback next)
     {
         pack::packet_pointer pack = std::make_shared<pack::packet>();
         pack->header      = original_pack->header;
@@ -210,13 +211,13 @@ public:
         schedule(job_ptr);
     }
 
-    void schedule(job_ptr job)
+    void schedule (job_ptr job)
     {
         launcher_policy_.schedule_a_new_job(job);
         net::post(io_context_, [this, job] { process_job(job); });
     }
 
-    void reschedule(job_ptr job)
+    void reschedule (job_ptr job)
     {
         launcher_policy_.reschedule_a_job(job);
         net::post(io_context_, [this, job] { process_job(job); });
@@ -224,7 +225,7 @@ public:
 
     // assumes begin -> end are sorted
     template<std::forward_iterator ForwardIterator, CanResolveZookeeper Zookeeper>
-    void reconfigure(ForwardIterator begin, ForwardIterator end, Zookeeper&& zoo)
+    void reconfigure (ForwardIterator begin, ForwardIterator end, Zookeeper&& zoo)
     {
         BOOST_LOG_TRIVIAL(trace) << "launcher reconfigure";
         for (auto&& pair : fileid_to_worker())
@@ -238,7 +239,7 @@ public:
         }
     }
 
-    void start_send_reconfigure_message(fileid_worker_pair & pair, net::ip::tcp::endpoint new_proxy)
+    void start_send_reconfigure_message (fileid_worker_pair & pair, net::ip::tcp::endpoint new_proxy)
     {
         BOOST_LOG_TRIVIAL(trace) << "start_send_reconfigure_message: " << new_proxy;
 

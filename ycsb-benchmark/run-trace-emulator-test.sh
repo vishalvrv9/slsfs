@@ -8,16 +8,15 @@ echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function-debug;' &
+bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
+bash -c "cd ../ssbd; make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
 start-proxy-remote()
 {
     local h=192.168.0.135;
-    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load &
     scp start-proxy* $h:
     if [[ "$2" == "noinit" ]]; then
         ssh $h "echo 'INITINT=0' >> ./start-proxy-args.sh"
