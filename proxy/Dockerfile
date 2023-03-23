@@ -2,7 +2,7 @@ FROM gcc:12 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev gdb && \
-    pip3 install conan
+    pip3 install conan==1.59
 
 RUN conan profile new default --detect &&\
     conan profile update settings.compiler.libcxx=libstdc++11 default
@@ -44,7 +44,7 @@ COPY --from=builder /usr/lib/x86_64-linux-gnu/libzookeeper_mt.so.2 /lib/libzooke
 COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 /lib/librt.so.1
 COPY --from=builder /lib/x86_64-linux-gnu/libdl.so.2 /lib/libdl.so.2
 
-COPY --from=builder /bin/run /bin/run
+COPY --from=builder /bin/run          /bin/run
 COPY --from=builder /bin/slsfs-client /bin/slsfs-client
 COPY --from=builder /bin/ceph-zipf    /bin/ceph-zipf
 

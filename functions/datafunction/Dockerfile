@@ -46,7 +46,6 @@ ARG actionloop
 RUN --mount=type=cache,target=/action/build mkdir -p /action/build && \
     cd /action/build && \
     bash -c 'if [[ -z "$debug" ]]; then conan install .. --profile /pre/profiles/release; else conan install .. --profile /pre/profiles/debug; fi' && \
-    bash -c 'if [[ -z "$debug" ]]; then cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_AS_ACTIONLOOP=$actionloop; else cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_AS_ACTIONLOOP=$actionloop; fi' && \
+    bash -c 'if [[ -z "$debug" ]]; then cmake -GNinja .. -DCMAKE_BUILD_TYPE=Release -DBUILD_AS_ACTIONLOOP=$actionloop; else cmake .. -GNinja -DCMAKE_BUILD_TYPE=Debug -DBUILD_AS_ACTIONLOOP=$actionloop; fi' && \
     cmake --build . && \
-    cp /action/build/bin/exec /action/
-#    cp /action/build/CMakeFiles/exec.dir/entry.cpp.json /action/ 2>/dev/null || true
+    cp /action/build/bin/* /action/

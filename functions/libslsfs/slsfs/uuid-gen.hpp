@@ -46,10 +46,11 @@ struct uuid : public pack::key_t
     }
 };
 
+template <typename RangeType>
 struct hash_compare
 {
     static
-    auto hash (uuid const& id) -> std::size_t
+    auto hash (RangeType const& id) -> std::size_t
     {
         std::size_t seed = 0x1b873594;
         pack::hash::range(seed, id.begin(), id.end());
@@ -57,7 +58,7 @@ struct hash_compare
     }
 
     static
-    bool equal (uuid const& lhs, uuid const& rhs) {
+    bool equal (RangeType const& lhs, RangeType const& rhs) {
         return lhs == rhs;
     }
 };

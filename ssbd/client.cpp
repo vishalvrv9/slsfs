@@ -165,48 +165,20 @@ int main()
     boost::asio::io_context io_context;
     ssbd::tcp::socket s(io_context);
     ssbd::tcp::resolver resolver(io_context);
-    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
+    boost::asio::connect(s, resolver.resolve("localhost", "12000"));
 
     std::vector<slsfs::leveldb_pack::unit_t> buf(4096);
     //using ulli = unsigned long long int;
 
     std::list<double> records;
-//    for (int i=0; i<10000; i++)
-//        records.push_back(record([&](){ read(s, i); }));
-//    stats(records.begin(), records.end(), "read");
+    for (int i=0; i<10000; i++)
+        records.push_back(record([&](){ read(s, i); }));
+    stats(records.begin(), records.end(), "read");
 
-//    records.clear();
+    records.clear();
     for (int i=0; i<100000; i++)
         records.push_back(record([&](){ write(s, i, buf); }));
     stats(records.begin(), records.end(), "write");
-
-//    records.clear();
-//    for (int i=0; i<10000; i++)
-//        records.push_back(
-//            record(
-//                [&](){
-//                    boost::asio::io_context io_context;
-//                    tcp::socket s(io_context);
-//                    tcp::resolver resolver(io_context);
-//                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
-//                    read(s, i);
-//                }));
-//
-//    stats(records.begin(), records.end(), "readnewconn");
-//
-//    records.clear();
-//    for (int i=0; i<10000; i++)
-//        records.push_back(
-//            record(
-//                [&](){
-//                    boost::asio::io_context io_context;
-//                    tcp::socket s(io_context);
-//                    tcp::resolver resolver(io_context);
-//                    boost::asio::connect(s, resolver.resolve("ssbd-2", "12000"));
-//
-//                    write(s, i, buf);
-//                }));
-//    stats(records.begin(), records.end(), "writenewconn");
 
     return EXIT_SUCCESS;
 }

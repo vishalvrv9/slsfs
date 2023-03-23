@@ -16,18 +16,52 @@
 namespace slsfsdf
 {
 
+namespace
+{
+
+class recoder
+{
+    using filecheckmap =
+        oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
+                                         int /* not used */,
+                                         slsfs::uuid::hash_compare<slsfs::uuid::uuid>>;
+    filecheckmap map_;
+
+public:
+    bool is_checked(slsfs::uuid::uuid const& uuid)
+    {
+        filecheckmap::accessor it;
+        return map_.find(it, uuid);
+    }
+
+    void mark_checked(slsfs::uuid::uuid const& uuid)
+    {
+        map_.emplace(uuid, 0);
+    }
+};
+
+} // namespace
+
+
 // Storage backend configuration for SSBD stripe
 class storage_conf_ssbd_backend : public storage_conf
 {
     boost::asio::io_context& io_context_;
     int replication_size_ = 3;
 
+
     std::vector<std::shared_ptr<slsfs::backend::ssbd>> backendlist_;
 
     void connect() override
     {
-        for (std::shared_ptr<slsfs::backend::ssbd>& host : backendlist_)
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
             host->connect();
+    }
+
+    void close() override
+    {
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
+            host->close();
     }
 
     static
@@ -63,8 +97,30 @@ class storage_conf_ssbd_backend : public storage_conf
                             slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_2pc_prepare");
+
+        auto request_dearline_timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        using namespace std::chrono_literals;
+
+        // every request must finish in 30s
+        request_dearline_timer->expires_from_now(30s);
+        request_dearline_timer->async_wait(
+            [next, request_dearline_timer] (boost::system::error_code ec) {
+                switch (ec.value())
+                {
+                case boost::system::errc::success: // timer timeout
+                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    break;
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
+                default:
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    break;
+                }
+        });
+
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
+        std::uint32_t const selected_version = version();
 
         auto outstanding_requests = std::make_shared<std::atomic<int>>(0);
         auto all_ssbd_agree       = std::make_shared<std::atomic<bool>>(true);
@@ -77,27 +133,22 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::log::log("start_2pc_prepare sending: {}, {}, {}",
                             blockid, offset, blockwritesize);
 
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
-
             int const backend_index = select_replica(input.uuid(), blockid, 0);
             auto selected = backendlist_.at(backend_index);
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
                 slsfs::leveldb_pack::msg_t::two_pc_prepare,
+                selected_version,
                 blockid,
                 offset,
                 blockwritesize);
 
             request->data.buf.resize(blockwritesize + headersize());
-            std::uint32_t const version_number = slsfs::leveldb_pack::hton(version());
-            std::memcpy(request->data.buf.data(), &version_number, sizeof(version_number));
 
-            boost::asio::buffer_copy(partial_buffer_view,
-                                     boost::asio::buffer(
-                                         request->data.buf.data() + headersize(),
-                                         blockwritesize));
+            std::memcpy(request->data.buf.data() + headersize(),
+                        input.data() + buffer_pointer_offset,
+                        blockwritesize);
 
             currentpos += blockwritesize;
             buffer_pointer_offset += blockwritesize;
@@ -105,7 +156,7 @@ class storage_conf_ssbd_backend : public storage_conf
             (*outstanding_requests)++;
             selected->start_send_request(
                 request,
-                [outstanding_requests, input, next, all_ssbd_agree, this]
+                [outstanding_requests, input, all_ssbd_agree, selected_version, request_dearline_timer, next, this]
                 (slsfs::leveldb_pack::packet_pointer response) {
                     switch (response->header.type)
                     {
@@ -125,13 +176,22 @@ class storage_conf_ssbd_backend : public storage_conf
                     }
 
                     if (--(*outstanding_requests) == 0)
-                        start_2pc_commit(input, *all_ssbd_agree, next);
+                    {
+                        request_dearline_timer->cancel();
+
+                        if (*all_ssbd_agree)
+                            std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                        else
+                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                        start_2pc_commit(input, *all_ssbd_agree, selected_version, nullptr);
+                    }
                 });
         }
     }
 
     void start_2pc_commit (slsfs::jsre::request_parser<slsfs::base::byte> input,
-                           bool all_ssbd_agree,
+                           bool          const all_ssbd_agree,
+                           std::uint32_t const selected_version,
                            slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_2pc_commit");
@@ -148,9 +208,6 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::log::log("start_2pc_commit: {}, {}, {}",
                             blockid, offset, blockwritesize);
 
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
-
             int const selected_index = select_replica(input.uuid(), blockid, 0);
             auto selected = backendlist_.at(selected_index);
 
@@ -159,6 +216,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 all_ssbd_agree?
                     slsfs::leveldb_pack::msg_t::two_pc_commit_execute:
                     slsfs::leveldb_pack::msg_t::two_pc_commit_rollback,
+                selected_version,
                 blockid,
                 offset,
                 /*blockwritesize*/ 0);
@@ -169,7 +227,7 @@ class storage_conf_ssbd_backend : public storage_conf
             (*outstanding_requests)++;
             selected->start_send_request(
                 request,
-                [outstanding_requests, input, next, all_ssbd_agree, this]
+                [outstanding_requests, input, all_ssbd_agree, selected_version, next, this]
                 (slsfs::leveldb_pack::packet_pointer response) {
                     switch (response->header.type)
                     {
@@ -178,6 +236,8 @@ class storage_conf_ssbd_backend : public storage_conf
 
                     default:
                         slsfs::log::log("start_2pc_commit unwanted header type {}", response->header.print());
+                        if (next)
+                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
                         break;
                     }
 
@@ -186,14 +246,15 @@ class storage_conf_ssbd_backend : public storage_conf
                         if (next)
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
 
-                        if (all_ssbd_agree)
-                            start_replication(input, nullptr);
+                        if (all_ssbd_agree && replication_size_ > 1)
+                            start_replication(input, selected_version, nullptr);
                     }
                 });
         }
     }
 
     void start_replication (slsfs::jsre::request_parser<slsfs::base::byte> input,
+                            std::uint32_t const selected_version,
                             slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("start_replication");
@@ -210,9 +271,6 @@ class storage_conf_ssbd_backend : public storage_conf
             slsfs::log::log("start_replication: {}, {}, {}",
                             blockid, offset, blockwritesize);
 
-            boost::asio::mutable_buffer partial_buffer_view (input.data() + buffer_pointer_offset,
-                                                             blockwritesize);
-
             currentpos += blockwritesize;
             buffer_pointer_offset += blockwritesize;
             // we already have one copy at replica_index 0 from the 2pc part, so start at replica 1
@@ -224,6 +282,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                     input.uuid(),
                     slsfs::leveldb_pack::msg_t::replication,
+                    selected_version,
                     blockid,
                     offset,
                     blockwritesize);
@@ -241,11 +300,16 @@ class storage_conf_ssbd_backend : public storage_conf
                         default:
                             slsfs::log::log("start_replication unwanted header type {}",
                                             response->header.print());
-                            break;
+                            if (next)
+                                std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                            return;
                         }
 
                         if (--(*outstanding_requests) == 0 and next)
+                        {
+                            slsfs::log::log("replication finished {}", response->header.print());
                             std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                        }
                     });
             }
         }
@@ -261,6 +325,23 @@ class storage_conf_ssbd_backend : public storage_conf
                      slsfs::backend::ssbd::handler_ptr next)
     {
         slsfs::log::log("ssbd start_read");
+        auto timer = std::make_shared<boost::asio::steady_timer>(io_context_);
+        using namespace std::chrono_literals;
+        timer->expires_from_now(30s);
+        timer->async_wait(
+            [next, timer] (boost::system::error_code ec) {
+                switch (ec.value())
+                {
+                case boost::system::errc::success: // timer timeout
+                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    break;
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
+                default:
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    break;
+                }
+        });
 
         std::uint32_t const realpos  = input.position();
         std::uint32_t const readsize = input.size();
@@ -269,6 +350,7 @@ class storage_conf_ssbd_backend : public storage_conf
         if (readsize == 0)
         {
             std::invoke(*next, slsfs::base::buf{});
+            timer->cancel();
             return;
         }
 
@@ -289,12 +371,13 @@ class storage_conf_ssbd_backend : public storage_conf
             std::uint32_t const offset  = currentpos % blocksize();
             std::uint32_t const blockreadsize = std::min<std::uint32_t>(endpos - currentpos,
                                                                         blocksize() - offset);
-            slsfs::log::log("start_replication: {}, {}, {}",
+            slsfs::log::log("start_read: {}, {}, {}",
                             blockid, offset, blockreadsize);
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
                 slsfs::leveldb_pack::msg_t::get,
+                0 /* version number. not use for read request */,
                 blockid,
                 offset,
                 blockreadsize);
@@ -303,23 +386,26 @@ class storage_conf_ssbd_backend : public storage_conf
             auto selected = backendlist_.at(selected_index);
             selected->start_send_request(
                 request,
-                [result_accumulator, input, next, index, this]
+                [result_accumulator, input, next, index, timer, this]
                 (slsfs::leveldb_pack::packet_pointer resp) {
                     result_accumulator->at(index).ready = true;
                     result_accumulator->at(index).buf   = std::move(resp->data.buf);
+
+                    slsfs::log::log("read one result");
 
                     for (buf_stat_t& bufstat : *result_accumulator)
                         if (not bufstat.ready)
                             return;
 
+                    timer->cancel();
                     slsfs::base::buf collect;
                     collect.reserve((result_accumulator->size() + 2 /* head and tail */) * blocksize());
                     for (buf_stat_t& bufstat : *result_accumulator)
-                        collect.insert(collect.begin(),
+                        collect.insert(collect.end(),
                                        bufstat.buf.begin(),
                                        bufstat.buf.end());
 
-                    slsfs::log::log("read executing next with bufsize = {}", collect.size());
+                    slsfs::log::log("executing next with bufsize = {}", collect.size());
                     std::invoke(*next, std::move(collect));
                 });
             currentpos += blockreadsize;
@@ -405,7 +491,7 @@ class storage_conf_ssbd_backend : public storage_conf
 public:
     storage_conf_ssbd_backend(boost::asio::io_context& io): io_context_{io} {}
 
-    auto headersize() -> std::uint32_t { return sizeof(std::uint32_t); };
+    auto headersize() -> std::uint32_t { return 0; };
     virtual
     auto blocksize() -> std::uint32_t override {
         return storage_conf::blocksize() - headersize();
@@ -435,7 +521,7 @@ public:
         case slsfs::jsre::operation_t::write:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-            slsfs::log::log("slsfs::jsre::operation_t::write");
+            slsfs::log::log("start_perform -> slsfs::jsre::operation_t::write");
             start_2pc_prepare(input, next_ptr);
             break;
         }
@@ -443,7 +529,7 @@ public:
         case slsfs::jsre::operation_t::read:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-            slsfs::log::log("slsfs::jsre::operation_t::read");
+            slsfs::log::log("start_perform -> slsfs::jsre::operation_t::read");
             start_read(input, next_ptr);
             break;
         }
@@ -458,7 +544,6 @@ public:
         case slsfs::jsre::meta_operation_t::addfile:
         {
             auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
-
             break;
         }
 

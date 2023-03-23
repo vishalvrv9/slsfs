@@ -87,7 +87,7 @@ template<typename Packet, typename BufType>
 class socket_writer
 {
     boost::asio::io_context & io_context_;
-    boost::asio::io_context::strand write_io_strand_;
+    boost::asio::io_context::strand &write_io_strand_;
     oneapi::tbb::concurrent_queue<write_job<Packet, BufType>> write_queue_;
     boost::asio::ip::tcp::socket& socket_;
 
@@ -111,7 +111,7 @@ class socket_writer
                     std::invoke(*job.next, ec, transferred_size);
                     if (ec)
                     {
-                        BOOST_LOG_TRIVIAL(error) << "socket writer start_write_packet() error: " << ec.message();
+                        BOOST_LOG_TRIVIAL(error) << "socket writer writing to error: " << ec.message();
                         return;
                     }
                     start_write_packet_with_strand();
@@ -135,7 +135,7 @@ public:
 } // namespace v2
 
 template<typename Packet, typename BufType>
-using socket_writer = v2::socket_writer<Packet, BufType>;
+using socket_writer = v1::socket_writer<Packet, BufType>;
 
 } // namespace slsfs
 

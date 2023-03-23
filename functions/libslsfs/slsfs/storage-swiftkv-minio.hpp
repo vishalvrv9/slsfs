@@ -95,6 +95,7 @@ public:
 
         minio::s3::PutObjectArgs args(stream, buffer.size(), 0);
         args.bucket = kv_store;
+        std::cout << uuid::encode_base64(name);
         args.object = uuid::encode_base64(name);
 
         minio::s3::PutObjectResponse resp = client.PutObject(args);

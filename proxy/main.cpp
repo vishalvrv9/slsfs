@@ -342,8 +342,9 @@ public:
         launcher_.set_policy_keepalive<PolicyType>(std::forward<Args>(args)...);
     }
 
-    void set_worker_config(std::string const& config) {
-        launcher_.set_worker_config(config);
+    template<typename ... Args>
+    void set_worker_config(Args&& ... args) {
+        launcher_.set_worker_config (std::forward<Args>(args)...);
     }
 
     void start_accept()
@@ -516,6 +517,7 @@ int main(int argc, char* argv[])
         ("policy-keepalive",         po::value<std::string>(),                      "keepalive policy name")
         ("policy-keepalive-args",    po::value<std::string>()->default_value(""),   "keepalive policy name extra args")
         ("worker-config",            po::value<std::string>(),                      "worker config json file path to use")
+        ("max-function-count",       po::value<int>()->default_value(0),            "marks the max random function name to use")
         ("blocksize",                po::value<int>()->default_value(4096),         "worker config blocksize");
     po::positional_options_description pos_po;
     po::variables_map vm;
@@ -569,8 +571,7 @@ int main(int argc, char* argv[])
     set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>(), vm["policy-filetoworker-args"].as<std::string>());
     set_policy_launch      (server, vm["policy-launch"]      .as<std::string>(), vm["policy-launch-args"]      .as<std::string>());
     set_policy_keepalive   (server, vm["policy-keepalive"]   .as<std::string>(), vm["policy-keepalive-args"]   .as<std::string>());
-
-    server.set_worker_config(worker_config);
+    server.set_worker_config(worker_config, vm["max-function-count"].as<int>());
 
     server.start_accept();
     BOOST_LOG_TRIVIAL(info) << server_id << " listen on " << port;

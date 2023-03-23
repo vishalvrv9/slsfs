@@ -2,6 +2,7 @@
 run
 exec
 args.txt
+test-storage
 
 ycsb-benchmark/*result*
 ycsb-benchmark/block-mappings-to-psb

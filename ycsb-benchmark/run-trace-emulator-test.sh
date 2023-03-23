@@ -8,16 +8,15 @@ echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function-debug;' &
+bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
+bash -c "cd ../ssbd; make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
 start-proxy-remote()
 {
     local h=192.168.0.135;
-    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load &
     scp start-proxy* $h:
     if [[ "$2" == "noinit" ]]; then
         ssh $h "echo 'INITINT=0' >> ./start-proxy-args.sh"
@@ -73,22 +72,18 @@ OW_WATCHING=$!
 
 ssh ow-invoker-1
 
-echo "coping files from ow-invoker-1"
+cd "trace_emulator_rerun/$TESTNAME-result/";
 
-# now, the script stuck at here, so change the following script for easy manual continuation
-cd "trace_emulator_rerun/$TESTNAME-result/"
-
-cp start-proxy-args.sh             .
+cp ../../start-proxy-args.sh .
 scp proxy-1:/tmp/proxy-report.json proxy-report-1.json;
 ssh proxy-1 docker logs proxy2 2>  docker-log-ow-invoker-1.backup.txt;
-scp ow-invoker-1:report.csv        report.csv
+scp ow-invoker-1:report.csv "report.csv"
+cat activation-list/*.txt \
+    | awk '!seen[$0]++' > "activation-list.txt" && \
+    rm -r activation-list;
 
 kill $OW_WATCHING >/dev/null 2>&1
 
 wait < <(jobs -p);
-
-cat activation-list/*.txt \
-    | awk '!seen[$0]++' > "activation-list.txt" && \
-    rm -r activation-list;
 
 echo -e "\a finish test: $TESTNAME"

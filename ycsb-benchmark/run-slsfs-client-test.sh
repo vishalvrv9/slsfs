@@ -37,8 +37,8 @@ docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /t
 chmod +x /tmp/slsfs-client
 
 for h in "${hosts[@]}"; do
-    ssh $h rm -f /tmp/slsfs-client || exit 0;
-    scp /tmp/slsfs-client "$h":/tmp/slsfs-client &
+    ssh $h rm -f /tmp/slsfs-client;
+    scp /tmp/slsfs-client "$h":/tmp/slsfs-client;
 done
 wait < <(jobs -p);
 

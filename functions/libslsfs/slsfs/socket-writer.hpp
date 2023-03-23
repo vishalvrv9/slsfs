@@ -103,15 +103,15 @@ class socket_writer
             if (job.bufptr == nullptr)
                 job.bufptr = job.pack->serialize();
 
-            log::log("Writing packet to socket: {}, datasize={}",
-                     job.pack->header.print(), job.pack->data.buf.size());
             boost::asio::async_write(
                 socket_,
                 boost::asio::buffer(job.bufptr->data(), job.bufptr->size()),
                 [this, job] (boost::system::error_code ec, std::size_t transferred_size) {
                     std::invoke(*job.next, ec, transferred_size);
                     if (ec)
+                    {
                         return;
+                    }
                     start_write_packet_with_strand();
                 });
         }
@@ -133,7 +133,7 @@ public:
 } // namespace v2
 
 template<typename Packet, typename BufType>
-using socket_writer = v2::socket_writer<Packet, BufType>;
+using socket_writer = v1::socket_writer<Packet, BufType>;
 
 } // namespace slsfs
 

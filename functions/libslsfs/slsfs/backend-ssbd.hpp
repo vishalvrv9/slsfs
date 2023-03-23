@@ -24,21 +24,29 @@ namespace detail
 class job
 {
     boost::signals2::signal<void(leveldb_pack::packet_pointer)> next_;
+    std::chrono::system_clock::time_point registered_ = std::chrono::system_clock::now();
+    std::chrono::system_clock::time_point started_;
+    std::chrono::system_clock::time_point ended_;
 
 public:
-    job() = default;
+    job () = default;
 
     template<typename Next>
-    job(Next && callable) { next_.connect(callable); }
+    job (Next && callable) { next_.connect(callable); }
 
-    template<typename Next>
-    void register_next_job(Next && callable)
+    void run (leveldb_pack::packet_pointer ptr)
     {
-        next_.disconnect_all_slots();
-        next_.connect(callable);
+        ended_ = std::chrono::system_clock::now();
+        next_(ptr);
     }
 
-    void run(leveldb_pack::packet_pointer ptr) { next_(ptr); }
+    void mark_started() { started_ = std::chrono::system_clock::now(); }
+
+    void print ()
+    {
+        log::log("job stat: waittime: {}, execute time: {}",
+                 started_ - registered_, ended_ - started_);
+    }
 };
 
 using job_ptr = std::shared_ptr<job>;
@@ -59,9 +67,7 @@ class ssbd
 
     std::once_flag read_started_flag_;
     jobmap outstanding_jobs_;
-
     using jobmap_accessor = decltype(outstanding_jobs_)::accessor;
-
     socket_writer::socket_writer<leveldb_pack::packet, std::vector<leveldb_pack::unit_t>> writer_;
 
     void start_read_loop() {
@@ -82,7 +88,6 @@ class ssbd
                 {
                     log::log("ssbd backend: {} have boost error: {} on start_read_one() header {}",
                              host_, ec.message(), resp->header.print());
-                    start_read_one();
                     return;
                 }
 
@@ -116,8 +121,9 @@ class ssbd
                 assert(found);
 
                 log::log("async read body executing with header {}", resp->header.print());
-
                 it->second->run(resp);
+                it->second->print();
+
                 outstanding_jobs_.erase(it);
                 start_read_one();
             });
@@ -139,21 +145,25 @@ public:
         boost::asio::connect (socket_, resolver.resolve(host_, port_));
     }
 
+    void close()
+    {
+        socket_.close();
+    }
+
     void start_send_request (leveldb_pack::packet_pointer request,
                              std::function<void(leveldb_pack::packet_pointer)> on_response)
     {
         log::log("ssbd backend start_send_request: {}", request->header.print());
-        detail::job_ptr newjob = std::make_shared<detail::job>(
-            [on_response=std::move(on_response)] (leveldb_pack::packet_pointer resp) {
-                std::invoke(on_response, resp);
-            });
+        detail::job_ptr newjob = std::make_shared<detail::job>(on_response);
 
         [[maybe_unused]]
         bool ok = outstanding_jobs_.emplace(request->header, newjob);
         assert(ok);
 
         auto next = std::make_shared<socket_writer::boost_callback>(
-            [this, request] (boost::system::error_code const& ec, std::size_t) {
+            [this, request, newjob]
+            (boost::system::error_code const& ec, std::size_t) {
+                newjob->mark_started();
                 if (ec)
                 {
                     log::log("ssbd backend: {} boost error: {}; start_send_request: {}",

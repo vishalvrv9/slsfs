@@ -119,7 +119,7 @@ public:
                     case pack::msg_t::trigger:
                     case pack::msg_t::trigger_reject:
                     {
-                        BOOST_LOG_TRIVIAL(error) << "worker packet error" << pack->header;
+                        BOOST_LOG_TRIVIAL(error) << "worker packet error " << pack->header;
                         self->start_read_header();
                         break;
                     }
@@ -232,7 +232,7 @@ public:
 
     void start_write(pack::packet_pointer pack)
     {
-        BOOST_LOG_TRIVIAL(trace) << "worker start_write with pack";
+        BOOST_LOG_TRIVIAL(trace) << "worker start_write with " << pack->header;
 
         auto next = std::make_shared<socket_writer::boost_callback>(
             [self=shared_from_this(), pack] (boost::system::error_code ec, std::size_t /*length*/) {

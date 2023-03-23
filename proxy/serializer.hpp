@@ -12,6 +12,7 @@
 #include <array>
 #include <tuple>
 #include <algorithm>
+#include <sstream>
 #include <random>
 
 namespace slsfs::pack
@@ -58,6 +59,75 @@ enum class msg_t: unit_t
     trigger = 14,
     trigger_reject = 15,
 };
+
+auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream &
+{
+    switch (msg)
+    {
+    case msg_t::err:
+    {
+        os << "ERR";
+        break;
+    }
+    case msg_t::put:
+    {
+        os << "PUT";
+        break;
+    }
+    case msg_t::get:
+    {
+        os << "GET";
+        break;
+    }
+    case msg_t::ack:
+    {
+        os << "ACK";
+        break;
+    }
+    case msg_t::proxyjoin:
+    {
+        os << "PXJON";
+        break;
+    }
+    case msg_t::set_timer:
+    {
+        os << "STTMR";
+        break;
+    }
+    case msg_t::worker_reg:
+    {
+        os << "W_REG";
+        break;
+    }
+    case msg_t::worker_dereg:
+    {
+        os << "W_DRG";
+        break;
+    }
+    case msg_t::worker_push_request:
+    {
+        os << "W_REQ";
+        break;
+    }
+    case msg_t::worker_response:
+    {
+        os << "W_RES";
+        break;
+    }
+    case msg_t::trigger:
+    {
+        os << "TRIGG";
+        break;
+    }
+    case msg_t::trigger_reject:
+    {
+        os << "TRIGF";
+        break;
+    }
+    }
+    return os;
+}
+
 
 using waittime_type = std::uint32_t;
 
@@ -270,7 +340,7 @@ bool operator == (packet_header const& key1, packet_header const& key2) {
 
 auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&
 {
-    os << "[t=" << static_cast<int>(pd.type) << "|k=";
+    os << "[t=" << pd.type << "|k=";
     for (key_t::value_type v: pd.key)
         os << std::hex << static_cast<int>(v);
     os << ",seq=";

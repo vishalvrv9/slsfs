@@ -18,6 +18,14 @@
 namespace slsfs::launcher
 {
 
+struct worker_config
+{
+    std::string post_string;
+    int         max_func_count;
+    worker_config () = default;
+    worker_config (std::string const& post, int const count): post_string{post}, max_func_count{count} {}
+};
+
 class launcher_policy
 {
     net::io_context& io_context_;
@@ -27,7 +35,7 @@ class launcher_policy
     reporter reporter_;
 
 public:
-    std::string worker_config_;
+    worker_config worker_config_;
     std::unique_ptr<policy::worker_launch>       launch_policy_       = nullptr;
     std::unique_ptr<policy::worker_filetoworker> filetoworker_policy_ = nullptr;
     std::unique_ptr<policy::worker_keepalive>    keepalive_policy_    = nullptr;
@@ -48,19 +56,11 @@ public:
         return filetoworker_policy_->fileid_to_worker_;
     }
 
-    int get_ideal_worker_count_delta()
-    {
-        int want_start = launch_policy_->get_ideal_worker_count_delta(worker_set_);
-
-        return want_start;
-        if (fileid_to_worker().size() >= worker_set_.size())
-            want_start = std::min<int>(want_start, fileid_to_worker().size() - worker_set_.size());
-        else
-            want_start = 0;
-        return want_start;
+    int get_ideal_worker_count_delta() {
+        return launch_policy_->get_ideal_worker_count_delta(worker_set_);
     }
 
-    auto get_worker_config() -> std::string& {
+    auto get_worker_config() -> worker_config& {
         return worker_config_;
     }
 
@@ -75,15 +75,8 @@ public:
         filetoworker_policy_->start_transfer();
     }
 
-    auto get_assigned_worker(pack::packet_pointer packet_ptr) -> df::worker_ptr
-    {
-        if (false /* impl */)
-        {
-            policy::lowest_load ll;
-            return ll.get_available_worker(packet_ptr, worker_set_);
-        }
-        else
-            return filetoworker_policy_->get_assigned_worker(packet_ptr);
+    auto get_assigned_worker (pack::packet_pointer packet_ptr) -> df::worker_ptr {
+        return filetoworker_policy_->get_assigned_worker(packet_ptr);
     }
 
     // methods for updates; defined in base_types.hpp
@@ -96,11 +89,11 @@ public:
                 set_worker_keepalive();
                 launch_policy_      ->execute();
                 filetoworker_policy_->execute();
-                reporter_.execute();
+                reporter_            .execute();
             });
     }
 
-    void schedule_a_new_job(job_ptr job)
+    void schedule_a_new_job (job_ptr job)
     {
         net::post(
             io_context_,
@@ -108,7 +101,7 @@ public:
                 keepalive_policy_   ->schedule_a_new_job(worker_set_, job);
                 launch_policy_      ->schedule_a_new_job(worker_set_, job);
                 filetoworker_policy_->schedule_a_new_job(worker_set_, job);
-                reporter_.schedule_a_new_job(worker_set_, job);
+                reporter_            .schedule_a_new_job(worker_set_, job);
             });
     }
 
@@ -116,11 +109,11 @@ public:
     {
         net::post(
             io_context_,
-            [this, job] () {
+            [this, job] {
                 keepalive_policy_   ->reschedule_a_job(worker_set_, job);
                 launch_policy_      ->reschedule_a_job(worker_set_, job);
                 filetoworker_policy_->reschedule_a_job(worker_set_, job);
-                reporter_.reschedule_a_job(worker_set_, job);
+                reporter_            .reschedule_a_job(worker_set_, job);
             });
     }
 
@@ -132,7 +125,7 @@ public:
                 keepalive_policy_   ->started_a_new_job(worker_ptr, job);
                 launch_policy_      ->started_a_new_job(worker_ptr, job);
                 filetoworker_policy_->started_a_new_job(worker_ptr, job);
-                reporter_.started_a_new_job(worker_ptr, job);
+                reporter_            .started_a_new_job(worker_ptr, job);
             });
     }
 
@@ -144,7 +137,7 @@ public:
                 keepalive_policy_   ->finished_a_job(worker_ptr, job);
                 launch_policy_      ->finished_a_job(worker_ptr, job);
                 filetoworker_policy_->finished_a_job(worker_ptr, job);
-                reporter_.finished_a_job(worker_ptr, job);
+                reporter_            .finished_a_job(worker_ptr, job);
             });
     }
 
@@ -156,7 +149,7 @@ public:
                 keepalive_policy_   ->starting_a_new_worker();
                 launch_policy_      ->starting_a_new_worker();
                 filetoworker_policy_->starting_a_new_worker();
-                reporter_.starting_a_new_worker();
+                reporter_            .starting_a_new_worker();
             });
     }
 
@@ -168,7 +161,7 @@ public:
                 keepalive_policy_   ->registered_a_new_worker(worker_ptr);
                 launch_policy_      ->registered_a_new_worker(worker_ptr);
                 filetoworker_policy_->registered_a_new_worker(worker_ptr);
-                reporter_.registered_a_new_worker(worker_ptr);
+                reporter_            .registered_a_new_worker(worker_ptr);
             });
     }
 
@@ -180,7 +173,7 @@ public:
                 keepalive_policy_   ->deregistered_a_worker(worker_ptr);
                 launch_policy_      ->deregistered_a_worker(worker_ptr);
                 filetoworker_policy_->deregistered_a_worker(worker_ptr);
-                reporter_.deregistered_a_worker(worker_ptr);
+                reporter_            .deregistered_a_worker(worker_ptr);
             });
     }
 };

@@ -15,7 +15,7 @@ constexpr int filemeta_size = 64;
 struct stats
 {
     std::uint32_t file_count;
-    std::array<slsfs::base::byte,
+    std::array<slsfs::pack::unit_t,
                filemeta_size - sizeof(file_count)> reserved;
 
     void to_network_format() {
@@ -32,7 +32,7 @@ struct filemeta
     std::uint16_t owner;
     std::uint16_t permission;
     std::uint16_t reserved;
-    std::array<slsfs::base::byte,
+    std::array<slsfs::pack::unit_t,
                filemeta_size - sizeof(owner) - sizeof(permission)> filename;
 
     void to_network_format()

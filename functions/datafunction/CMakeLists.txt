@@ -1,9 +1,8 @@
 
 cmake_minimum_required(VERSION 3.5.1)
 
-set(CMAKE_C_COMPILER "clang")
-set(CMAKE_CXX_COMPILER "clang++")
-set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_C_COMPILER "gcc")
+set(CMAKE_CXX_COMPILER "g++")
 
 project(exec)
 
@@ -41,7 +40,7 @@ include_directories(/minio-cpp-build/vcpkg_installed/x64-linux/include)
 link_directories(/minio-cpp-build/vcpkg_installed/x64-linux/lib)
 
 add_executable(exec entry.cpp)
-#add_executable(test_swift test_swift.cpp)
+add_executable(test-storage test-storage.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 target_precompile_headers(exec PRIVATE <boost/asio.hpp>)
@@ -53,8 +52,7 @@ target_precompile_headers(exec PRIVATE <nlohmann/json.hpp>)
 target_precompile_headers(exec PRIVATE <miniocpp/client.h>)
 target_precompile_headers(exec PRIVATE <Poco/Crypto/DigestEngine.h>)
 
-
 set(CUSTOM_LIBRARIES "-ltbb -ltbbmalloc -lminiocpp -lcurlpp -lpugixml -linih")
 
-target_link_libraries(exec       ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
-#target_link_libraries(test_swift ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(exec         ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(test-storage ${CUSTOM_LIBRARIES} ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})

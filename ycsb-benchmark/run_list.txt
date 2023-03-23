@@ -1,8 +1,8 @@
-01qqaww4_2_files.csv   [finish]
-7xjpt3h0_normal.csv    [running]
+01qqaww4_2_files.csv   [finished]
+7xjpt3h0_normal.csv    [finished]
 66wilvut_sparse_15.csv
-Oinsggn2_peak_hour.csv
-klaljqcy_constload.csv
+Oinsggn2_peak_hour.csv [finished]
+klaljqcy_constload.csv [finished]
 u1q65cm8_unknown.csv
 7agnu66h_peak_hour.csv
 jalat8s_burst.csv

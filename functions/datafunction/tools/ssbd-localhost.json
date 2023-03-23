@@ -1,0 +1,13 @@
+{
+    "type": "wakeup",
+    "proxyhost": "192.168.0.135",
+    "proxyport": "12001",
+    "blocksize":  262144,
+    "storagetype": "ssbd",
+    "storageconfig": {
+        "hosts": [
+            {"host": "localhost",  "port": "12000"}
+        ],
+        "replication_size": 2
+    }
+}
