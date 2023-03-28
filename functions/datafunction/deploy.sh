@@ -19,8 +19,8 @@ ssh ow-invoker-16 docker restart invoker15 &
 
 strip exec;
 zip -r hello.zip exec
-wsk -i action update slsfs-datafunction hello.zip --docker openwhisk/actionloop-base --concurrency 500 --memory 512;
-wsk -i action update slsfs-metadatafunction hello.zip --docker openwhisk/actionloop-base --concurrency 500 --memory 512;
+wsk -i action update slsfs-datafunction hello.zip --docker openwhisk/actionloop-base --concurrency 500;
+wsk -i action update slsfs-metadatafunction hello.zip --docker openwhisk/actionloop-base --concurrency 500;
 
 rm -f hello.zip;
 

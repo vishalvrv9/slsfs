@@ -47,6 +47,6 @@ COPY --from=builder /lib/x86_64-linux-gnu/libdl.so.2 /lib/libdl.so.2
 COPY --from=builder /bin/run          /bin/run
 COPY --from=builder /bin/slsfs-client /bin/slsfs-client
 COPY --from=builder /bin/ceph-zipf    /bin/ceph-zipf
-
+COPY --from=builder /bin/slsfs-perfunction-client /bin/slsfs-perfunction-client
 
 ENTRYPOINT ["/bin/run"]

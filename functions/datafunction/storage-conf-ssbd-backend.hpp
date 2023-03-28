@@ -16,41 +16,42 @@
 namespace slsfsdf
 {
 
-namespace
+namespace detail
 {
 
 class recoder
 {
     using filecheckmap =
-        oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
+        oneapi::tbb::concurrent_hash_map<slsfs::pack::key_t,
                                          int /* not used */,
-                                         slsfs::uuid::hash_compare<slsfs::uuid::uuid>>;
+                                         slsfs::uuid::hash_compare<slsfs::pack::key_t>>;
     filecheckmap map_;
 
 public:
-    bool is_checked(slsfs::uuid::uuid const& uuid)
+    bool is_checked (slsfs::pack::key_t const& uuid)
     {
         filecheckmap::accessor it;
         return map_.find(it, uuid);
     }
 
-    void mark_checked(slsfs::uuid::uuid const& uuid)
-    {
+    void mark_checked (slsfs::pack::key_t const& uuid) {
         map_.emplace(uuid, 0);
+    }
+
+    bool erase_checked (slsfs::pack::key_t const& uuid) {
+        return map_.erase(uuid);
     }
 };
 
 } // namespace
-
 
 // Storage backend configuration for SSBD stripe
 class storage_conf_ssbd_backend : public storage_conf
 {
     boost::asio::io_context& io_context_;
     int replication_size_ = 3;
-
-
     std::vector<std::shared_ptr<slsfs::backend::ssbd>> backendlist_;
+    detail::recoder recoder_;
 
     void connect() override
     {
@@ -73,19 +74,19 @@ class storage_conf_ssbd_backend : public storage_conf
 
     int select_replica(slsfs::pack::key_t const& uuid,
                        int const partition,
-                       int const index)
+                       int const replication_index)
     {
         std::seed_seq seeds {uuid.begin(), uuid.end()};
         static_engine().seed(seeds);
 
         std::uniform_int_distribution<> dist(0, backendlist_.size() - 1);
-        static_engine().discard(partition * (partition * index));
+        static_engine().discard(partition * (partition * replication_index));
 
         return dist(static_engine());
     }
 
     static
-    auto version() -> std::uint32_t
+    auto version () -> std::uint32_t
     {
         std::uint64_t v = std::chrono::duration_cast<std::chrono::microseconds>(
             std::chrono::system_clock::now().time_since_epoch()).count();
@@ -104,11 +105,12 @@ class storage_conf_ssbd_backend : public storage_conf
         // every request must finish in 30s
         request_dearline_timer->expires_from_now(30s);
         request_dearline_timer->async_wait(
-            [next, request_dearline_timer] (boost::system::error_code ec) {
+            [next, request_dearline_timer, input, this] (boost::system::error_code ec) {
                 switch (ec.value())
                 {
                 case boost::system::errc::success: // timer timeout
-                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    recoder_.erase_checked(input.uuid());
+                    std::invoke(*next, slsfs::base::to_buf("Error: request timeout internally"));
                     break;
                 case boost::system::errc::operation_canceled: // timer canceled
                     break;
@@ -138,7 +140,9 @@ class storage_conf_ssbd_backend : public storage_conf
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
-                slsfs::leveldb_pack::msg_t::two_pc_prepare,
+                recoder_.is_checked(input.uuid())?
+                    slsfs::leveldb_pack::msg_t::two_pc_prepare_quick:
+                    slsfs::leveldb_pack::msg_t::two_pc_prepare,
                 selected_version,
                 blockid,
                 offset,
@@ -180,10 +184,17 @@ class storage_conf_ssbd_backend : public storage_conf
                         request_dearline_timer->cancel();
 
                         if (*all_ssbd_agree)
-                            std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                        {
+                            recoder_.mark_checked(input.uuid());
+                            std::invoke(*next, slsfs::base::to_buf("OK"));
+                        }
                         else
-                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
-                        start_2pc_commit(input, *all_ssbd_agree, selected_version, nullptr);
+                        {
+                            recoder_.erase_checked(input.uuid());
+                            std::invoke(*next, slsfs::base::to_buf("Error: Found Pending 2PC Log"));
+                        }
+
+                        start_2pc_commit (input, *all_ssbd_agree, selected_version, nullptr);
                     }
                 });
         }
@@ -237,14 +248,17 @@ class storage_conf_ssbd_backend : public storage_conf
                     default:
                         slsfs::log::log("start_2pc_commit unwanted header type {}", response->header.print());
                         if (next)
-                            std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                        {
+                            recoder_.erase_checked(input.uuid());
+                            std::invoke(*next, slsfs::base::to_buf("Error: Commit Message Get Error Reply"));
+                        }
                         break;
                     }
 
                     if (--(*outstanding_requests) == 0)
                     {
                         if (next)
-                            std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                            std::invoke(*next, slsfs::base::to_buf("OK"));
 
                         if (all_ssbd_agree && replication_size_ > 1)
                             start_replication(input, selected_version, nullptr);
@@ -301,14 +315,17 @@ class storage_conf_ssbd_backend : public storage_conf
                             slsfs::log::log("start_replication unwanted header type {}",
                                             response->header.print());
                             if (next)
-                                std::invoke(*next, slsfs::base::buf{'F', 'A', 'I', 'L', 'E', 'D'});
+                            {
+                                recoder_.erase_checked(input.uuid());
+                                std::invoke(*next, slsfs::base::to_buf("Error: Replication Failed"));
+                            }
                             return;
                         }
 
                         if (--(*outstanding_requests) == 0 and next)
                         {
                             slsfs::log::log("replication finished {}", response->header.print());
-                            std::invoke(*next, slsfs::base::buf{'O', 'K'});
+                            std::invoke(*next, slsfs::base::to_buf("OK"));
                         }
                     });
             }
@@ -329,11 +346,12 @@ class storage_conf_ssbd_backend : public storage_conf
         using namespace std::chrono_literals;
         timer->expires_from_now(30s);
         timer->async_wait(
-            [next, timer] (boost::system::error_code ec) {
+            [next, timer, input, this] (boost::system::error_code ec) {
                 switch (ec.value())
                 {
                 case boost::system::errc::success: // timer timeout
-                    std::invoke(*next, slsfs::base::buf{'T', 'I', 'M', 'E', 'O', 'U', 'T'});
+                    recoder_.erase_checked(input.uuid());
+                    std::invoke(*next, slsfs::base::to_buf("Error: Read Request Timeout"));
                     break;
                 case boost::system::errc::operation_canceled: // timer canceled
                     break;
@@ -448,7 +466,8 @@ class storage_conf_ssbd_backend : public storage_conf
                 slsfs::jsre::meta::stats stat;
                 if (file_content.size() < sizeof(stat))
                 {
-                    std::invoke(*next, slsfs::base::buf {'N', 'O', 'S', 'U', 'C', 'H', 'D', 'I', 'R'});
+                    recoder_.erase_checked(input.uuid());
+                    std::invoke(*next, slsfs::base::to_buf("Error: No such directory"));
                     return;
                 }
 

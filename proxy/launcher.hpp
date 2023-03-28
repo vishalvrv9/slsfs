@@ -85,7 +85,13 @@ class launcher
     void create_worker (std::string const& body, int const max_func_count = 0)
     {
         launcher_policy_.starting_a_new_worker();
-        trigger::make_trigger(io_context_, max_func_count)->start_post(body);
+
+        trigger::make_trigger(io_context_, max_func_count)
+            ->register_on_read(
+                [](std::shared_ptr<slsfs::http::response<slsfs::http::string_body>> res) {
+                    BOOST_LOG_TRIVIAL(info) << "openwhisk response: " << res->body();
+                })
+            .start_post(body);
     }
 
 public:

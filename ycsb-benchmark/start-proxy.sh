@@ -10,7 +10,7 @@ docker run --privileged -d \
        --net=host \
        --volume=/tmp:/tmp \
        hare1039/transport:0.0.2 \
-           --listen 12001 \
+           --listen $PORT \
            --announce $IP \
            $VERBOSE \
            --report /tmp/proxy-report.json \

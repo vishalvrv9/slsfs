@@ -55,7 +55,7 @@ concept IsSupportedStream =
     std::is_same_v<T, beast::tcp_stream>;
 
 template<typename StreamType> requires IsSupportedStream<StreamType>
-class invoker : public std::enable_shared_from_this<invoker<StreamType>>
+class trigger : public std::enable_shared_from_this<trigger<StreamType>>
 {
     net::io_context&        io_context_;
     net::io_context::strand io_strand_;
@@ -75,7 +75,7 @@ class invoker : public std::enable_shared_from_this<invoker<StreamType>>
 
 public:
     template<typename ... Arguments>
-    invoker(net::io_context& io, std::string const& url, Arguments && ... args):
+    trigger (net::io_context& io, std::string const& url, Arguments && ... args):
         io_context_{io}, io_strand_{io}, resolver_{io},
         stream_ptr_{std::make_unique<StreamType>(io, std::forward<Arguments>(args)...)},
         uriparser_{url}, httphost_ {uriparser_}
@@ -85,11 +85,13 @@ public:
     }
 
     template<typename Function>
-    void register_on_read(Function &&f) {
+    auto register_on_read (Function &&f) -> trigger<StreamType>&
+    {
         on_read_.connect(std::forward<Function>(f));
+        return *this;
     }
 
-    void start_post(std::string const &body)
+    void start_post (std::string const &body)
     {
         BOOST_LOG_TRIVIAL(trace) << "trigger start post";
         auto req = httphost_.gen_request();
@@ -97,19 +99,6 @@ public:
         req->method(http::verb::post);
 
         start_resolve(req);
-//        //            if (beast::get_lowest_layer(stream_).socket().is_open())
-//        if (stream_is_connected_)
-//            start_write(req);
-//        else
-//        {
-//            if (stream_is_starting_)
-//                pending_requests_.push(req);
-//            else
-//            {
-//                stream_is_starting_.store(true);
-//                start_resolve(req);
-//            }
-//        }
     }
 
 private:
@@ -221,12 +210,14 @@ private:
             *stream_ptr_, *buffer, *res,
             net::bind_executor(
                 io_strand_,
-                [self=this->shared_from_this(), buffer, res](beast::error_code ec, std::size_t /*bytes_transferred*/) {
-                    if (not ec)
+                [self=this->shared_from_this(), buffer, res]
+                (beast::error_code ec, std::size_t /*bytes_transferred*/) {
+                    if (ec)
+                        BOOST_LOG_TRIVIAL(error) << "trigger start_read error: " << ec.message();
+                    else
                     {
                         self->on_read_(res);
                         self->on_read_.disconnect_all_slots();
-                        BOOST_LOG_TRIVIAL(info) << "openwhisk response: " << res->body();
 
                         self->stream_is_connected_.store(true);
                         self->stream_is_writing_.store(false);
@@ -236,14 +227,12 @@ private:
                             self->pending_requests_.try_pop(pending_request))
                             self->start_write(pending_request);
                     }
-                    else
-                        BOOST_LOG_TRIVIAL(error) << "start_read error: " << ec.message();
                 }));
     }
 };
 
 auto make_trigger(net::io_context& io, int const max_func_count = 0)
-    -> std::shared_ptr<invoker<beast::ssl_stream<beast::tcp_stream>>>
+    -> std::shared_ptr<trigger<beast::ssl_stream<beast::tcp_stream>>>
 {
     static std::mt19937 rng;
     std::random_device rd;
@@ -252,7 +241,17 @@ auto make_trigger(net::io_context& io, int const max_func_count = 0)
 
     std::string const url = fmt::format("https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction-{}?blocking=false&result=false", dist(rng));
     return std::make_shared<
-               invoker<
+               trigger<
+                   beast::ssl_stream<
+                       beast::tcp_stream>>>(
+                           io, url, basic::ssl_ctx());
+}
+
+auto make_trigger(net::io_context& io, std::string const url)
+    -> std::shared_ptr<trigger<beast::ssl_stream<beast::tcp_stream>>>
+{
+    return std::make_shared<
+               trigger<
                    beast::ssl_stream<
                        beast::tcp_stream>>>(
                            io, url, basic::ssl_ctx());

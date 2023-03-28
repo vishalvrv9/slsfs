@@ -8,20 +8,19 @@ ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function-debug;' &
+bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
+bash -c "cd ../ssbd;  make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
 start-proxy-remote()
 {
     local h=$1;
-    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load &
-    scp start-proxy* $h:
+    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load;
+    scp start-proxy* avaliable-host.sh $h:
     if [[ "$2" == "noinit" ]]; then
-        ssh $h "echo 'INITINT=0' >> ./start-proxy-args.sh"
+        ssh $h "echo 'INITINT=0'  >> ./start-proxy-args.sh"
     fi
-    scp avaliable-host.sh $h:
     ssh $h "/home/ubuntu/start-proxy.sh"
 }
 
@@ -30,6 +29,13 @@ echo starting remote hosts
 start-proxy-remote proxy-1
 start-proxy-remote proxy-2 noinit
 start-proxy-remote proxy-3 noinit
+#start-proxy-remote zookeeper-1 noinit
+#start-proxy-remote zookeeper-2 noinit
+#start-proxy-remote zookeeper-3 noinit
+#start-proxy-remote ow-invoker-1 noinit
+#start-proxy-remote ow-invoker-2 noinit
+#start-proxy-remote ow-invoker-3 noinit
+
 #./start-proxy.sh
 
 rm -f /tmp/slsfs-client;
@@ -49,19 +55,19 @@ done
 
 echo wait until proxy open
 
-while ! nc -z -v -w1 192.168.0.135 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy1 192.168.0.135:12001'
-    sleep 1;
-done
+hostparis=( "192.168.0.135:12001"
+            "192.168.0.215:12001"
+            "192.168.0.149:12001" );
+#            "192.168.0.48:12001"
+#            "192.168.0.241:12001"
+#            "192.168.0.139:12001" );
 
-while ! nc -z -v -w1 192.168.0.215 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy2 192.168.0.215:12001'
-    sleep 1;
-done
-
-while ! nc -z -v -w1 192.168.0.149 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy3 192.168.0.149:12001'
-    sleep 1;
+for pair in "${hostparis[@]}"; do
+    p=(`echo $pair | tr ':' ' '`)
+    while ! nc -z -v -w1 ${p[0]} ${p[1]} 2>&1 | grep -q succeeded; do
+        echo "waiting $pair";
+        sleep 1;
+    done
 done
 
 echo starting;

@@ -39,7 +39,7 @@ class bucket
     oneapi::tbb::concurrent_queue<slsfs::pack::packet_data> message_queue_;
 
     // to issue a request to binded http url when a message comes in
-    std::shared_ptr<slsfs::trigger::invoker<boost::beast::ssl_stream<boost::beast::tcp_stream>>> binding_;
+    std::shared_ptr<slsfs::trigger::trigger<boost::beast::ssl_stream<boost::beast::tcp_stream>>> binding_;
 
     // holds callbacks of listeners //
     boost::signals2::signal<void (slsfs::pack::packet_pointer)> listener_;
@@ -53,7 +53,7 @@ public:
     {
         static std::string const url = "https://zion01/api/v1/namespaces/_/actions/slsfs-metadatafunction?blocking=false&result=false";
         if (binding_ == nullptr)
-            binding_ = std::make_shared<slsfs::trigger::invoker<boost::beast::ssl_stream<boost::beast::tcp_stream>>>(io_context_, url, slsfs::basic::ssl_ctx());
+            binding_ = std::make_shared<slsfs::trigger::trigger<boost::beast::ssl_stream<boost::beast::tcp_stream>>>(io_context_, url, slsfs::basic::ssl_ctx());
     }
 
     void start_trigger_post(std::string const& body)

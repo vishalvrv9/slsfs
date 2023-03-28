@@ -69,6 +69,11 @@ public:
                         self->start_two_pc_prepare(pack);
                         break;
 
+                    case slsfs::leveldb_pack::msg_t::two_pc_prepare_quick:
+                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_prepare " << pack->header;
+                        self->start_two_pc_prepare_quick(pack);
+                        break;
+
                     case slsfs::leveldb_pack::msg_t::two_pc_commit_execute:
                         //BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_execute " << pack->header;
                         self->start_two_pc_commit_execute(pack);
@@ -155,7 +160,6 @@ public:
                         {
                             // OK
                             //BOOST_LOG_TRIVIAL(debug) << "request buf: " << *read_buf;
-
                             std::string old_block (std::move(rb.buf_)); // move the unused data in .buf_ to here
                             old_block.resize(
                                 std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
@@ -172,6 +176,59 @@ public:
                     }
 
                     BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare return packet: " << pack->header;
+                    self->start_write_socket(resp);
+                    self->start_read_header();
+                }
+            });
+    }
+
+    void start_two_pc_prepare_quick(slsfs::leveldb_pack::packet_pointer pack)
+    {
+        BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare_quick " << pack->header;
+        auto read_buf = std::make_shared<std::string>(pack->header.datasize, 0);
+        net::async_read(
+            socket_,
+            net::buffer(read_buf->data(), read_buf->size()),
+            [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
+                if (ec)
+                    BOOST_LOG_TRIVIAL(error) << "start_two_pc_prepare_quick: " << ec.message();
+                else
+                {
+                    BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare_quick process packet: " << pack->header;
+
+                    pack->data.parse(length, read_buf->data());
+
+                    slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+                    resp->header = pack->header;
+
+                    std::string const key = pack->header.as_string();
+                    slsfs::leveldb_pack::rawblocks rb;
+
+                    resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
+
+                    if (not rb.bind(self->db_, key).ok())
+                    {
+                        std::string empty;
+                        self->db_.Put(leveldb::WriteOptions(), key, empty);
+                        self->db_log_.put_committed_version(key, 0);
+                        self->db_log_.put_pending_prepare(key, "", 0);
+                    }
+
+                    if (rb.bind(self->db_, key).ok())
+                    {
+                        std::string old_block (std::move(rb.buf_)); // move the unused data in .buf_ to here
+                        old_block.resize(
+                            std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
+                                                    old_block.size())); // make sure all buffer can write to old_block
+
+                        std::copy(read_buf->begin(), read_buf->end(),
+                                  std::next(old_block.begin(), pack->header.position));
+
+                        self->db_log_.put_pending_prepare(key, old_block, pack->header.version);
+                        pack->header.version = self->db_log_.get_committed_version(key);
+                    }
+
+                    BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare_quick return packet: " << pack->header;
                     self->start_write_socket(resp);
                     self->start_read_header();
                 }

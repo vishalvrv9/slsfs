@@ -1,7 +1,8 @@
 #include "../basic.hpp"
 #include "../serializer.hpp"
-#include "../json-replacement.hpp"
 #include "../uuid.hpp"
+#include "../base64-conv.hpp"
+#include "../trigger.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -12,6 +13,7 @@
 #include <zk/client.hpp>
 #include <zk/results.hpp>
 #include <zookeeper/zookeeper.h>
+#include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <iostream>
@@ -63,166 +65,133 @@ auto stats(Iterator start, Iterator end, std::string const memo = "")
     return {dist, mean, std::sqrt(var)};
 }
 
-auto get_uuid (boost::asio::io_context &io_context, std::string const& child) -> boost::asio::ip::tcp::resolver::results_type
+template<typename Next>
+void send_one_request (int count,
+                       boost::asio::io_context &io,
+                       std::vector<int> rwdist,
+                       std::function<slsfs::pack::key_t(void)> genname,
+                       std::string const &data,
+                       std::list<double> &result,
+                       Next next)
 {
-    using namespace std::string_literals;
+    if (count < 0)
+    {
+        std::invoke(next);
+        return;
+    }
 
-    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
+    nlohmann::json request = R"(
+          {
+            "type": "",
+            "launch": "direct",
+            "name": "",
+            "pos": 0,
+            "data": "",
+            "size": 0,
+            "blocksize":  4096,
+            "storagetype": "ssbd",
+            "storageconfig": {
+                "hosts": [
+                    {"host": "192.168.0.66",  "port": "12000"},
+                    {"host": "192.168.0.111", "port": "12000"},
+                    {"host": "192.168.0.45",  "port": "12000"},
+                    {"host": "192.168.0.147", "port": "12000"},
+                    {"host": "192.168.0.98",  "port": "12000"},
+                    {"host": "192.168.0.159", "port": "12000"},
+                    {"host": "192.168.0.175", "port": "12000"},
+                    {"host": "192.168.0.75",  "port": "12000"},
+                    {"host": "192.168.0.158", "port": "12000"}
+                ],
+                "replication_size": 3
+            }
+          }
+        )"_json;
 
-    zk::future<zk::get_result> resp = client.get("/slsfs/proxy/"s + child);
-    zk::buffer const buf = resp.get().data();
+    std::uniform_int_distribution<> dist(0, rwdist.size()-1);
+    std::mt19937 engine(std::random_device{}());
 
-    auto const colon = std::find(buf.begin(), buf.end(), ':');
+    auto key = genname();
+    bool is_read_request = (rwdist.at(dist(engine)) == 0);
 
-    std::string host(std::distance(buf.begin(), colon), '\0');
-    std::copy(buf.begin(), colon, host.begin());
+    request["type"] = is_read_request? "read" : "write";
+    request["name"] = (static_cast<slsfs::uuid::uuid*>(std::addressof(key))->encode_base64());
+    if (is_read_request)
+        request["data"] = "";
+    else
+        request["data"] = slsfs::base64::encode(data.begin(), data.end());
+    request["size"] = data.size();
 
-    std::string port(std::distance(std::next(colon), buf.end()), '\0');
-    std::copy(std::next(colon), buf.end(), port.begin());
+    auto const start = std::chrono::high_resolution_clock::now();
 
-    boost::asio::ip::tcp::resolver resolver(io_context);
-    BOOST_LOG_TRIVIAL(debug) << "resolving: " << host << ":" << port ;
-    return resolver.resolve(host, port);
-}
+    static std::random_device rd;
+    static std::mt19937 rng(rd());
+    static std::uniform_int_distribution<> distx(0, 15);
 
-auto setup_slsfs(boost::asio::io_context &io_context) -> std::pair<std::vector<slsfs::uuid::uuid>, std::vector<boost::asio::ip::tcp::resolver::results_type>>
-{
-    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
+    std::string const url = fmt::format("https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction-{}?blocking=true&result=false", distx(rng));
+    slsfs::trigger::make_trigger (io, url)
+        ->register_on_read(
+            [count, &io, rwdist, genname, &data, &result, start, next]
+            (std::shared_ptr<slsfs::http::response<slsfs::http::string_body>> res) {
+                auto const end = std::chrono::high_resolution_clock::now();
+                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                result.push_back(relativetime);
 
-    std::vector<slsfs::uuid::uuid> new_proxy_list;
-    std::vector<boost::asio::ip::tcp::resolver::results_type> proxys;
-    zk::future<zk::get_children_result> children = client.get_children("/slsfs/proxy");
+                try
+                {
+                    auto resp = nlohmann::json::parse(res->body());
 
-    std::vector<std::string> list = children.get().children();
+                    std::string from = resp["response"]["result"]["data"].get<std::string>(), stringresp;
+                    slsfs::base64::decode(from, std::back_inserter(stringresp));
 
-    std::transform (list.begin(), list.end(),
-                    std::back_inserter(new_proxy_list),
-                    slsfs::uuid::decode_base64);
-
-    std::sort(new_proxy_list.begin(), new_proxy_list.end());
-
-    for (auto proxy : new_proxy_list)
-        proxys.push_back(get_uuid(io_context, proxy.encode_base64()));
-
-    BOOST_LOG_TRIVIAL(debug) << "start with " << proxys.size()  << " proxies";
-    return {new_proxy_list, proxys};
-}
-
-int pick_proxy(std::vector<slsfs::uuid::uuid> const& proxy_uuid, slsfs::pack::key_t& fileid)
-{
-    auto it = std::upper_bound (proxy_uuid.begin(), proxy_uuid.end(), fileid);
-    if (it == proxy_uuid.end())
-        it = proxy_uuid.begin();
-
-    int d = std::distance(proxy_uuid.begin(), it);
-    return d;
+                    BOOST_LOG_TRIVIAL(debug) << "response: " << resp["activationId"] << " result: " << stringresp;
+                    send_one_request(count-1, io, rwdist, genname, data, result, next);
+                }
+                catch (...)
+                {
+                    // stop sending because of error
+                    BOOST_LOG_TRIVIAL(error) << "response: " << res->body();
+                    std::invoke(next);
+                }
+            })
+        .start_post(request.dump());
 }
 
 auto iotest (int const times, int const bufsize,
              std::vector<int> rwdist,
              std::function<slsfs::pack::key_t(void)> genname,
-             std::function<int(int)> genpos,
-             std::pair<std::vector<slsfs::uuid::uuid>, std::vector<boost::asio::ip::tcp::resolver::results_type>> const proxylistpair,
+             [[maybe_unused]] std::function<int(int)> genpos,
+             int clients,
              std::string const memo = "")
     -> std::pair<std::list<double>, std::chrono::nanoseconds>
 {
-    auto&& [proxy_uuid, proxy_endpoint] = proxylistpair;
+    std::vector<boost::asio::io_context> io_context_list(clients);
+    std::vector<std::list<double>> records(clients);
 
-    std::vector<tcp::socket> proxy_sockets;
-    std::vector<std::list<double>> records(proxy_endpoint.size());
-    std::vector<boost::asio::io_context> io_context_list(proxy_endpoint.size());
+    std::string buf(bufsize, 'A');
 
-    for (unsigned int i = 0; i < proxy_endpoint.size(); i++)
-    {
-        proxy_sockets.emplace_back(io_context_list.at(i));
-        BOOST_LOG_TRIVIAL(debug) << "connecting ";
-        boost::asio::connect(proxy_sockets.back(), proxy_endpoint.at(i));
-    }
+    for (int i = 0; i < clients; i++)
+        send_one_request (times,
+                          io_context_list.at(i),
+                          rwdist,
+                          genname,
+                          buf,
+                          records.at(i),
+                          [&io_context_list, i] () {
+                              io_context_list.at(i).stop();
+                          });
 
-    std::string const buf(bufsize, 'A');
-
-    std::uniform_int_distribution<> dist(0, rwdist.size()-1);
-    std::mt19937 engine(std::random_device{}());
-
-    for (int i = 0; i < times; i++)
-    {
-        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-
-        ptr->header.type = slsfs::pack::msg_t::trigger;
-        ptr->header.key = genname();
-
-        slsfs::jsre::request r;
-        r.type = slsfs::jsre::type_t::file;
-        if (rwdist.at(dist(engine)))
-        {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::read;";
-            r.operation = slsfs::jsre::operation_t::read;
-        }
-        else
-        {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::write;";
-            r.operation = slsfs::jsre::operation_t::write;
-        }
-
-        r.position = genpos(i);
-        r.size = buf.size();
-        r.to_network_format();
-
-        if (r.operation == slsfs::jsre::operation_t::read)
-        {
-            ptr->data.buf.resize(sizeof (r));
-            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-        }
-        else
-        {
-            ptr->data.buf.resize(sizeof (r) + buf.size());
-            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-            std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
-        }
-
-        ptr->header.gen();
-        BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
-        auto pbuf = ptr->serialize();
-        int index = pick_proxy(proxy_uuid, ptr->header.key);
-
-        tcp::socket& s = proxy_sockets.at(index);
-        boost::asio::io_context& io = io_context_list.at(index);
-        std::list<double>& record_list = records.at(index);
-
-        boost::asio::post(
-            io,
-            [&s, &record_list, pbuf, op=r.operation] {
-                record_list.push_back(record(
-                    [&s, pbuf, op] () {
-                        boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
-
-                        slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-                        std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
-                        boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
-
-                        resp->header.parse(headerbuf.data());
-                        BOOST_LOG_TRIVIAL(debug) << "write resp:" << resp->header;
-
-                        std::string data(resp->header.datasize, '\0');
-                        boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-                        BOOST_LOG_TRIVIAL(debug) << data ;
-                    }));
-            });
-    }
-
-    std::vector<std::thread> ths;
-
+    std::vector<std::thread> pool;
     auto start = std::chrono::high_resolution_clock::now();
-    for (unsigned int i = 0; i < io_context_list.size(); i++)
-        ths.emplace_back(
+    for (int i = 0; i < clients; i++)
+        pool.emplace_back(
             [&io_context_list, i] () {
                 io_context_list.at(i).run();
             });
 
-    for (std::thread& th : ths)
+    for (std::thread& th : pool)
         th.join();
-    auto end = std::chrono::high_resolution_clock::now();
 
+    auto end = std::chrono::high_resolution_clock::now();
 
     std::list<double> v;
     for (std::list<double>& r : records)
@@ -298,7 +267,6 @@ void start_test(std::string const testname, boost::program_options::variables_ma
         case 5:
             out_csv << ",file-range," << file_range;
             break;
-
         case 6:
             out_csv << ",,";
             break;
@@ -347,13 +315,13 @@ int main(int argc, char *argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("total-times",   po::value<int>()->default_value(10000),     "each client run # total times")
-        ("total-clients", po::value<int>()->default_value(1),         "# of clients")
-        ("bufsize",       po::value<int>()->default_value(4096),      "Size of the read/write buffer")
-        ("zipf-alpha",    po::value<double>()->default_value(1.2),    "set the alpha value of zipf dist")
-        ("file-range",    po::value<int>()->default_value(256*256*4), "set the total different number of files")
-        ("test-name",     po::value<std::string>(),                   "oneof [fill, 50-50, 95-5, 100-0, 0-100]; format: read-write")
-        ("uniform-dist",  po::bool_switch(),                          "use uniform distribution")
+        ("total-times",   po::value<int>()->default_value(10000),   "each client run # total times")
+        ("total-clients", po::value<int>()->default_value(1),       "# of clients")
+        ("bufsize",       po::value<int>()->default_value(4096),    "Size of the read/write buffer")
+        ("zipf-alpha",    po::value<double>()->default_value(1.2),  "set the alpha value of zipf dist")
+        ("file-range",    po::value<int>()->default_value(256*256), "set the total different number of files")
+        ("test-name",     po::value<std::string>(),                 "oneof [fill, 50-50, 95-5, 100-0, 0-100]; format: read-write")
+        ("uniform-dist",  po::bool_switch(),                        "use uniform distribution")
         ("result",        po::value<std::string>()->default_value("/dev/null"), "save result to this file");
 
     po::positional_options_description pos_po;
@@ -366,10 +334,11 @@ int main(int argc, char *argv[])
     std::mt19937 engine(19937);
 
     int const total_times   = vm["total-times"].as<int>();
+    int const total_clients = vm["total-clients"].as<int>();
     int const bufsize       = vm["bufsize"].as<int>();
-    double const zipf_alpha = vm["zipf-alpha"].as<double>();
     int const file_range    = vm["file-range"].as<int>();
     bool const use_uniform  = vm["uniform-dist"].as<bool>();
+    double const zipf_alpha = vm["zipf-alpha"].as<double>();
 
     std::string const test_name  = vm["test-name"].as<std::string>();
     std::string const resultfile = vm["result"].as<std::string>();
@@ -380,26 +349,36 @@ int main(int argc, char *argv[])
     std::function<slsfs::pack::key_t(void)> selected;
     if (use_uniform)
         selected = [&engine, &uniformdist]() {
-            slsfs::pack::key_t key{};
+            slsfs::pack::key_t key;
             for (std::size_t i = 0; i < key.size(); i++)
                 key.at(i) = static_cast<slsfs::pack::unit_t>(uniformdist(engine));
             return key;
         };
     else
         selected = [&engine, &namedist]() {
-            int const pick = namedist(engine);
-            slsfs::pack::key_t k{};
-            std::memcpy(k.data(), &pick, sizeof(pick));
-            return k;
+            int n = namedist(engine);
+            slsfs::pack::unit_t n1 = n / 256;
+            slsfs::pack::unit_t n2 = n % 256;
+            return slsfs::pack::key_t {
+                n1, n2, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, n1, n2
+            };
         };
 
     int counter = 0;
     auto allname =
         [&counter] () {
-            int pick = counter++;
-            slsfs::pack::key_t k{};
-            std::memcpy(k.data(), &pick, sizeof(pick));
-            return k;
+            int n = counter++;
+            slsfs::pack::unit_t n1 = n / 256;
+            slsfs::pack::unit_t n2 = n % 256;
+            return slsfs::pack::key_t {
+                n1, n2, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, 7, 8,
+                7, 8, 7, 8, 7, 8, n1, n2
+            };
         };
 
     absl::zipf_distribution singledist(255, zipf_alpha);
@@ -410,13 +389,9 @@ int main(int argc, char *argv[])
             return t;
         };
 
-    boost::asio::io_context io_context;
-    auto&& proxylistpair = setup_slsfs(io_context);
-
-
+    using namespace slsfs::basic::sswitcher;
     switch (slsfs::basic::sswitcher::hash(test_name))
     {
-        using namespace slsfs::basic::sswitcher;
     case "fill"_:
         start_test(
             "fill",
@@ -428,7 +403,7 @@ int main(int argc, char *argv[])
                     std::vector<int> {1},
                     allname,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;
@@ -443,7 +418,7 @@ int main(int argc, char *argv[])
                     std::vector<int> {1},
                     anyname,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;
@@ -458,7 +433,7 @@ int main(int argc, char *argv[])
                     std::vector<int> {0, 1},
                     selected,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;
@@ -473,7 +448,7 @@ int main(int argc, char *argv[])
                     std::vector<int>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                     selected,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;
@@ -488,7 +463,7 @@ int main(int argc, char *argv[])
                     std::vector<int> {0},
                     selected,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;
@@ -503,7 +478,7 @@ int main(int argc, char *argv[])
                     std::vector<int> {1},
                     selected,
                     [bufsize](int) { return 0; },
-                    proxylistpair,
+                    total_clients,
                     "");
         });
         break;

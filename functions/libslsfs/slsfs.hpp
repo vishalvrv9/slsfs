@@ -6,7 +6,7 @@
 #include "slsfs/basetypes.hpp"
 #include "slsfs/http-verb.hpp"
 #include "slsfs/storage-cassandra.hpp"
-//#include "slsfs/storage-ssbd.hpp"
+#include "slsfs/base64-conv.hpp"
 #include "slsfs/storage.hpp"
 #include "slsfs/backend-ssbd.hpp"
 #include "slsfs/switchstring.hpp"

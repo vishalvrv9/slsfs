@@ -1,5 +1,6 @@
 {
     "type": "wakeup",
+    "launch": "server",
     "proxyhost": "",
     "proxyport": "",
     "blocksize":  4096,
@@ -8,4 +9,3 @@
         "container": "moc-kvstore-cache"
     }
 }
-

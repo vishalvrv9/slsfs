@@ -6,6 +6,7 @@
 #include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
 #include "uuid-gen.hpp"
+#include "create-request.hpp"
 
 #include <slsfs.hpp>
 
@@ -74,7 +75,6 @@ void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
 {
     slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
 
-
     auto const start = std::chrono::high_resolution_clock::now();
     conf->start_perform(
         input,
@@ -111,40 +111,6 @@ void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
         });
 }
 
-auto create_request (slsfs::jsre::operation_t operation) -> slsfs::pack::packet_pointer
-{
-    slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-    ptr->header.gen();
-    ptr->header.key = slsfs::pack::key_t{2, 2, 2, 2, 2, 2, 2, 2,
-                                         2, 2, 2, 2, 2, 2, 2, 2,
-                                         2, 2, 2, 2, 2, 2, 2, 2,
-                                         2, 2, 2, 2, 2, 2, 2, 2};
-
-    std::string buf (requestsize, 'E');
-    slsfs::jsre::request request {
-        .type      = slsfs::jsre::type_t::file,
-        .operation = operation,
-        .position  = 0,
-        .size      = static_cast<std::uint32_t>(buf.size()),
-    };
-    request.to_network_format();
-
-    if (request.operation == slsfs::jsre::operation_t::read)
-    {
-        ptr->data.buf.resize(sizeof (request));
-        std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
-    }
-    else
-    {
-        ptr->data.buf.resize(sizeof (request) + buf.size());
-        std::memcpy(ptr->data.buf.data(), &request, sizeof (request));
-        std::memcpy(ptr->data.buf.data() + sizeof (request), buf.data(), buf.size());
-    }
-
-    return ptr;
-}
-
-
 template<typename Finish>
 void send_one_request (int left_request,
                        std::shared_ptr<slsfsdf::storage_conf> conf,
@@ -157,7 +123,10 @@ void send_one_request (int left_request,
         return;
     }
 
-    auto ptr = create_request(slsfs::jsre::operation_t::write);
+    static std::string buf(4096, 'A');
+
+    auto ptr = client_request::create_write(slsfs::pack::key_t{1}, 0, buf);
+
     start_send_request_sequence (
         conf, ptr,
         [left_request, conf, &result_vector, &on_finish] (std::uint64_t duration) {
@@ -206,33 +175,40 @@ int do_datafunction()
     conf->init(input["storageconfig"]);
 
     slsfs::log::log<slsfs::log::level::info>("starting");
+    int const concurrent_clients = 16;
+    int const outstanding_requests = 1000;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
 
     if (conf->use_async())
     {
         auto const start = std::chrono::high_resolution_clock::now();
-        send_one_request(
-            100000, conf, result_vector,
-            [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
-                     oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
-                auto const end = std::chrono::high_resolution_clock::now();
-                conf->close();
+        for (int i = 0; i < concurrent_clients; i++)
+        {
+            slsfs::log::log<slsfs::log::level::info>("starting client {}", i);
+            send_one_request(
+                outstanding_requests,
+                conf, result_vector,
+                [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
+                         oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
+                    auto const end = std::chrono::high_resolution_clock::now();
+                    conf->close();
 
-                auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                std::cout << " time: " << relativetime << "\n";
-                std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
-                std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
-                stats(result.begin(), result.end());
-            });
+                    auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+                    std::cout << " time: " << relativetime << "\n";
+                    std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
+                    std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
+                    stats(result.begin(), result.end());
+                });
+        }
     }
     else
     {
         auto const start = std::chrono::high_resolution_clock::now();
-        int const outstanding_requests = 100000;
         oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
         for (int i = 0; i < outstanding_requests; i++)
         {
-            auto ptr = create_request(slsfs::jsre::operation_t::write);
+            static std::string buf(4096, 'A');
+            auto ptr = client_request::create_write(slsfs::pack::key_t{1}, 0, buf);
 
             auto const single_start = std::chrono::high_resolution_clock::now();
             conf->perform(ptr);
@@ -261,9 +237,6 @@ int do_datafunction()
 
 int main(int argc, char *argv[])
 {
-    std::cout << slsfs::uuid::encode_base64(get_uuid("1wx5dgohq1kiwjum"));
-    std::cout << slsfs::uuid::encode_base64(get_uuid("i5ms01i56ue2v7nt"));
-    return 0;
     std::string name = fmt::format("DF:{0:4d}", slsfs::uuid::gen_rand_number());
     char const* name_cstr = name.c_str();
     slsfs::log::init(name_cstr);

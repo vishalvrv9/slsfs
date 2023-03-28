@@ -5,6 +5,7 @@
 #include "storage-conf-swift.hpp"
 #include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
+#include "create-request.hpp"
 
 #include <slsfs.hpp>
 
@@ -22,67 +23,24 @@
 #include <map>
 #include <ctime>
 
-template<typename Function, typename ... Args>
-auto record(Function &&f, Args &&... args) -> long int
-{
-    auto const start = std::chrono::high_resolution_clock::now();
-    std::invoke(f, std::forward<Args>(args)...);
-    auto const now = std::chrono::high_resolution_clock::now();
-    auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(now - start).count();
-    return relativetime;
-}
-
-template<typename Iterator>
-void stats(Iterator start, Iterator end, std::string const memo = "")
-{
-    int const size = std::distance(start, end);
-
-    double sum = std::accumulate(start, end, 0.0);
-    double mean = sum / size, var = 0;
-
-    std::map<int, int> dist;
-    for (; start != end; start++)
-    {
-        dist[(*start)/1000000]++;
-        var += std::pow((*start) - mean, 2);
-    }
-
-    var /= size;
-    slsfs::log::log<slsfs::log::level::info>("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
-    for (auto && [time, count] : dist)
-        slsfs::log::log<slsfs::log::level::info>("{0} {1}: {2}", memo, time, count);
-}
-
 namespace slsfsdf
 {
 
 using boost::asio::ip::tcp;
+using json = slsfs::base::json;
 
-int do_datafunction(std::ostream &ow_out)
-try
+int do_datafunction_with_proxy (
+    boost::asio::io_context &ioc,
+    std::ostream &ow_out,
+    json const& input,
+    std::shared_ptr<slsfsdf::storage_conf> conf)
 {
-    slsfsdf::server::queue_map queue_map;
-    boost::asio::io_context ioc;
-    tcp::resolver resolver(ioc);
-
-    slsfsdf::server::proxy_set proxys;
-
-    using json = slsfs::base::json;
-    json input;
-
-    ow_out << "{\"nya\": \"halo\"}" << std::endl;
-    std::cin >> input;
-
-#ifdef AS_ACTIONLOOP
-    input = input["value"];
-#endif
-
     /* example json config
     {
         "type": "wakeup",
         "proxyhost": "192.168.1.1",
         "proxyport": "12000",
-        "storagetype": "ssbd-basic",
+        "storagetype": "ssbd",
         "storageconfig": {
             "hosts": [{
                 "host": "192.168.2.1",
@@ -91,12 +49,125 @@ try
         }
     }
     */
+
+    slsfsdf::server::queue_map queue_map;
+    tcp::resolver resolver(ioc);
+    slsfsdf::server::proxy_set proxys;
+    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, conf, queue_map, proxys);
+    proxys.emplace(proxy_command_ptr, 0);
+
+    std::string const proxyhost = input["proxyhost"].get<std::string>();
+    std::string const proxyport = input["proxyport"].get<std::string>();
+
+    slsfs::log::log("connect to {}:{}", proxyhost, proxyport);
+
+    auto function_timeout = std::make_shared<boost::asio::steady_timer>(ioc);
     {
-        std::stringstream ss;
-        ss << input;
-        slsfs::log::log("input json {}", ss.str());
+        using namespace std::chrono_literals;
+        function_timeout->expires_from_now(298s);
+        function_timeout->async_wait(
+            [proxy_command_ptr, function_timeout] (boost::system::error_code ec) {
+                slsfs::log::log("time to die. closing connection. ec={}", ec.message());
+                proxy_command_ptr->close();
+            });
     }
 
+    proxy_command_ptr->start_connect(resolver.resolve(proxyhost, proxyport));
+
+    json output;
+    output["original-request"] = input;
+
+    return 0;
+}
+
+int do_datafunction_direct (
+    boost::asio::io_context &ioc,
+    std::ostream &ow_out,
+    json const& input,
+    std::shared_ptr<slsfsdf::storage_conf> conf)
+{
+    /* example json config
+    {
+        "type": "write" | "read",
+        "name": "base64encodedfilename",
+        "pos": 0,
+        "size": 0,
+        "data": "blob",
+    }
+    return:
+    {
+        "data": "blob"
+    }
+    */
+
+    std::string   const type    = input["type"].get<std::string>();
+    std::string         name    = input["name"].get<std::string>();
+    slsfs::uuid::uuid const key = slsfs::uuid::decode_base64(name);
+    std::uint32_t const pos     = input["pos"].get<std::uint32_t>();
+    std::uint32_t const size    = input["size"].get<std::uint32_t>();
+
+    slsfs::pack::packet_pointer ptr = nullptr;
+
+    switch (slsfs::sswitch::hash(type))
+    {
+    using namespace slsfs::sswitch;
+    case "write"_:
+    {
+        std::string data = input["data"].get<std::string>();
+        std::string buf;
+        slsfs::base64::decode (data, std::back_inserter(buf));
+
+        ptr = client_request::create_write(key, pos, buf);
+        break;
+    }
+    case "read"_:
+        ptr = client_request::create_read(key, pos, size);
+        break;
+    default:
+        ow_out << "{}";
+    }
+
+    if (conf->use_async())
+    {
+        slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
+        conf->start_perform(
+            input,
+            [ptr, input, conf, &ow_out, &ioc]
+            (slsfs::base::buf buf) {
+                json output_json;
+                output_json["data"] = slsfs::base64::encode(buf.begin(), buf.end());
+                ow_out << output_json;
+                conf->close();
+                ioc.stop();
+            });
+    }
+    else
+    {
+        slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
+        slsfs::base::buf buf = conf->perform(input);
+
+        json output_json;
+        output_json["data"] = slsfs::base64::encode(buf.begin(), buf.end());
+        ow_out << output_json;
+        conf->close();
+    }
+    return 0;
+}
+
+int do_datafunction(std::ostream &ow_out)
+try
+{
+    boost::asio::io_context ioc;
+
+    json input;
+
+    // cannot use '\n' because '\n' does not flush the stream
+    ow_out << "{\"nya\": \"halo\"}" << std::endl;
+    std::cin >> input;
+
+#ifdef AS_ACTIONLOOP
+    input = input["value"];
+#endif
     std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
 
     std::string const storagetype = input["storagetype"].get<std::string>();
@@ -115,44 +186,28 @@ try
     }
     conf->init(input["storageconfig"]);
 
-    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, conf, queue_map, proxys);
-    proxys.emplace(proxy_command_ptr, 0);
-
-    std::string const proxyhost = input["proxyhost"].get<std::string>();
-    std::string const proxyport = input["proxyport"].get<std::string>();
-
-    slsfs::log::log("connect to {}:{}", proxyhost, proxyport);
-
-    boost::asio::steady_timer function_timeout{ioc};
+    int returnvalue = 0;
+    switch (slsfs::sswitch::hash(input["launch"].get<std::string>()))
     {
-        using namespace std::chrono_literals;
-        function_timeout.expires_from_now(298s);
-        function_timeout.async_wait(
-            [proxy_command_ptr] (boost::system::error_code ec) {
-                slsfs::log::log("time to die: get code: {}", ec.message());
-                proxy_command_ptr->close();
-            });
+    using namespace slsfs::sswitch;
+    case "direct"_:
+        returnvalue = do_datafunction_direct(ioc, ow_out, input, conf);
+        break;
+    case "server"_:
+        returnvalue = do_datafunction_with_proxy(ioc, ow_out, input, conf);
+        break;
+    default:
+        slsfs::log::log("unsupported launch method: '{}'", input["launch"].get<std::string>());
     }
-
-    proxy_command_ptr->start_connect(resolver.resolve(proxyhost, proxyport));
-
-    std::vector<std::thread> v;
+    std::vector<std::thread> threadpool;
     unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
-    v.reserve(worker);
-    for(unsigned int i = 0; i < worker; i++)
-        v.emplace_back([&ioc] { ioc.run(); });
+    threadpool.reserve(worker);
+    for (unsigned int i = 0; i < worker; i++)
+        threadpool.emplace_back([&ioc] { ioc.run(); });
 
-    json output;
-    output["original-request"] = input;
-    output["response"] = json::array();
-
-    for (std::thread& th : v)
+    for (std::thread& th : threadpool)
         th.join();
-
-    slsfs::log::log("data function shutdown");
-    ow_out << "{\"finish\": \"job\"}" << std::endl;
-
-    return 0;
+    return returnvalue;
 }
 catch (std::exception const & e)
 {

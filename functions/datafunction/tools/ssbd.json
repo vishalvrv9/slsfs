@@ -1,5 +1,6 @@
 {
     "type": "wakeup",
+    "launch": "server",
     "proxyhost": "192.168.0.135",
     "proxyport": "12001",
     "blocksize": 4096,

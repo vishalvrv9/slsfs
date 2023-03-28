@@ -33,8 +33,9 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "Clang")
 endif()
 
 add_executable(run main.cpp)
-add_executable(slsfs-client clients/slsfs-client.cpp)
-add_executable(ceph-zipf    clients/ceph-zipf.cpp)
+add_executable(slsfs-client             clients/slsfs-client.cpp)
+add_executable(slsfs-perfunction-client clients/slsfs-perfunction-client.cpp)
+add_executable(ceph-zipf                clients/ceph-zipf.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 
@@ -50,6 +51,7 @@ target_precompile_headers(ceph-zipf REUSE_FROM run)
 
 target_link_libraries(run -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(slsfs-client -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(slsfs-perfunction-client -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(ceph-zipf -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 
 IF ("${CMAKE_SYSTEM_NAME}" MATCHES "Windows")
