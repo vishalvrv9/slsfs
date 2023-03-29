@@ -36,7 +36,6 @@ public:
 
     void schedule_a_new_job (worker_set& ws, job_ptr job) override
     {
-
         queue_size_.fetch_add(job->pack_->header.datasize, std::memory_order_seq_cst);
         worker_launch::schedule_a_new_job(ws, job);
     }

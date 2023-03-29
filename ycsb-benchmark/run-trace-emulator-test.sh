@@ -72,7 +72,7 @@ OW_WATCHING=$!
 
 ssh ow-invoker-1
 
-cd "trace_emulator_rerun/$TESTNAME-result/";
+cd "trace_emulator_rerun_baseline/$TESTNAME-result/";
 
 cp ../../start-proxy-args.sh .
 scp proxy-1:/tmp/proxy-report.json proxy-report-1.json;

@@ -5,8 +5,8 @@ TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
-ssh proxy-2 docker rm -f proxy2&
-ssh proxy-3 docker rm -f proxy2&
+#ssh proxy-2 docker rm -f proxy2&
+#ssh proxy-3 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function-debug;' &
 bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
@@ -27,8 +27,8 @@ start-proxy-remote()
 echo starting remote hosts
 
 start-proxy-remote proxy-1
-start-proxy-remote proxy-2 noinit
-start-proxy-remote proxy-3 noinit
+#start-proxy-remote proxy-2 noinit
+#start-proxy-remote proxy-3 noinit
 #start-proxy-remote zookeeper-1 noinit
 #start-proxy-remote zookeeper-2 noinit
 #start-proxy-remote zookeeper-3 noinit
@@ -55,12 +55,12 @@ done
 
 echo wait until proxy open
 
-hostparis=( "192.168.0.135:12001"
-            "192.168.0.215:12001"
-            "192.168.0.149:12001" );
-#            "192.168.0.48:12001"
-#            "192.168.0.241:12001"
-#            "192.168.0.139:12001" );
+hostparis=("192.168.0.135:12001")
+#           "192.168.0.215:12001"
+#           "192.168.0.149:12001" );
+#           "192.168.0.48:12001"
+#           "192.168.0.241:12001"
+#           "192.168.0.139:12001" );
 
 for pair in "${hostparis[@]}"; do
     p=(`echo $pair | tr ':' ' '`)

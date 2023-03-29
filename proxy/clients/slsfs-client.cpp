@@ -26,8 +26,6 @@
 
 using boost::asio::ip::tcp;
 
-constexpr bool enable_creation = false;
-
 template<typename Function>
 auto record(Function &&f) -> long int
 {

@@ -181,7 +181,8 @@ public:
                 return;
             }
 
-            fileid_to_worker().emplace(job->pack_->header, worker_ptr);
+            worker_ptr->soft_close();
+            //fileid_to_worker().emplace(job->pack_->header, worker_ptr);
         }
 
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";

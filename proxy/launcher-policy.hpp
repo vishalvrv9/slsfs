@@ -105,7 +105,7 @@ public:
             });
     }
 
-    void reschedule_a_job(job_ptr job)
+    void reschedule_a_job (job_ptr job)
     {
         net::post(
             io_context_,

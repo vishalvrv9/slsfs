@@ -15,6 +15,7 @@
 #include "worker-launch.hpp"
 #include "worker-launch-const-average-load.hpp"
 #include "worker-launch-max-queue.hpp"
+#include "worker-launch-single-request.hpp"
 //#include "worker-launch-const-limit-launch.hpp"
 //#include "worker-launch-prestart-one.hpp"
 //#include "worker-launch-adaptive-max-load.hpp"
