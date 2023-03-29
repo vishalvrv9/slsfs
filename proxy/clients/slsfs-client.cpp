@@ -155,13 +155,13 @@ auto iotest (int const times, int const bufsize,
         r.type = slsfs::jsre::type_t::file;
         if (rwdist.at(dist(engine)))
         {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::read;";
-            r.operation = slsfs::jsre::operation_t::read;
+            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::write;";
+            r.operation = slsfs::jsre::operation_t::write;
         }
         else
         {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::write;";
-            r.operation = slsfs::jsre::operation_t::write;
+            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::read;";
+            r.operation = slsfs::jsre::operation_t::read;
         }
 
         r.position = genpos(i);
