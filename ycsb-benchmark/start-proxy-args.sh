@@ -1,20 +1,20 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts1[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=100
-export TOTAL_CLIENT=1
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=64
 export BUFSIZE=4096
 #export UNIFORM_DIST="--uniform-dist"
 export UNIFORM_DIST=""
 
-export MEMO="direct-client-in-proxy"
+export MEMO="replica3"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
-export CLIENT_TESTNAME=100-0
-#export CLIENT_TESTNAME=0-100
+#export CLIENT_TESTNAME=100-0
+export CLIENT_TESTNAME=0-100
 
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
@@ -40,15 +40,16 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=13v7F8u5T4oTz5y2FouoM_rOZlsJ5xpRRIzLriEz55K4
 #export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
-export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
+#export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
+export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc  #Replica Compare
 
 # [random-assign, lowest-load, active-load-balance]
 export POLICY_FILETOWORKER=active-load-balance
 export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
-export POLICY_LAUNCH=single-request
-export POLICY_LAUNCH_ARGS=10 #average queue = 2kb
+export POLICY_LAUNCH=max-queue
+export POLICY_LAUNCH_ARGS=10:1000 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -57,6 +58,17 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:60000:1000:50
 
 export INITINT=1;
-export VERBOSE='-vvv'
-export MAX_FUNCTION_COUNT=0
+export VERBOSE='-v'
+export MAX_FUNCTION_COUNT=15
 export PORT=12001
+
+start-proxy-remote()
+{
+    local h=$1;
+    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load;
+    scp start-proxy* avaliable-host.sh $h:
+    if [[ "$2" == "noinit" ]]; then
+        ssh $h "echo 'INITINT=0'  >> ./start-proxy-args.sh"
+    fi
+    ssh $h "/home/ubuntu/start-proxy.sh"
+}

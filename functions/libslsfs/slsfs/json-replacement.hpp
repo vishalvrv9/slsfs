@@ -170,6 +170,15 @@ struct request_parser
     auto data() -> CharType* {
         return refdata + sizeof(request);
     }
+
+    auto print() const -> std::string
+    {
+        std::stringstream ss;
+        ss << "jsre of '";
+        slsfs::pack::basic_container_stream (ss, uuid());
+        ss << "' [pos: " << position() << "] [size: " << size() << "]";
+        return ss.str();
+    }
 };
 
 } // namespace jsre

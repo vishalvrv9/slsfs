@@ -66,10 +66,12 @@ public:
         boost::system::error_code ec;
         valid_.store(false);
         socket_.shutdown(tcp::socket::shutdown_both, ec);
-        BOOST_LOG_TRIVIAL(info) << "worker [" << id_ << "] closed";
+        on_worker_close_(shared_from_this());
+
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
-        on_worker_close_(shared_from_this());
+        BOOST_LOG_TRIVIAL(info) << "worker [" << id_ << "] closed. Reschedule " << started_jobs_.size() << " jobs";
+
     }
 
     void start_read_header()
@@ -119,7 +121,7 @@ public:
                     case pack::msg_t::trigger:
                     case pack::msg_t::trigger_reject:
                     {
-                        BOOST_LOG_TRIVIAL(error) << "worker packet error " << pack->header;
+                        BOOST_LOG_TRIVIAL(error) << "worker receive a strange packet " << pack->header;
                         self->start_read_header();
                         break;
                     }
@@ -240,7 +242,6 @@ public:
                 {
                     BOOST_LOG_TRIVIAL(error) << "worker start write error: " << ec.message();
                     self->close();
-                    self->socket_.shutdown(tcp::socket::shutdown_send, ec);
                 }
                 else
                     BOOST_LOG_TRIVIAL(trace) << "worker wrote msg";

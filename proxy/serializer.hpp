@@ -338,17 +338,22 @@ bool operator == (packet_header const& key1, packet_header const& key2) {
     return packet_header_full_key_compare(key1, key2);
 }
 
+template<typename ContainerType>
+auto basic_container_stream (std::ostream &os, ContainerType const& key) -> std::ostream&
+{
+    for (key_t::value_type const& v: key)
+        os << std::hex << static_cast<int>(v);
+    return os;
+}
+
 auto operator <<(std::ostream &os, packet_header const& pd) -> std::ostream&
 {
     os << "[t=" << pd.type << "|k=";
-    for (key_t::value_type v: pd.key)
-        os << std::hex << static_cast<int>(v);
+    basic_container_stream(os, pd.key);
     os << ",seq=";
-    for (key_t::value_type v: pd.sequence)
-        os << std::hex << static_cast<int>(v);
+    basic_container_stream(os, pd.sequence);
     os << ",salt=";
-    for (key_t::value_type v: pd.random_salt)
-        os << std::hex << static_cast<int>(v);
+    basic_container_stream(os, pd.random_salt);
     os << "|d=" << std::dec << pd.datasize << "]";
     return os;
 }

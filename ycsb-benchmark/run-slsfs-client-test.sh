@@ -5,30 +5,26 @@ TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
-#ssh proxy-2 docker rm -f proxy2&
-#ssh proxy-3 docker rm -f proxy2&
+ssh proxy-2 docker rm -f proxy2&
+ssh proxy-3 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function-debug;' &
-bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd;  make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit' &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
-start-proxy-remote()
-{
-    local h=$1;
-    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load;
-    scp start-proxy* avaliable-host.sh $h:
-    if [[ "$2" == "noinit" ]]; then
-        ssh $h "echo 'INITINT=0'  >> ./start-proxy-args.sh"
-    fi
-    ssh $h "/home/ubuntu/start-proxy.sh"
-}
-
-echo starting remote hosts
-
-start-proxy-remote proxy-1
+#echo starting remote hosts
+#start-proxy-remote proxy-1
 #start-proxy-remote proxy-2 noinit
 #start-proxy-remote proxy-3 noinit
+hostparis=("proxy-1:12001"
+           "proxy-2:12001"
+           "proxy-3:12001");
+#           "192.168.0.48:12001"
+#           "192.168.0.241:12001"
+#           "192.168.0.139:12001" );
+
+
 #start-proxy-remote zookeeper-1 noinit
 #start-proxy-remote zookeeper-2 noinit
 #start-proxy-remote zookeeper-3 noinit
@@ -54,13 +50,6 @@ while curl https://localhost:10001/invokers -k 2>&1 | grep -q unhealthy; do
 done
 
 echo wait until proxy open
-
-hostparis=("192.168.0.135:12001")
-#           "192.168.0.215:12001"
-#           "192.168.0.149:12001" );
-#           "192.168.0.48:12001"
-#           "192.168.0.241:12001"
-#           "192.168.0.139:12001" );
 
 for pair in "${hostparis[@]}"; do
     p=(`echo $pair | tr ':' ' '`)

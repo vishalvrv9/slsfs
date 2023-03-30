@@ -156,7 +156,6 @@ public:
 
     void on_worker_close (df::worker_ptr worker)
     {
-        BOOST_LOG_TRIVIAL(trace) << "worker close: " << worker.get();
         worker_set_.erase(worker);
         launcher_policy_.deregistered_a_worker(worker.get());
     }

@@ -84,7 +84,7 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
 
     void timer_reset()
     {
-        slsfs::log::log("timer_reset");
+        //slsfs::log::log("timer_reset");
         recv_deadline_.cancel();
 
         std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
@@ -159,21 +159,21 @@ public:
 
     void start_listen_commands()
     {
-        slsfs::log::log("start_listen_commands called");
+        //slsfs::log::log("start_listen_commands called");
         auto readbuf = std::make_shared<std::array<slsfs::pack::unit_t, slsfs::pack::packet_header::bytesize>>();
 
         boost::asio::async_read(
             socket_, boost::asio::buffer(readbuf->data(), readbuf->size()),
             [self=this->shared_from_this(), readbuf] (boost::system::error_code ec, std::size_t /*length*/) {
-                slsfs::log::log("start_listen_commands get cmd");
+                //slsfs::log::log("start_listen_commands get cmd");
 
                 if (ec)
-                    slsfs::log::log("error listen command {}", ec.message());
+                    slsfs::log::log<slsfs::log::level::error>("error listen command {}", ec.message());
                 else
                 {
-                    slsfs::log::log("start_listen_commands cancel timer");
+                    //slsfs::log::log("start_listen_commands cancel timer");
 
-                    slsfs::log::log<slsfs::log::level::debug>("get cmd");
+                    //slsfs::log::log<slsfs::log::level::debug>("get cmd");
                     slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
                     pack->header.parse(readbuf->data());
 
@@ -233,7 +233,7 @@ public:
                         slsfs::pack::waittime_type duration_in_ms = 0;
                         std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
                         self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
-                        slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
+                        //slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
                         break;
                     }
 
@@ -266,13 +266,9 @@ public:
     template<typename Func>
     void start_write(slsfs::pack::packet_pointer pack, Func next)
     {
-        slsfs::log::log("start write");
-
         auto next_warpper = std::make_shared<slsfs::socket_writer::boost_callback>(
             [self=this->shared_from_this(), next=std::move(next)]
             (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
-                    slsfs::log::log("worker sent msg");
                 std::invoke(next, ec, length);
             });
 
@@ -299,28 +295,22 @@ public:
                     auto const start = std::chrono::high_resolution_clock::now();
 
                     slsfs::jsre::request_parser<slsfs::base::byte> input {pack};
-
                     slsfs::log::log("process request: {}", pack->header.print());
 
                     if (self->datastorage_conf_->use_async())
                     {
-
-                        pack->header.type = slsfs::pack::msg_t::worker_response;
-                        //pack->data.buf = std::vector<slsfs::pack::unit_t>{65, 66};
-                        //slsfs::log::log<slsfs::log::level::debug>("write back");
-                        //self->start_write(pack);
-
                         self->start_storage_perform(
                             input,
                             [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
-                                pack->header.type = slsfs::pack::msg_t::worker_response;
-                                pack->data.buf.resize(buf.size());// = std::vector<slsfs::pack::unit_t>(v.size(), '\0');
-                                std::memcpy(pack->data.buf.data(), buf.data(), buf.size());
+                                slsfs::pack::packet_pointer response = std::make_shared<slsfs::pack::packet>();
+                                response->header = pack->header;
+                                response->header.type = slsfs::pack::msg_t::worker_response;
+                                response->data.buf = std::move(buf);
 
-                                self->start_write(pack);
+                                self->start_write(response);
                                 auto const end = std::chrono::high_resolution_clock::now();
                                 auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                                slsfs::log::log<slsfs::log::level::debug>("req finish in: {}", relativetime);
+                                slsfs::log::log<slsfs::log::level::debug>("req finish in: {}ns", relativetime);
                             });
                     }
                     else

@@ -97,8 +97,6 @@ class storage_conf_ssbd_backend : public storage_conf
     void start_2pc_prepare (slsfs::jsre::request_parser<slsfs::base::byte> input,
                             slsfs::backend::ssbd::handler_ptr next)
     {
-        slsfs::log::log("start_2pc_prepare");
-
         auto request_dearline_timer = std::make_shared<boost::asio::steady_timer>(io_context_);
         using namespace std::chrono_literals;
 
@@ -110,6 +108,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 {
                 case boost::system::errc::success: // timer timeout
                     recoder_.erase_checked(input.uuid());
+                    slsfs::log::log<slsfs::log::level::error>("Error: request timeout internally");
                     std::invoke(*next, slsfs::base::to_buf("Error: request timeout internally"));
                     break;
                 case boost::system::errc::operation_canceled: // timer canceled
@@ -123,6 +122,8 @@ class storage_conf_ssbd_backend : public storage_conf
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
         std::uint32_t const selected_version = version();
+
+        slsfs::log::log("start_2pc_prepare: {}", input.print());
 
         auto outstanding_requests = std::make_shared<std::atomic<int>>(0);
         auto all_ssbd_agree       = std::make_shared<std::atomic<bool>>(true);
@@ -170,6 +171,7 @@ class storage_conf_ssbd_backend : public storage_conf
 
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_abort:
                         slsfs::log::log("2pc abort: {}", response->header.print());
+                        slsfs::log::log("2pc input: {}", input.print());
                         *all_ssbd_agree = false;
                         break;
 
@@ -194,7 +196,10 @@ class storage_conf_ssbd_backend : public storage_conf
                             std::invoke(*next, slsfs::base::to_buf("Error: Found Pending 2PC Log"));
                         }
 
-                        start_2pc_commit (input, *all_ssbd_agree, selected_version, nullptr);
+                        start_2pc_commit (input,
+                                          *all_ssbd_agree,
+                                          selected_version,
+                                          nullptr);
                     }
                 });
         }
@@ -205,9 +210,11 @@ class storage_conf_ssbd_backend : public storage_conf
                            std::uint32_t const selected_version,
                            slsfs::backend::ssbd::handler_ptr next)
     {
-        slsfs::log::log("start_2pc_commit");
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
+
+        if (realpos > 467870)
+            throw std::runtime_error("strange realpos");
 
         auto outstanding_requests = std::make_shared<std::atomic<int>>(0);
         for (std::uint32_t currentpos = realpos, buffer_pointer_offset = 0; currentpos < endpos;)
@@ -261,7 +268,9 @@ class storage_conf_ssbd_backend : public storage_conf
                             std::invoke(*next, slsfs::base::to_buf("OK"));
 
                         if (all_ssbd_agree && replication_size_ > 1)
-                            start_replication(input, selected_version, nullptr);
+                            start_replication (input,
+                                               selected_version,
+                                               nullptr);
                     }
                 });
         }
@@ -271,7 +280,7 @@ class storage_conf_ssbd_backend : public storage_conf
                             std::uint32_t const selected_version,
                             slsfs::backend::ssbd::handler_ptr next)
     {
-        slsfs::log::log("start_replication");
+        slsfs::log::log("start_replication with {}", input.print());
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
 
