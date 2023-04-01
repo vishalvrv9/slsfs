@@ -87,45 +87,44 @@ public:
                     if (ec != boost::asio::error::eof)
                         BOOST_LOG_TRIVIAL(error) << "worker start_read_header err: " << ec.message();
                     self->close();
+                    return;
                 }
-                else
+
+                pack::packet_pointer pack = std::make_shared<pack::packet>();
+                pack->header.parse(read_buf->data());
+
+                switch (pack->header.type)
                 {
-                    pack::packet_pointer pack = std::make_shared<pack::packet>();
-                    pack->header.parse(read_buf->data());
+                case pack::msg_t::worker_dereg:
+                    self->close();
+                    BOOST_LOG_TRIVIAL(trace) << "worker get worker_dereg" << pack->header;
+                    break;
 
-                    switch (pack->header.type)
-                    {
-                    case pack::msg_t::worker_dereg:
-                        self->close();
-                        BOOST_LOG_TRIVIAL(trace) << "worker get worker_dereg" << pack->header;
-                        break;
+                case pack::msg_t::worker_response:
+                    BOOST_LOG_TRIVIAL(trace) << "worker get resp " << pack->header;
+                    self->start_read_body(pack);
+                    break;
 
-                    case pack::msg_t::worker_response:
-                        BOOST_LOG_TRIVIAL(trace) << "worker get resp " << pack->header;
-                        self->start_read_body(pack);
-                        break;
+                case pack::msg_t::ack:
+                    BOOST_LOG_TRIVIAL(trace) << "worker get ack " << pack->header;
+                    self->on_worker_ack(pack);
+                    self->start_read_header();
+                    break;
 
-                    case pack::msg_t::ack:
-                        BOOST_LOG_TRIVIAL(trace) << "worker get ack " << pack->header;
-                        self->on_worker_ack(pack);
-                        self->start_read_header();
-                        break;
-
-                    case pack::msg_t::set_timer:
-                    case pack::msg_t::proxyjoin:
-                    case pack::msg_t::err:
-                    case pack::msg_t::put:
-                    case pack::msg_t::get:
-                    case pack::msg_t::worker_reg:
-                    case pack::msg_t::worker_push_request:
-                    case pack::msg_t::trigger:
-                    case pack::msg_t::trigger_reject:
-                    {
-                        BOOST_LOG_TRIVIAL(error) << "worker receive a strange packet " << pack->header;
-                        self->start_read_header();
-                        break;
-                    }
-                    }
+                case pack::msg_t::set_timer:
+                case pack::msg_t::proxyjoin:
+                case pack::msg_t::err:
+                case pack::msg_t::put:
+                case pack::msg_t::get:
+                case pack::msg_t::worker_reg:
+                case pack::msg_t::worker_push_request:
+                case pack::msg_t::trigger:
+                case pack::msg_t::trigger_reject:
+                {
+                    BOOST_LOG_TRIVIAL(error) << "worker receive a strange packet " << pack->header;
+                    self->start_read_header();
+                    break;
+                }
                 }
             });
     }
@@ -139,14 +138,15 @@ public:
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
                 if (ec)
-                    BOOST_LOG_TRIVIAL(error) << "worker start_read_body: " << ec.message();
-                else
                 {
-                    pack->data.parse(length, read_buf->data());
-                    BOOST_LOG_TRIVIAL(trace) << "worker start self->registered_job_";
-                    self->on_worker_response(pack);
-                    self->start_read_header();
+                    BOOST_LOG_TRIVIAL(error) << "worker start_read_body: " << ec.message();
+                    return;
                 }
+
+                pack->data.parse(length, read_buf->data());
+                BOOST_LOG_TRIVIAL(trace) << "worker start self->registered_job_";
+                self->on_worker_response(pack);
+                self->start_read_header();
             });
     }
 

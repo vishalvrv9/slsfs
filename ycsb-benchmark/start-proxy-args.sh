@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts1[@]}")
 
 export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=64
+export TOTAL_CLIENT=1
 export BUFSIZE=4096
 #export UNIFORM_DIST="--uniform-dist"
 export UNIFORM_DIST=""
@@ -58,7 +58,7 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:60000:1000:50
 
 export INITINT=1;
-export VERBOSE='-v'
+export VERBOSE='-vvv'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 

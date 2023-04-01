@@ -158,68 +158,68 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf] (boost::system::error_code ec, std::size_t /*length*/) {
-                if (not ec)
-                {
-                    slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
-                    pack->header.parse(read_buf->data());
-
-                    switch (pack->header.type)
-                    {
-                    case slsfs::pack::msg_t::put:
-                        BOOST_LOG_TRIVIAL(debug) << "put " << pack->header;
-                        self->start_read_body(pack);
-                        break;
-
-                    case slsfs::pack::msg_t::get:
-                        BOOST_LOG_TRIVIAL(debug) << "get " << pack->header;
-                        self->start_load(pack);
-                        self->start_read_header();
-                        break;
-
-                    case slsfs::pack::msg_t::ack:
-                    {
-                        BOOST_LOG_TRIVIAL(error) << "server should not get ack. error: " << pack->header;
-                        slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-                        resp->header = pack->header;
-                        resp->header.type = slsfs::pack::msg_t::ack;
-                        self->start_write(resp);
-                        self->start_read_header();
-                        break;
-                    }
-
-                    case slsfs::pack::msg_t::worker_reg:
-                        BOOST_LOG_TRIVIAL(trace) << "server add worker" << pack->header;
-                        self->launcher_.add_worker(std::move(self->socket_), pack);
-                        break;
-
-                    case slsfs::pack::msg_t::trigger:
-                        BOOST_LOG_TRIVIAL(trace) << "server get new trigger " << pack->header;
-                        self->start_trigger(pack);
-                        break;
-
-                    case slsfs::pack::msg_t::set_timer:
-                    case slsfs::pack::msg_t::proxyjoin:
-                    case slsfs::pack::msg_t::err:
-                    case slsfs::pack::msg_t::worker_dereg:
-                    case slsfs::pack::msg_t::worker_push_request:
-                    case slsfs::pack::msg_t::worker_response:
-                    case slsfs::pack::msg_t::trigger_reject:
-                    {
-                        BOOST_LOG_TRIVIAL(error) << "packet error " << pack->header << " from endpoint: " << self->socket_.remote_endpoint();
-                        slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-                        resp->header = pack->header;
-                        resp->header.type = slsfs::pack::msg_t::err;
-                        self->start_write(resp);
-                        self->start_read_header();
-                        break;
-                    }
-                    }
-                }
-                else
+                if (ec)
                 {
                     if (ec != boost::asio::error::eof)
                         BOOST_LOG_TRIVIAL(error) << "start_read_header err: " << ec.message();
+                    return;
                 }
+
+                slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
+                pack->header.parse(read_buf->data());
+
+                switch (pack->header.type)
+                {
+                case slsfs::pack::msg_t::put:
+                    BOOST_LOG_TRIVIAL(debug) << "put " << pack->header;
+                    self->start_read_body(pack);
+                    break;
+
+                case slsfs::pack::msg_t::get:
+                    BOOST_LOG_TRIVIAL(debug) << "get " << pack->header;
+                    self->start_load(pack);
+                    self->start_read_header();
+                    break;
+
+                case slsfs::pack::msg_t::ack:
+                {
+                    BOOST_LOG_TRIVIAL(error) << "server should not get ack. error: " << pack->header;
+                    slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                    resp->header = pack->header;
+                    resp->header.type = slsfs::pack::msg_t::ack;
+                    self->start_write(resp);
+                    self->start_read_header();
+                    break;
+                }
+
+                case slsfs::pack::msg_t::worker_reg:
+                    BOOST_LOG_TRIVIAL(trace) << "server add worker" << pack->header;
+                    self->launcher_.add_worker(std::move(self->socket_), pack);
+                    break;
+
+                case slsfs::pack::msg_t::trigger:
+                    BOOST_LOG_TRIVIAL(trace) << "server get new trigger " << pack->header;
+                    self->start_trigger(pack);
+                    break;
+
+                case slsfs::pack::msg_t::set_timer:
+                case slsfs::pack::msg_t::proxyjoin:
+                case slsfs::pack::msg_t::err:
+                case slsfs::pack::msg_t::worker_dereg:
+                case slsfs::pack::msg_t::worker_push_request:
+                case slsfs::pack::msg_t::worker_response:
+                case slsfs::pack::msg_t::trigger_reject:
+                {
+                    BOOST_LOG_TRIVIAL(error) << "packet error " << pack->header << " from endpoint: " << self->socket_.remote_endpoint();
+                    slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                    resp->header = pack->header;
+                    resp->header.type = slsfs::pack::msg_t::err;
+                    self->start_write(resp);
+                    self->start_read_header();
+                    break;
+                }
+                }
+
             });
     }
 
@@ -231,17 +231,18 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t /*length*/) {
-                if (not ec)
+                if (ec)
                 {
-                    self->launcher_.start_trigger_post(
-                        *read_buf, pack,
-                        [self, pack] (slsfs::pack::packet_pointer resp) {
-                            self->start_write(resp);
-                        });
-                    self->start_read_header();
-                }
-                else
                     BOOST_LOG_TRIVIAL(error) << "start_trigger: " << ec.message();
+                    return;
+                }
+
+                self->launcher_.start_trigger_post(
+                    *read_buf, pack,
+                    [self, pack] (slsfs::pack::packet_pointer resp) {
+                        self->start_write(resp);
+                    });
+                self->start_read_header();
             });
     }
 
@@ -253,14 +254,15 @@ public:
             socket_,
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
+                if (ec)
                 {
-                    pack->data.parse(length, read_buf->data());
-                    self->start_store(pack);
-                    self->start_read_header();
-                }
-                else
                     BOOST_LOG_TRIVIAL(error) << "start_read_body: " << ec.message();
+                    return;
+                }
+
+                pack->data.parse(length, read_buf->data());
+                self->start_store(pack);
+                self->start_read_header();
             });
     }
 
