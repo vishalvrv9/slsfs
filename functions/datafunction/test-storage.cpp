@@ -175,8 +175,8 @@ int do_datafunction()
     conf->init(input["storageconfig"]);
 
     slsfs::log::log<slsfs::log::level::info>("starting");
-    int const concurrent_clients = 16;
-    int const outstanding_requests = 1000;
+    int const concurrent_clients = 1;
+    int const single_requests = 100000;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
 
     if (conf->use_async())
@@ -186,7 +186,7 @@ int do_datafunction()
         {
             slsfs::log::log<slsfs::log::level::info>("starting client {}", i);
             send_one_request(
-                outstanding_requests,
+                single_requests,
                 conf, result_vector,
                 [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
                          oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
@@ -205,7 +205,7 @@ int do_datafunction()
     {
         auto const start = std::chrono::high_resolution_clock::now();
         oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
-        for (int i = 0; i < outstanding_requests; i++)
+        for (int i = 0; i < single_requests; i++)
         {
             static std::string buf(4096, 'A');
             auto ptr = client_request::create_write(slsfs::pack::key_t{1}, 0, buf);

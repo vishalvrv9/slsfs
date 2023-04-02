@@ -1,4 +1,4 @@
-.PHONY: exec* function*
+.PHONY: exec* function* test-storage
 
 function-debug: *.cpp *.hpp exec-debug
 	./deploy-native.sh
@@ -44,9 +44,6 @@ exec: *.cpp *.hpp
     docker run --rm hare1039/slsfs-datafunction:nightly cat /action/exec > exec && \
     chmod +x exec
 
-test-storage: test-storage.cpp *.hpp
-	DOCKER_BUILDKIT=1 docker build -t hare1039/slsfs-datafunction:nightly \
-                                   --build-arg debug=true \
-                                   -f Dockerfile .. && \
-    docker run --rm hare1039/slsfs-datafunction:nightly cat /action/test-storage > test-storage && \
-    chmod +x test-storage
+test-storage-debug: exec-debug
+
+test-storage: exec
