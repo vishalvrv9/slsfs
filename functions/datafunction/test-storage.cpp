@@ -136,7 +136,7 @@ void send_one_request (int left_request,
         });
 }
 
-int do_datafunction()
+int do_datafunction (int const concurrent_clients, int const single_requests)
 {
     boost::asio::io_context ioc;
     tcp::resolver resolver(ioc);
@@ -175,8 +175,6 @@ int do_datafunction()
     conf->init(input["storageconfig"]);
 
     slsfs::log::log<slsfs::log::level::info>("starting");
-    int const concurrent_clients = 1;
-    int const single_requests = 100000;
     oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
 
     if (conf->use_async())
@@ -241,5 +239,5 @@ int main(int argc, char *argv[])
     char const* name_cstr = name.c_str();
     slsfs::log::init(name_cstr);
 
-    return slsfsdf::do_datafunction();
+    return slsfsdf::do_datafunction(std::stoi(argv[1]), std::stoi(argv[2]));
 }
