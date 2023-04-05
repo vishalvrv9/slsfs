@@ -82,7 +82,7 @@ public:
             {
                 if ((log_pos.position >= input.position()) &&
                     (log_pos.position + log_pos.size) <= (input.size() + input.position())) {
-                // Case 2: Cache hit
+                    // Case 2: Cache hit
                     auto&& full_buf = acc->second;
 
                     slsfs::base::buf result(input.size());
@@ -126,11 +126,11 @@ public:
             file_log_map::accessor log_acc;
             if (file_log_map_.find(log_acc, input.uuid()))
             {
-
+    
             }
             else
                 file_log_map_.emplace(input.uuid(),
-                                      std::vector<cached_data>{cached_data(input.position(), input.size())});
+                std::vector<cached_data>{cached_data(input.position(), input.size())});
 
             caching_map_.emplace(input.uuid(), data);
             return true;

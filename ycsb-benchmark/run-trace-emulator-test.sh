@@ -8,9 +8,9 @@ echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
 
-bash -c 'cd ../functions/datafunction; make function-debug;' &
-bash -c 'cd ../proxy; make debug-from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; make debug-from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function;' &
+bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
+bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
@@ -72,7 +72,8 @@ OW_WATCHING=$!
 
 ssh ow-invoker-1
 
-cd "trace_emulator_rerun_baseline/$TESTNAME-result/";
+mkdir -p trace_emulator_caching/$TESTNAME-result/
+cd "trace_emulator_caching/$TESTNAME-result/";
 
 cp ../../start-proxy-args.sh .
 scp proxy-1:/tmp/proxy-report.json proxy-report-1.json;

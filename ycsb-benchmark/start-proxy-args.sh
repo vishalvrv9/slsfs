@@ -16,9 +16,9 @@ export MEMO="replica3"
 #export CLIENT_TESTNAME=100-0
 export CLIENT_TESTNAME=0-100
 
-#export BACKEND_CONFIG=/backend/cassandra-repl3.json
+export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-export BACKEND_CONFIG=/backend/ssbd.json
+#export BACKEND_CONFIG=/backend/ssbd.json
 #export BACKEND_CONFIG=/backend/ssbd-debug.json
 #export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json
@@ -49,7 +49,7 @@ export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
 export POLICY_LAUNCH=max-queue
-export POLICY_LAUNCH_ARGS=10:1000 #average queue = 2kb
+export POLICY_LAUNCH_ARGS=10:3000 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -58,7 +58,7 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:60000:1000:50
 
 export INITINT=1;
-export VERBOSE='-vvv'
+export VERBOSE='-v'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 

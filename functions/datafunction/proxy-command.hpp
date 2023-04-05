@@ -338,7 +338,10 @@ public:
         case slsfs::jsre::type_t::file:
             if (single_input.operation() == slsfs::jsre::operation_t::write)
             {
-                // cache_engine_.write_to_cache(single_input);
+                slsfs::base::buf buf (single_input.size());
+                std::memcpy(buf.data(), single_input.data(), single_input.size());
+
+                cache_engine_.write_to_cache(single_input, buf);
                 return datastorage_conf_->perform(single_input);
             }
             else
@@ -346,8 +349,10 @@ public:
                 // TODO: switch it to real type later please!!!!!!!
                 auto cached_file = cache_engine_.read_from_cache(single_input);
 
-                if (cached_file)
+                if (cached_file){
+                    slsfs::log::log("CACHE HIT");   
                     return cached_file.value();
+                }
                 else // Cache miss
                 {
                     // write to cache

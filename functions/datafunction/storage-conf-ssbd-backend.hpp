@@ -106,15 +106,14 @@ class storage_conf_ssbd_backend : public storage_conf
             [next, request_dearline_timer, input, this] (boost::system::error_code ec) {
                 switch (ec.value())
                 {
-                case boost::system::errc::success: // timer timeout
-                    recoder_.erase_checked(input.uuid());
-                    slsfs::log::log<slsfs::log::level::error>("Error: request timeout internally");
-                    std::invoke(*next, slsfs::base::to_buf("Error: request timeout internally"));
-                    break;
                 case boost::system::errc::operation_canceled: // timer canceled
                     break;
+                case boost::system::errc::success: // timer timeout
+                    recoder_.erase_checked(input.uuid());
+                    std::invoke(*next, slsfs::base::to_buf("Error: request timeout internally"));
+                    [[fallthrough]];
                 default:
-                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: write job '{}:{}' timeout.", input.print(), input.pack->header.print());
                     break;
                 }
         });
@@ -176,7 +175,7 @@ class storage_conf_ssbd_backend : public storage_conf
                         break;
 
                     default:
-                        slsfs::log::log("unwanted header type {}", response->header.print());
+                        //slsfs::log::log("unwanted header type {}", static_cast<int>(response->header.type));
                         *all_ssbd_agree = false;
                         break;
                     }
@@ -212,9 +211,6 @@ class storage_conf_ssbd_backend : public storage_conf
     {
         std::uint32_t const realpos = input.position();
         std::uint32_t const endpos  = realpos + input.size();
-
-        if (realpos > 467870)
-            throw std::runtime_error("strange realpos");
 
         auto outstanding_requests = std::make_shared<std::atomic<int>>(0);
         for (std::uint32_t currentpos = realpos, buffer_pointer_offset = 0; currentpos < endpos;)
@@ -254,12 +250,13 @@ class storage_conf_ssbd_backend : public storage_conf
 
                     default:
                         slsfs::log::log("start_2pc_commit unwanted header type {}", response->header.print());
+
                         if (next)
                         {
+                            slsfs::log::log("running request error reply");
                             recoder_.erase_checked(input.uuid());
                             std::invoke(*next, slsfs::base::to_buf("Error: Commit Message Get Error Reply"));
                         }
-                        break;
                     }
 
                     if (--(*outstanding_requests) == 0)
@@ -358,14 +355,15 @@ class storage_conf_ssbd_backend : public storage_conf
             [next, timer, input, this] (boost::system::error_code ec) {
                 switch (ec.value())
                 {
+                case boost::system::errc::operation_canceled: // timer canceled
+                    break;
                 case boost::system::errc::success: // timer timeout
                     recoder_.erase_checked(input.uuid());
                     std::invoke(*next, slsfs::base::to_buf("Error: Read Request Timeout"));
-                    break;
-                case boost::system::errc::operation_canceled: // timer canceled
-                    break;
+                    [[fallthrough]];
+
                 default:
-                    slsfs::log::log<slsfs::log::level::error>("timer_reset: job timer header timeout.");
+                    slsfs::log::log<slsfs::log::level::error>("timer_reset: read job '{}:{}' timeout.", input.print(), input.pack->header.print());
                     break;
                 }
         });

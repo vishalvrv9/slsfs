@@ -68,24 +68,6 @@ namespace slsfsdf
 
 using boost::asio::ip::tcp;
 
-template<typename NextFunc>
-void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
-                                  slsfs::pack::packet_pointer ptr,
-                                  NextFunc && next)
-{
-    slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
-
-    auto const start = std::chrono::high_resolution_clock::now();
-    conf->start_perform(
-        input,
-        [input, start, conf, next]
-        (slsfs::base::buf buf) {
-            auto const end = std::chrono::high_resolution_clock::now();
-            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-            std::invoke(next, relativetime);
-        });
-}
-
 void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
                         slsfs::pack::packet_pointer ptr,
                         std::atomic<int> &outstanding_requests,
@@ -103,11 +85,27 @@ void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
             result.push_back(relativetime);
 
             slsfs::log::log<slsfs::log::level::info>("request finished");
-            if (--outstanding_requests <= 0)
-            {
-                slsfs::log::log<slsfs::log::level::info>("conf->close()");
-                conf->close();
-            }
+            --outstanding_requests;
+        });
+}
+
+
+template<typename NextFunc>
+void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
+                                  slsfs::pack::packet_pointer ptr,
+                                  NextFunc && next)
+{
+    slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
+
+    auto const start = std::chrono::high_resolution_clock::now();
+    conf->start_perform(
+        input,
+        [input, start, conf, next]
+        (slsfs::base::buf buf) {
+            auto const end = std::chrono::high_resolution_clock::now();
+            auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
+
+            std::invoke(next, relativetime);
         });
 }
 
@@ -117,27 +115,31 @@ void send_one_request (int left_request,
                        oneapi::tbb::concurrent_vector<std::uint64_t>& result_vector,
                        Finish && on_finish)
 {
-    if (left_request <= 0)
-    {
-        std::invoke (on_finish, conf, result_vector);
-        return;
-    }
-
     static std::string buf(4096, 'A');
+    static std::mt19937 engine (19937);
+    std::uniform_int_distribution<std::uint8_t> dist{0, 255};
 
-    auto ptr = client_request::create_write(slsfs::pack::key_t{1}, 0, buf);
+    auto ptr = client_request::create_write(slsfs::pack::key_t{dist(engine)}, 0, buf);
 
     start_send_request_sequence (
         conf, ptr,
-        [left_request, conf, &result_vector, &on_finish] (std::uint64_t duration) {
+        [left_request=left_request-1, conf, &result_vector, &on_finish]
+        (std::uint64_t duration) {
             result_vector.push_back(duration);
-            send_one_request (left_request - 1, conf, result_vector, on_finish);
-            slsfs::log::log<slsfs::log::level::info>("left: {}", left_request - 1);
+            slsfs::log::log<slsfs::log::level::info>("send_one_request left: {}", left_request);
+            if (left_request <= 0)
+            {
+                std::invoke (on_finish, conf, result_vector);
+                return;
+            }
+            else
+                send_one_request (left_request, conf, result_vector, on_finish);
         });
 }
 
-int do_datafunction (int const concurrent_clients, int const single_requests)
+int do_datafunction (int const single_requests)
 {
+    int const concurrent_clients = 1;
     boost::asio::io_context ioc;
     tcp::resolver resolver(ioc);
 
@@ -179,23 +181,25 @@ int do_datafunction (int const concurrent_clients, int const single_requests)
 
     if (conf->use_async())
     {
-        auto const start = std::chrono::high_resolution_clock::now();
+        auto const start = std::chrono::steady_clock::now();
         for (int i = 0; i < concurrent_clients; i++)
         {
             slsfs::log::log<slsfs::log::level::info>("starting client {}", i);
             send_one_request(
                 single_requests,
-                conf, result_vector,
-                [start] (std::shared_ptr<slsfsdf::storage_conf> conf,
-                         oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
-                    auto const end = std::chrono::high_resolution_clock::now();
+                conf,
+                result_vector,
+                [start, single_requests]
+                (std::shared_ptr<slsfsdf::storage_conf> conf,
+                 oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
+                    auto const end = std::chrono::steady_clock::now();
                     conf->close();
 
-                    auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
-                    std::cout << " time: " << relativetime << "\n";
-                    std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
-                    std::cout << " throughput: " << std::fixed << 100000.0 * requestsize / (relativetime / 1000000000.0) << " bps\n";
+                    std::uint64_t relativetime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
                     stats(result.begin(), result.end());
+                    std::cout << " time: " << relativetime << "\n";
+                    std::cout << " iops: " << std::fixed << single_requests / (relativetime / 1000000.0) << "\n";
+                    std::cout << " throughput: " << std::fixed << single_requests * requestsize / (relativetime / 1000000.0) << " Bps\n";
                 });
         }
     }
@@ -239,5 +243,5 @@ int main(int argc, char *argv[])
     char const* name_cstr = name.c_str();
     slsfs::log::init(name_cstr);
 
-    return slsfsdf::do_datafunction(std::stoi(argv[1]), std::stoi(argv[2]));
+    return slsfsdf::do_datafunction(std::stoi(argv[1]));
 }

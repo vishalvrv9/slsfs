@@ -24,6 +24,7 @@ namespace detail
 class job
 {
     boost::signals2::signal<void(leveldb_pack::packet_pointer)> next_;
+    leveldb_pack::packet_pointer original_request_ = nullptr;
     std::chrono::system_clock::time_point registered_ = std::chrono::system_clock::now();
     std::chrono::system_clock::time_point started_;
     std::chrono::system_clock::time_point ended_;
@@ -34,10 +35,24 @@ public:
     template<typename Next>
     job (Next && callable) { next_.connect(callable); }
 
-    void run (leveldb_pack::packet_pointer ptr)
+    template<typename Next>
+    job (leveldb_pack::packet_pointer original_request, Next && callable):
+        original_request_{original_request} {
+        next_.connect(callable);
+    }
+
+    void run (leveldb_pack::packet_pointer resp)
     {
         ended_ = std::chrono::system_clock::now();
-        next_(ptr);
+        next_(resp);
+    }
+
+    void cancel()
+    {
+        leveldb_pack::packet_pointer resp = std::make_shared<leveldb_pack::packet>();
+        resp->header = original_request_->header;
+        resp->header.type = leveldb_pack::msg_t::err;
+        run(resp);
     }
 
     void mark_started() { started_ = std::chrono::system_clock::now(); }
@@ -50,7 +65,6 @@ public:
 };
 
 using job_ptr = std::shared_ptr<job>;
-
 } // namespace detail
 
 
@@ -122,7 +136,7 @@ class ssbd
 
                 log::log("async read body executing with header {}", resp->header.print());
                 it->second->run(resp);
-                it->second->print();
+                //it->second->print();
 
                 outstanding_jobs_.erase(it);
                 start_read_one();
@@ -148,13 +162,15 @@ public:
     void close()
     {
         socket_.close();
+        for (auto &job : outstanding_jobs_)
+            job.second->cancel();
     }
 
     void start_send_request (leveldb_pack::packet_pointer request,
                              std::function<void(leveldb_pack::packet_pointer)> on_response)
     {
         log::log("ssbd backend start_send_request: {}", request->header.print());
-        detail::job_ptr newjob = std::make_shared<detail::job>(on_response);
+        detail::job_ptr newjob = std::make_shared<detail::job>(request, on_response);
 
         [[maybe_unused]]
         bool ok = outstanding_jobs_.emplace(request->header, newjob);
@@ -166,8 +182,9 @@ public:
                 newjob->mark_started();
                 if (ec)
                 {
-                    log::log("ssbd backend: {} boost error: {}; start_send_request: {}",
-                             host_, ec.message(), request->header.print());
+                    log::log("error {} on {}; start_send_request: {}",
+                             ec.message(), host_, request->header.print());
+                    newjob->cancel();
                     return;
                 }
                 start_read_loop();
