@@ -416,8 +416,6 @@ class storage_conf_ssbd_backend : public storage_conf
                     result_accumulator->at(index).ready = true;
                     result_accumulator->at(index).buf   = std::move(resp->data.buf);
 
-                    slsfs::log::log("read one result");
-
                     for (buf_stat_t& bufstat : *result_accumulator)
                         if (not bufstat.ready)
                             return;
@@ -430,7 +428,7 @@ class storage_conf_ssbd_backend : public storage_conf
                                        bufstat.buf.begin(),
                                        bufstat.buf.end());
 
-                    slsfs::log::log("executing next with bufsize = {}", collect.size());
+                    //slsfs::log::log("executing next with bufsize = {}", collect.size());
                     std::invoke(*next, std::move(collect));
                 });
             currentpos += blockreadsize;

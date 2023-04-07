@@ -205,13 +205,12 @@ public:
     }
 
     template<typename Callback>
-    void start_trigger_post (std::string const& body, pack::packet_pointer original_pack, Callback next)
+    void start_trigger_post (std::vector<slsfs::pack::unit_t> & body, pack::packet_pointer original_pack, Callback next)
     {
         pack::packet_pointer pack = std::make_shared<pack::packet>();
         pack->header      = original_pack->header;
         pack->header.type = pack::msg_t::worker_push_request;
-        pack->data.buf    = std::vector<pack::unit_t>(body.size());
-        std::memcpy(pack->data.buf.data(), body.data(), body.size());
+        std::swap(pack->data.buf, body);
 
         auto job_ptr = std::make_shared<job>(io_context_, pack, next);
         schedule(job_ptr);

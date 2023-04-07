@@ -7,3 +7,4 @@ test-storage
 ycsb-benchmark/*result*
 ycsb-benchmark/block-mappings-to-psb
 ycsb-benchmark/trace_emulator_*
+ycsb-benchmark/test-storage*

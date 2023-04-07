@@ -75,12 +75,12 @@ void start_send_request(std::shared_ptr<slsfsdf::storage_conf> conf,
 {
     slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
 
-    auto const start = std::chrono::high_resolution_clock::now();
+    auto const start = std::chrono::system_clock::now();
     conf->start_perform(
         input,
         [input, start, conf, &result, &outstanding_requests]
         (slsfs::base::buf buf) {
-            auto const end = std::chrono::high_resolution_clock::now();
+            auto const end = std::chrono::system_clock::now();
             auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
             result.push_back(relativetime);
 
@@ -97,12 +97,12 @@ void start_send_request_sequence (std::shared_ptr<slsfsdf::storage_conf> conf,
 {
     slsfs::jsre::request_parser<slsfs::base::byte> input {ptr};
 
-    auto const start = std::chrono::high_resolution_clock::now();
+    auto const start = std::chrono::system_clock::now();
     conf->start_perform(
         input,
         [input, start, conf, next]
         (slsfs::base::buf buf) {
-            auto const end = std::chrono::high_resolution_clock::now();
+            auto const end = std::chrono::system_clock::now();
             auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
 
             std::invoke(next, relativetime);
@@ -119,7 +119,7 @@ void send_one_request (int left_request,
     static std::mt19937 engine (19937);
     std::uniform_int_distribution<std::uint8_t> dist{0, 255};
 
-    auto ptr = client_request::create_write(slsfs::pack::key_t{dist(engine)}, 0, buf);
+    auto ptr = client_request::create_read(slsfs::pack::key_t{dist(engine)}, 0, 4096);
 
     start_send_request_sequence (
         conf, ptr,
@@ -127,12 +127,12 @@ void send_one_request (int left_request,
         (std::uint64_t duration) {
             result_vector.push_back(duration);
             slsfs::log::log<slsfs::log::level::info>("send_one_request left: {}", left_request);
-            if (left_request <= 0)
+            if (left_request == 0)
             {
                 std::invoke (on_finish, conf, result_vector);
                 return;
             }
-            else
+            else if (left_request > 0)
                 send_one_request (left_request, conf, result_vector, on_finish);
         });
 }
@@ -193,34 +193,34 @@ int do_datafunction (int const single_requests)
                 (std::shared_ptr<slsfsdf::storage_conf> conf,
                  oneapi::tbb::concurrent_vector<std::uint64_t>& result) {
                     auto const end = std::chrono::steady_clock::now();
-                    conf->close();
-
-                    std::uint64_t relativetime = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+                    std::uint64_t relativetime = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
                     stats(result.begin(), result.end());
                     std::cout << " time: " << relativetime << "\n";
-                    std::cout << " iops: " << std::fixed << single_requests / (relativetime / 1000000.0) << "\n";
-                    std::cout << " throughput: " << std::fixed << single_requests * requestsize / (relativetime / 1000000.0) << " Bps\n";
+                    std::cout << " iops: " << std::fixed << single_requests / (relativetime / 1000.0) << "\n";
+                    std::cout << " throughput: " << std::fixed << single_requests * requestsize / (relativetime / 1000.0) << " Bps\n";
+                    conf->close();
+                    std::exit(0);
                 });
         }
     }
     else
     {
-        auto const start = std::chrono::high_resolution_clock::now();
+        auto const start = std::chrono::system_clock::now();
         oneapi::tbb::concurrent_vector<std::uint64_t> result_vector;
         for (int i = 0; i < single_requests; i++)
         {
             static std::string buf(4096, 'A');
             auto ptr = client_request::create_write(slsfs::pack::key_t{1}, 0, buf);
 
-            auto const single_start = std::chrono::high_resolution_clock::now();
+            auto const single_start = std::chrono::system_clock::now();
             conf->perform(ptr);
-            auto const single_end = std::chrono::high_resolution_clock::now();
+            auto const single_end = std::chrono::system_clock::now();
 
             auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(single_end - single_start).count();
             result_vector.push_back(relativetime);
         }
 
-        auto const end = std::chrono::high_resolution_clock::now();
+        auto const end = std::chrono::system_clock::now();
         auto relativetime = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start).count();
         std::cout << " time: " << relativetime << "\n";
         std::cout << " iops: " << std::fixed << 100000.0 / (relativetime / 1000000000.0) << "\n";
