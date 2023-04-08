@@ -3,6 +3,16 @@
 #ifndef SERVER_HPP__
 #define SERVER_HPP__
 
+#include "basic.hpp"
+#include "serializer.hpp"
+#include "trigger.hpp"
+#include "launcher.hpp"
+#include "zookeeper.hpp"
+#include "socket-writer.hpp"
+#include "uuid.hpp"
+
+#include <regex>
+
 namespace slsfs::server
 {
 
@@ -327,10 +337,6 @@ public:
     template<typename ... Args>
     void set_worker_config(Args&& ... args) {
         launcher_.set_worker_config (std::forward<Args>(args)...);
-    }
-
-    auto launcher() -> slsfs::launcher::launcher& {
-        return launcher_;
     }
 
     void start_accept()

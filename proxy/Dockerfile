@@ -32,21 +32,20 @@ RUN --mount=type=cache,target=/final/build \
     cd /final && \
     bash -c 'if [[ -z "$debug" ]]; then make release; else make debug; fi' && \
     cp /final/build/bin/* /bin && \
-    chmod +x /bin/run
+    chmod +x /bin/slsfs-proxy
 
+#FROM busybox:glibc
+#
 #ADD backend /backend
-
-FROM busybox:glibc
-
-ADD backend /backend
-
-COPY --from=builder /usr/lib/x86_64-linux-gnu/libzookeeper_mt.so.2 /lib/libzookeeper_mt.so.2
-COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 /lib/librt.so.1
-COPY --from=builder /lib/x86_64-linux-gnu/libdl.so.2 /lib/libdl.so.2
-
-COPY --from=builder /bin/run          /bin/run
-COPY --from=builder /bin/slsfs-client /bin/slsfs-client
-COPY --from=builder /bin/ceph-zipf    /bin/ceph-zipf
-COPY --from=builder /bin/slsfs-perfunction-client /bin/slsfs-perfunction-client
-
-ENTRYPOINT ["/bin/run"]
+#
+#COPY --from=builder /usr/lib/x86_64-linux-gnu/libzookeeper_mt.so.2 /lib/libzookeeper_mt.so.2
+#COPY --from=builder /lib/x86_64-linux-gnu/librt.so.1 /lib/librt.so.1
+#COPY --from=builder /lib/x86_64-linux-gnu/libdl.so.2 /lib/libdl.so.2
+#
+#COPY --from=builder /bin/slsfs-proxy  /bin/slsfs-proxy
+#COPY --from=builder /bin/slsfs-client /bin/slsfs-client
+#COPY --from=builder /bin/slsfs-perfunction-client /bin/slsfs-perfunction-client
+#COPY --from=builder /bin/ceph-zipf    /bin/ceph-zipf
+#COPY --from=builder /bin/datafunction-profile    /bin/datafunction-profile
+#
+#ENTRYPOINT ["/bin/slsfs-proxy"]
