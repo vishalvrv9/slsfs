@@ -23,23 +23,27 @@ RUN git clone --branch v2021.7.0 https://github.com/oneapi-src/oneTBB.git && \
     cmake -G Ninja -DTBB_TEST=OFF -DBUILD_SHARED_LIBS=OFF .. && \
     ninja && ninja install
 
-RUN git clone https://github.com/paullouisageneau/libdatachannel.git /libdatachannel && \
+RUN git clone --branch OpenSSL_1_1_1t git://git.openssl.org/openssl.git /openssl && \
+    cd /openssl && \
+    ./config -static && \
+    make -j && make install
+
+RUN git clone --branch v0.18.3 https://github.com/paullouisageneau/libdatachannel.git /libdatachannel && \
     cd /libdatachannel && \
     git submodule update --init --recursive --depth 1 && \
     cmake -B build \
         -DUSE_GNUTLS=0 \
         -DUSE_NICE=0 \
+        -DOPENSSL_ROOT_DIR=/openssl \
         -DCMAKE_BUILD_TYPE=Release \
         -DNO_MEDIA=1 && \
     cd build && \
     make -j datachannel-static && make install
 
+RUN find /libdatachannel -name '*.a' -exec cp {} /lib \;
+
 RUN conan profile new default --detect &&\
     conan profile update settings.compiler.libcxx=libstdc++11 default
-#    conan profile update settings.compiler=clang              default &&\
-#    conan profile update settings.compiler.version=15         default &&\
-#    echo 'CC=clang' >> /root/.conan/profiles/default &&\
-#    echo 'CXX=clang++' >> /root/.conan/profiles/default
 
 ADD traversal/profiles      /pre/profiles
 ADD traversal/conanfile.txt /pre
@@ -47,8 +51,6 @@ ADD traversal/conanfile.txt /pre
 RUN --mount=type=cache,target=/action/build mkdir -p /action/build && \
     conan install /pre --profile /pre/profiles/release --build=missing --build=b2 --build=boost --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl --build=libuv && \
     conan install /pre --profile /pre/profiles/debug   --build=missing --build=b2 --build=boost --build=librdkafka --build=cassandra-cpp-driver --build=poco --build=openssl --build=m4 --build=libcurl --build=libuv
-
-RUN find /libdatachannel -name '*.a' -exec cp {} /lib \;
 
 ADD libslsfs /action/libslsfs
 ADD traversal /action/
