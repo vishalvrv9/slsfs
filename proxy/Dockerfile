@@ -1,7 +1,7 @@
 FROM gcc:12 AS builder
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev gdb && \
+    apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev clang && \
     pip3 install conan==1.59
 
 RUN conan profile new default --detect &&\
@@ -34,7 +34,10 @@ RUN --mount=type=cache,target=/final/build \
     cp /final/build/bin/* /bin && \
     chmod +x /bin/slsfs-proxy
 
-FROM busybox:glibc
+#FROM busybox:glibc
+FROM ubuntu:20.04
+
+RUN apt-get update && apt-get install -y --no-install-recommends gdb
 
 ADD backend /backend
 

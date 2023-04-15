@@ -7,6 +7,7 @@ fmt/9.1.0@
 zlib/1.2.13@
 nlohmann_json/3.11.2@
 abseil/20220623.1@
+folly/2022.01.31.00
 #folly/2020.08.10.00@
 
 [options]
