@@ -29,8 +29,19 @@ using fileid_map =
 using fileid_to_worker_accessor = fileid_map::accessor;
 using fileid_worker_pair        = fileid_map::value_type;
 
+
 namespace policy
 {
+
+void print(fileid_map const& fileid_to_worker)
+{
+    std::map<df::worker_ptr, int> summary;
+    for (auto [header, ptr] : fileid_to_worker)
+        summary[ptr]++;
+
+    for (auto [ptr, sum] : summary)
+        BOOST_LOG_TRIVIAL(info) << ptr << " handles: " << sum << "\n";
+}
 
 struct info
 {

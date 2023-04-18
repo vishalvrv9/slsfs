@@ -205,7 +205,7 @@ int main(int argc, char *argv[])
     for (int i = 0; i < concurrent_executer; i++)
         start_in_sequence(
             server, total_request, bufsize, result,
-            [&ioc, start, total_request=total_request.load()]
+            [&ioc, start, total_request=total_request.load(), &server]
             (oneapi::tbb::concurrent_vector<std::chrono::nanoseconds> &result) {
                 auto end = std::chrono::high_resolution_clock::now();
 
@@ -213,6 +213,8 @@ int main(int argc, char *argv[])
                 for (std::chrono::nanoseconds t : result)
                     v.push_back(t.count());
                 stats(v.begin(), v.end(), fmt::format("write result "));
+
+                slsfs::launcher::policy::print (server.launcher().fileid_to_worker());
 
                 std::chrono::nanoseconds fulltime = (end - start);
                 std::chrono::nanoseconds totaltime = fulltime - result.front();
