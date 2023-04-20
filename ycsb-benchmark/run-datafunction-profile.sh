@@ -3,9 +3,10 @@ source start-proxy-args.sh;
 
 TOTAL_REQUEST=80000
 TOTAL_DF=4
-CONCURRENT_EXECUTER=16
+CONCURRENT_EXECUTER=32
+ENDPORT=13000
 
-TESTNAME="${BACKEND_CONFIG_NAME}_T+${CONCURRENT_EXECUTER}_EXEC+${TOTAL_DF}_DF"
+TESTNAME="R1${BACKEND_CONFIG_NAME}_T+${CONCURRENT_EXECUTER}_EXEC+${ENDPORT}+${TOTAL_DF}_DF"
 echo "testname: $TESTNAME"
 
 bash -c 'cd ../functions/datafunction; make function;' &
@@ -20,13 +21,13 @@ done
 
 echo starting;
 
-mkdir "test_df_profile_${TESTNAME}";
-cd "test_df_profile_${TESTNAME}";
+mkdir -p "test-${TESTNAME}-df-profile-${TESTNAME}";
+cd "test-${TESTNAME}-df-profile-${TESTNAME}";
 
-for i in $(seq 13000 13003); do
+for i in $(seq 13000 $ENDPORT); do
     docker run \
            --privileged \
-           -d \
+           -it \
            --rm \
            --entrypoint /bin/datafunction-profile \
            --network=host \
@@ -37,4 +38,7 @@ for i in $(seq 13000 13003); do
                --total-request $TOTAL_REQUEST \
                --total-df $TOTAL_DF \
                --concurrent-executer $CONCURRENT_EXECUTER 2>&1 | \
-        tee pxy_${i}.txt
+        tee pxy_${i}.txt &
+done
+
+wait

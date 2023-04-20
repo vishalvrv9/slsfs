@@ -45,22 +45,24 @@ auto stats (Iterator start, Iterator end, std::string const memo = "")
     double sum = std::accumulate(start, end, 0.0);
     double mean = sum / size, var = 0;
 
+    std::vector<typename std::iterator_traits<Iterator>::value_type> copied;
+    std::copy (start, end, std::back_inserter(copied));
+    std::sort(copied.begin(), copied.end());
+
     std::map<int, int> dist;
-    for (; start != end; start++)
+    for (auto const & element : copied)
     {
-        dist[(*start)/1000000]++;
-        var += std::pow((*start) - mean, 2);
+        dist[(element)/1000000]++;
+        var += std::pow(element - mean, 2);
     }
 
     var /= size;
-    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
+    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f} med={3:.3f}", memo, mean, std::sqrt(var), 1.0 * copied.at(copied.size()/2));
     for (auto && [time, count] : dist)
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 
     return {dist, mean, std::sqrt(var)};
 }
-
-
 
 template<typename Next>
 void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left, int bufsize, oneapi::tbb::concurrent_vector<std::chrono::nanoseconds>& result, Next next)
@@ -75,7 +77,11 @@ void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left
     slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
 
     ptr->header.type = slsfs::pack::msg_t::trigger;
-    ptr->header.key = slsfs::pack::key_t{rand()%255};
+
+    thread_local static std::mt19937 engine(19937);
+    thread_local static std::uniform_int_distribution<std::uint8_t> dist(0, 255);
+
+    ptr->header.key = slsfs::pack::key_t{dist(engine)};
 
     slsfs::jsre::request r;
     r.type = slsfs::jsre::type_t::file;
@@ -113,10 +119,10 @@ void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left
         [ptr, start, &server, &left, bufsize, &result, next]
         (slsfs::pack::packet_pointer) {
             auto end = std::chrono::high_resolution_clock::now();
+            start_in_sequence(server, left, bufsize, result, next);
 
             result.push_back(end - start);
             left--;
-            start_in_sequence(server, left, bufsize, result, next);
 
             BOOST_LOG_TRIVIAL(trace) << "finished in " << end - start;
         });
@@ -200,19 +206,24 @@ int main(int argc, char *argv[])
 
     oneapi::tbb::concurrent_vector<std::chrono::nanoseconds> result;
 
+    std::atomic<bool> called = false;
     auto start = std::chrono::high_resolution_clock::now();
 
     for (int i = 0; i < concurrent_executer; i++)
         start_in_sequence(
             server, total_request, bufsize, result,
-            [&ioc, start, total_request=total_request.load(), &server]
+            [&ioc, start, total_request=total_request.load(), &server, &called]
             (oneapi::tbb::concurrent_vector<std::chrono::nanoseconds> &result) {
                 auto end = std::chrono::high_resolution_clock::now();
+                if (called)
+                    return;
+
+                called = true;
 
                 oneapi::tbb::concurrent_vector<std::uint64_t> v;
                 for (std::chrono::nanoseconds t : result)
                     v.push_back(t.count());
-                stats(v.begin(), v.end(), fmt::format("write result "));
+                stats(v.begin(), v.end(), fmt::format("write result"));
 
                 slsfs::launcher::policy::print (server.launcher().fileid_to_worker());
 
