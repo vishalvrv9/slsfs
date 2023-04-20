@@ -81,7 +81,7 @@ void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left
     thread_local static std::mt19937 engine(19937);
     thread_local static std::uniform_int_distribution<std::uint8_t> dist(0, 255);
 
-    ptr->header.key = slsfs::pack::key_t{dist(engine)};
+    ptr->header.key = slsfs::pack::key_t{dist(engine), dist(engine)};
 
     slsfs::jsre::request r;
     r.type = slsfs::jsre::type_t::file;
@@ -195,7 +195,7 @@ int main(int argc, char *argv[])
     slsfs::server::tcp_server server{ioc, port, server_id, announce, resultfile};
 
     slsfs::server::set_policy_filetoworker(server, "active-load-balance", "");
-    slsfs::server::set_policy_launch      (server, "worker-launch-fix-pool", fmt::format("10:{}", total_df));
+    slsfs::server::set_policy_launch      (server, "worker-launch-fix-pool", fmt::format("64:{}", total_df));
     slsfs::server::set_policy_keepalive   (server, "moving-interval-global", "5:60000:1000:50");
 
     server.set_worker_config(worker_config, 1);
