@@ -65,7 +65,14 @@ auto stats (Iterator start, Iterator end, std::string const memo = "")
 }
 
 template<typename Next>
-void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left, int bufsize, oneapi::tbb::concurrent_vector<std::chrono::nanoseconds>& result, Next next)
+void start_in_sequence (
+    slsfs::server::tcp_server& server,
+    std::atomic<int>& left,
+    int bufsize,
+    oneapi::tbb::concurrent_vector<std::chrono::nanoseconds>& result,
+    std::atomic<int>& concurrent_counter,
+    oneapi::tbb::concurrent_vector<int>& concurrent_counter_result,
+    Next next)
 {
     if (left.load() <= 0)
     {
@@ -81,7 +88,7 @@ void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left
     thread_local static std::mt19937 engine(19937);
     thread_local static std::uniform_int_distribution<std::uint8_t> dist(0, 255);
 
-    ptr->header.key = slsfs::pack::key_t{dist(engine), dist(engine)};
+    ptr->header.key = slsfs::pack::key_t{dist(engine), dist(engine), dist(engine), dist(engine)};
 
     slsfs::jsre::request r;
     r.type = slsfs::jsre::type_t::file;
@@ -114,12 +121,17 @@ void start_in_sequence(slsfs::server::tcp_server& server, std::atomic<int>& left
 
     ptr->header.gen();
     auto start = std::chrono::high_resolution_clock::now();
+
+    concurrent_counter++;
     server.launcher().start_trigger_post(
         ptr->data.buf, ptr,
-        [ptr, start, &server, &left, bufsize, &result, next]
+        [ptr, start, &server, &left, bufsize, &result, &concurrent_counter, &concurrent_counter_result, next]
         (slsfs::pack::packet_pointer) {
             auto end = std::chrono::high_resolution_clock::now();
-            start_in_sequence(server, left, bufsize, result, next);
+            concurrent_counter_result.push_back(concurrent_counter.load());
+            concurrent_counter--;
+
+            start_in_sequence(server, left, bufsize, result, concurrent_counter, concurrent_counter_result, next);
 
             result.push_back(end - start);
             left--;
@@ -198,7 +210,7 @@ int main(int argc, char *argv[])
     slsfs::server::set_policy_launch      (server, "worker-launch-fix-pool", fmt::format("64:{}", total_df));
     slsfs::server::set_policy_keepalive   (server, "moving-interval-global", "5:60000:1000:50");
 
-    server.set_worker_config(worker_config, 1);
+    server.set_worker_config(worker_config, 15);
     server.start_accept();
 
     std::vector<std::thread> ths;
@@ -209,10 +221,13 @@ int main(int argc, char *argv[])
     std::atomic<bool> called = false;
     auto start = std::chrono::high_resolution_clock::now();
 
+    std::atomic<int> concurrent_counter = 0;
+    oneapi::tbb::concurrent_vector<int> concurrent_counter_result;
+
     for (int i = 0; i < concurrent_executer; i++)
         start_in_sequence(
-            server, total_request, bufsize, result,
-            [&ioc, start, total_request=total_request.load(), &server, &called]
+            server, total_request, bufsize, result, concurrent_counter, concurrent_counter_result,
+            [&ioc, start, total_request=total_request.load(), &server, &concurrent_counter, &concurrent_counter_result, &called]
             (oneapi::tbb::concurrent_vector<std::chrono::nanoseconds> &result) {
                 auto end = std::chrono::high_resolution_clock::now();
                 if (called)

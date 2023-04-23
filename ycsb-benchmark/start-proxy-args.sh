@@ -16,9 +16,9 @@ export MEMO="replica3"
 #export CLIENT_TESTNAME=100-0
 export CLIENT_TESTNAME=0-100
 
-export BACKEND_CONFIG=/backend/cassandra-repl3.json
+#export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-#export BACKEND_CONFIG=/backend/ssbd.json
+export BACKEND_CONFIG=/backend/ssbd.json
 #export BACKEND_CONFIG=/backend/ssbd-debug.json
 #export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json

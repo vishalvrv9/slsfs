@@ -299,6 +299,16 @@ public:
 
                     if (self->datastorage_conf_->use_async())
                     {
+
+//                        // debug
+//                        slsfs::pack::packet_pointer response = std::make_shared<slsfs::pack::packet>();
+//                        response->header = pack->header;
+//                        response->header.type = slsfs::pack::msg_t::worker_response;
+//                        response->data.buf = slsfs::base::to_buf("ok");
+//
+//                        self->start_write(response);
+
+
                         self->start_storage_perform(
                             input,
                             [self=self->shared_from_this(), pack, start] (slsfs::base::buf buf) {
@@ -350,7 +360,7 @@ public:
                 auto cached_file = cache_engine_.read_from_cache(single_input);
 
                 if (cached_file){
-                    slsfs::log::log("CACHE HIT");   
+                    slsfs::log::log("CACHE HIT");
                     return cached_file.value();
                 }
                 else // Cache miss
