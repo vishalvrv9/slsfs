@@ -38,7 +38,7 @@ auto record(Function &&f) -> long int
 }
 
 template<typename Iterator>
-auto stats(Iterator start, Iterator end, std::string const memo = "")
+auto stats (Iterator start, Iterator end, std::string const memo = "")
     -> std::tuple<std::map<int, int>, int, int>
 {
     int const size = std::distance(start, end);
@@ -46,20 +46,25 @@ auto stats(Iterator start, Iterator end, std::string const memo = "")
     double sum = std::accumulate(start, end, 0.0);
     double mean = sum / size, var = 0;
 
+    std::vector<typename std::iterator_traits<Iterator>::value_type> copied;
+    std::copy (start, end, std::back_inserter(copied));
+    std::sort(copied.begin(), copied.end());
+
     std::map<int, int> dist;
-    for (; start != end; start++)
+    for (auto const & element : copied)
     {
-        dist[(*start)/1000000]++;
-        var += std::pow((*start) - mean, 2);
+        dist[(element)/1000000]++;
+        var += std::pow(element - mean, 2);
     }
 
     var /= size;
-    BOOST_LOG_TRIVIAL(debug) << fmt::format("{0} avg={1:.3f} sd={2:.3f}", memo, mean, std::sqrt(var));
+    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f} med={3:.3f}", memo, mean, std::sqrt(var), 1.0 * copied.at(copied.size()/2));
     for (auto && [time, count] : dist)
-        BOOST_LOG_TRIVIAL(debug) << fmt::format("{0} {1}: {2}", memo, time, count);
+        BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 
     return {dist, mean, std::sqrt(var)};
 }
+
 
 auto get_uuid (boost::asio::io_context &io_context, std::string const& child) -> boost::asio::ip::tcp::resolver::results_type
 {

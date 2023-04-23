@@ -9,7 +9,7 @@ export BUFSIZE=4096
 #export UNIFORM_DIST="--uniform-dist"
 export UNIFORM_DIST=""
 
-export MEMO="replica3"
+export MEMO="t"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
