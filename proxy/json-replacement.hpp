@@ -14,7 +14,7 @@ constexpr int filemeta_size = 64;
 
 struct stats
 {
-    std::uint32_t file_count;
+    std::uint32_t file_count = 0;
     std::array<slsfs::pack::unit_t,
                filemeta_size - sizeof(file_count)> reserved;
 
@@ -31,7 +31,6 @@ struct filemeta
 {
     std::uint16_t owner;
     std::uint16_t permission;
-    std::uint16_t reserved;
     std::array<slsfs::pack::unit_t,
                filemeta_size - sizeof(owner) - sizeof(permission)> filename;
 
@@ -39,14 +38,12 @@ struct filemeta
     {
         owner      = slsfs::pack::hton(owner);
         permission = slsfs::pack::hton(permission);
-        reserved   = slsfs::pack::hton(reserved);
     }
 
     void to_host_format()
     {
         owner      = slsfs::pack::ntoh(owner);
         permission = slsfs::pack::ntoh(permission);
-        reserved   = slsfs::pack::ntoh(reserved);
     }
 };
 

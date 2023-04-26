@@ -2,6 +2,7 @@
 #include "../serializer.hpp"
 #include "../json-replacement.hpp"
 #include "../uuid.hpp"
+#include "clientlib.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -25,6 +26,8 @@
 #include <chrono>
 
 using boost::asio::ip::tcp;
+
+bool constexpr create_file_before_write = true;
 
 template<typename Function>
 auto record(Function &&f) -> long int
@@ -149,42 +152,12 @@ auto iotest (int const times, int const bufsize,
 
     for (int i = 0; i < times; i++)
     {
-        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-
-        ptr->header.type = slsfs::pack::msg_t::trigger;
-        ptr->header.key = genname();
-
-        slsfs::jsre::request r;
-        r.type = slsfs::jsre::type_t::file;
+        slsfs::pack::packet_pointer ptr = nullptr;
         if (rwdist.at(dist(engine)))
-        {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::write;";
-            r.operation = slsfs::jsre::operation_t::write;
-        }
+            ptr = slsfs::client::write(genname(), buf);
         else
-        {
-            BOOST_LOG_TRIVIAL(trace) << "r.operation = slsfs::jsre::operation_t::read;";
-            r.operation = slsfs::jsre::operation_t::read;
-        }
+            ptr = slsfs::client::read(genname(), buf.size());
 
-        r.position = genpos(i);
-        r.size = buf.size();
-        r.to_network_format();
-
-        if (r.operation == slsfs::jsre::operation_t::read)
-        {
-            ptr->data.buf.resize(sizeof (r));
-            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-        }
-        else
-        {
-            ptr->data.buf.resize(sizeof (r) + buf.size());
-            std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-            std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
-        }
-
-        ptr->header.gen();
-        BOOST_LOG_TRIVIAL(debug) << "sending " << ptr->header;
         auto pbuf = ptr->serialize();
         int index = pick_proxy(proxy_uuid, ptr->header.key);
 
@@ -194,9 +167,28 @@ auto iotest (int const times, int const bufsize,
 
         boost::asio::post(
             io,
-            [&s, &record_list, pbuf, op=r.operation] {
+            [&s, &record_list, pbuf, genpos] {
                 record_list.push_back(record(
-                    [&s, pbuf, op] () {
+                    [&s, pbuf] () {
+                        if constexpr (create_file_before_write)
+                        {
+                            //auto mptr = slsfs::client::mkdir("/")->serialize();
+                            //auto mptr = slsfs::client::addfile("/", "eishin.txt")->serialize();
+                            auto mptr = slsfs::client::ls("/")->serialize();
+                            boost::asio::write(s, boost::asio::buffer(mptr->data(), mptr->size()));
+
+                            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+                            boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
+
+                            resp->header.parse(headerbuf.data());
+                            BOOST_LOG_TRIVIAL(debug) << "meta resp:" << resp->header;
+
+                            std::string data(resp->header.datasize, '\0');
+                            boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
+                            BOOST_LOG_TRIVIAL(debug) << data ;
+                        }
+
                         boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
                         slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
@@ -355,7 +347,7 @@ int main(int argc, char *argv[])
         ("bufsize",       po::value<int>()->default_value(4096),      "Size of the read/write buffer")
         ("zipf-alpha",    po::value<double>()->default_value(1.2),    "set the alpha value of zipf dist")
         ("file-range",    po::value<int>()->default_value(256*256*4), "set the total different number of files")
-        ("test-name",     po::value<std::string>(),                   "oneof [fill, 50-50, 95-5, 100-0, 0-100]; format: read-write")
+        ("test-name",     po::value<std::string>(),                   "oneof [fill, 50-50, 95-5, 100-0, 0-100, samename]; format: read-write")
         ("uniform-dist",  po::bool_switch(),                          "use uniform distribution")
         ("result",        po::value<std::string>()->default_value("/dev/null"), "save result to this file");
 
@@ -505,6 +497,21 @@ int main(int argc, char *argv[])
                     iotest, total_times, bufsize,
                     std::vector<int> {1},
                     selected,
+                    [bufsize](int) { return 0; },
+                    proxylistpair,
+                    "");
+        });
+        break;
+    case "samename"_:
+        start_test(
+            "samename",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, bufsize,
+                    std::vector<int> {1},
+                    []()  { slsfs::pack::key_t t{}; return t; },
                     [bufsize](int) { return 0; },
                     proxylistpair,
                     "");

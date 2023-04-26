@@ -3,18 +3,19 @@
 source avaliable-host.sh
 export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=1000
+export EACH_CLIENT_ISSUE=2
 export TOTAL_CLIENT=1
 export BUFSIZE=4096
 #export UNIFORM_DIST="--uniform-dist"
 export UNIFORM_DIST=""
 
-export MEMO="t"
+export MEMO="create-file"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
 #export CLIENT_TESTNAME=100-0
 export CLIENT_TESTNAME=0-100
+#export CLIENT_TESTNAME=samename
 
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
@@ -41,7 +42,8 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
-export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc  #Replica Compare
+#export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc #Replica Compare
+export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
 # [random-assign, lowest-load, active-load-balance]
 export POLICY_FILETOWORKER=active-load-balance

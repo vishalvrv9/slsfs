@@ -428,7 +428,6 @@ class storage_conf_ssbd_backend : public storage_conf
                                        bufstat.buf.begin(),
                                        bufstat.buf.end());
 
-                    //slsfs::log::log("executing next with bufsize = {}", collect.size());
                     std::invoke(*next, std::move(collect));
                 });
             currentpos += blockreadsize;
@@ -438,6 +437,7 @@ class storage_conf_ssbd_backend : public storage_conf
     void start_meta_addfile (slsfs::jsre::request_parser<slsfs::base::byte> const input,
                              slsfs::backend::ssbd::handler_ptr next)
     {
+        slsfs::log::log("start_meta_addfile {}", input.print());
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
         ptr->header.gen();
         ptr->header.key = input.uuid();
@@ -468,6 +468,7 @@ class storage_conf_ssbd_backend : public storage_conf
         auto readnext = std::make_shared<slsfs::backend::ssbd::handler>(
             [input, next, this]
             (slsfs::base::buf file_content) {
+                slsfs::log::log("start_meta_addfile get read resp: size={}", file_content.size());
                 slsfs::jsre::meta::stats stat;
                 if (file_content.size() < sizeof(stat))
                 {
@@ -481,30 +482,146 @@ class storage_conf_ssbd_backend : public storage_conf
                 stat.to_host_format();
 
                 // get metadata (owner, permission, filename) from request (network format)
-                slsfs::jsre::meta::filemeta meta;
-                std::memcpy(std::addressof(meta), input.data(), sizeof(meta));
+                slsfs::jsre::meta::filemeta filemeta;
+                std::memcpy(std::addressof(filemeta), input.data(), sizeof(filemeta));
 
-                std::uint32_t const position = (stat.file_count) * sizeof(meta);
+                // calculate the append address
+                std::uint32_t const position = (stat.file_count) * sizeof(filemeta);
 
-                // put metadata to position
-                if (position < blocksize())
-                {// update at first block => reuse file_content
+                // append stat
+                file_content.resize(position + sizeof(filemeta));
+                std::memcpy(file_content.data() + position,
+                            std::addressof(filemeta), sizeof(filemeta));
 
-                    // append stat
-                    std::memcpy(file_content.data() + position,
-                                std::addressof(meta), sizeof(meta));
+                std::string f(filemeta.filename.begin(), filemeta.filename.end());
+                slsfs::log::log("start_meta_addfile save filename={}", f);
+                stat.file_count++;
+                slsfs::log::log("start_meta_addfile stat now have {} files", stat.file_count);
 
-                    stat.file_count++;
-                    stat.to_network_format();
+                stat.to_network_format();
 
-                    // update at position 0
-                    std::memcpy(file_content.data(), std::addressof(stat), sizeof(stat));
+                // update at position 0
+                std::memcpy(file_content.data(), std::addressof(stat), sizeof(stat));
 
-                    //slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-                    //slsfs::jsre::request_parser<slsfs::base::byte> read_request_input;
-                    //start_read(read_request_input, readnext);
-                    //start_2pc_prepare()
+                slsfs::jsre::request write_request {
+                    .type      = slsfs::jsre::type_t::file,
+                    .operation = slsfs::jsre::operation_t::write,
+                    .position  = 0,
+                    .size      = static_cast<std::uint32_t>(file_content.size())
+                };
+
+                write_request.to_network_format();
+                slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+                ptr->header.gen();
+                ptr->header.key = input.uuid();
+
+                ptr->data.buf.resize(sizeof (write_request) + file_content.size());
+                std::memcpy(ptr->data.buf.data(), &write_request, sizeof (write_request));
+                std::memcpy(ptr->data.buf.data() + sizeof (write_request), file_content.data(), file_content.size());
+
+                slsfs::jsre::request_parser<slsfs::base::byte> write_request_parser{ptr};
+
+                // send the write request, and at finish, write back to client
+                start_2pc_prepare(write_request_parser, next);
+            });
+
+        slsfs::jsre::request_parser<slsfs::base::byte> read_request_input {ptr};
+        start_read(read_request_input, readnext);
+    }
+
+    void start_meta_mkdir (slsfs::jsre::request_parser<slsfs::base::byte> const input,
+                           slsfs::backend::ssbd::handler_ptr next)
+    {
+        slsfs::log::log("start_meta_mkdir {}", input.print());
+        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+        ptr->header.gen();
+        ptr->header.key = input.uuid();
+
+        // create a stat and put into ssbd
+        slsfs::jsre::meta::stats stat;
+        stat.to_network_format();
+
+        slsfs::jsre::request write_request {
+            .type      = slsfs::jsre::type_t::file,
+            .operation = slsfs::jsre::operation_t::write,
+            .position  = 0,
+            .size      = sizeof(stat)
+        };
+
+        write_request.to_network_format();
+        ptr->data.buf.resize(sizeof (write_request) + sizeof (stat));
+        std::memcpy(ptr->data.buf.data(), &write_request, sizeof (write_request));
+        std::memcpy(ptr->data.buf.data() + sizeof (write_request), &stat, sizeof (stat));
+
+        slsfs::jsre::request_parser<slsfs::base::byte> write_request_input {ptr};
+        start_2pc_prepare(write_request_input, next);
+    }
+
+    void start_meta_ls (slsfs::jsre::request_parser<slsfs::base::byte> const input,
+                        slsfs::backend::ssbd::handler_ptr next)
+    {
+        slsfs::log::log("start_meta_ls {}", input.print());
+        slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+        ptr->header.gen();
+        ptr->header.key = input.uuid();
+
+        slsfs::jsre::request read_request {
+            .type      = slsfs::jsre::type_t::file,
+            .operation = slsfs::jsre::operation_t::read,
+            .position  = 0,
+            .size      = blocksize()
+        };
+
+        read_request.to_network_format();
+        ptr->data.buf.resize(sizeof (read_request));
+        std::memcpy(ptr->data.buf.data(), &read_request, sizeof (read_request));
+
+        /*
+           Read first block: in the first block for a directory,
+           end of file list (== number of files) (network format). i.e.
+           struct slsfsdf::ssbd::meta::stats {
+               std::uint32_t files;
+               std::uint32_t last;
+           }
+
+           0: 4K block
+           [[{meta::stats}: 64 bytes], [{owner, permission, filename}: 64 bytes], ...]
+        */
+
+        auto readnext = std::make_shared<slsfs::backend::ssbd::handler>(
+            [input, next, this]
+            (slsfs::base::buf file_content) {
+                slsfs::log::log("start_meta_ls get file resp: size={}", file_content.size());
+                slsfs::jsre::meta::stats stat;
+                if (file_content.size() < sizeof(stat))
+                {
+                    recoder_.erase_checked(input.uuid());
+                    std::invoke(*next, slsfs::base::to_buf("Error: No such directory"));
+                    return;
                 }
+
+                // get number of files
+                std::memcpy(std::addressof(stat), file_content.data(), sizeof(stat));
+                stat.to_host_format();
+
+                slsfs::log::log("start_meta_ls stat have {} files", stat.file_count);
+
+                // get metadata (owner, permission, filename) from request (network format)
+                slsfs::base::buf filenames;
+                for (unsigned int i = 1; i <= stat.file_count; i++)
+                {
+                    slsfs::jsre::meta::filemeta filemeta;
+                    unsigned int const pos = i * sizeof(filemeta);
+                    std::memcpy(std::addressof(filemeta), file_content.data() + pos, sizeof(filemeta));
+
+                    //std::string f(filemeta.filename.begin(), filemeta.filename.end());
+                    //slsfs::log::log("read filename={}", f);
+                    filenames.insert(filenames.end(),
+                                     filemeta.filename.begin(), filemeta.filename.end());
+                    filenames.push_back('\n');
+                }
+
+                std::invoke(*next, filenames);
             });
 
         slsfs::jsre::request_parser<slsfs::base::byte> read_request_input {ptr};
@@ -539,47 +656,38 @@ public:
     void start_perform (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
                         std::function<void(slsfs::base::buf)> next) override
     {
+        auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
         switch (input.operation())
         {
         case slsfs::jsre::operation_t::write:
-        {
-            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
             slsfs::log::log("start_perform -> slsfs::jsre::operation_t::write");
             start_2pc_prepare(input, next_ptr);
             break;
-        }
 
         case slsfs::jsre::operation_t::read:
-        {
-            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
             slsfs::log::log("start_perform -> slsfs::jsre::operation_t::read");
             start_read(input, next_ptr);
             break;
-        }
         }
     }
 
     void start_perform_metadata (slsfs::jsre::request_parser<slsfs::base::byte> const& input,
                                  std::function<void(slsfs::base::buf)> next) override
     {
+        auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
         switch (input.meta_operation())
         {
         case slsfs::jsre::meta_operation_t::addfile:
-        {
-            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
+            start_meta_addfile(input, next_ptr);
             break;
-        }
 
         case slsfs::jsre::meta_operation_t::mkdir:
-        {
+            start_meta_mkdir(input, next_ptr);
             break;
-        }
 
         case slsfs::jsre::meta_operation_t::ls:
-        {
-            auto next_ptr = std::make_shared<std::function<void(slsfs::base::buf)>>(std::move(next));
+            start_meta_ls(input, next_ptr);
             break;
-        }
         }
     }
 };
