@@ -82,6 +82,7 @@ int pick_proxy(std::vector<slsfs::uuid::uuid> const& proxy_uuid, slsfs::pack::ke
 void send_cmd(slsfs::tcp::socket& s, slsfs::pack::packet_pointer ptr)
 {
     auto pbuf = ptr->serialize();
+    BOOST_LOG_TRIVIAL(debug) << "sending request " << ptr->header;
     boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
     slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();

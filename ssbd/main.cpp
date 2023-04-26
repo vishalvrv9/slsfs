@@ -127,16 +127,6 @@ public:
                     return;
                 }
 
-                slsfs::leveldb_pack::packet_pointer resp2 = std::make_shared<slsfs::leveldb_pack::packet>();
-                resp2->header = pack->header;
-                resp2->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
-
-                self->start_write_socket(resp2);
-                self->start_read_header();
-
-                return;
-
-
                 BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare process packet: " << pack->header;
 
                 pack->data.parse(length, read_buf->data());

@@ -108,6 +108,7 @@ template<typename BufContainer>
 auto write (pack::key_t const& filename, BufContainer const& buf)
     -> pack::packet_pointer
 {
+    BOOST_LOG_TRIVIAL(debug) << "creating file write request";
     pack::packet_pointer ptr = std::make_shared<pack::packet>();
 
     ptr->header.type = pack::msg_t::trigger;
@@ -125,7 +126,6 @@ auto write (pack::key_t const& filename, BufContainer const& buf)
     std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
 
     ptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating file write request " << ptr->header;
     return ptr;
 }
 
@@ -138,6 +138,7 @@ auto write (std::string const filename, BufContainer const& buf)
 auto read (pack::key_t const& filename, std::uint32_t const size)
     -> pack::packet_pointer
 {
+    BOOST_LOG_TRIVIAL(debug) << "creating file read request";
     pack::packet_pointer ptr = std::make_shared<pack::packet>();
 
     ptr->header.type = pack::msg_t::trigger;
@@ -154,7 +155,7 @@ auto read (pack::key_t const& filename, std::uint32_t const size)
     std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
 
     ptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating file read request " << ptr->header;
+
     return ptr;
 }
 

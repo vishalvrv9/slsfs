@@ -101,7 +101,7 @@ void init_log(boost::log::trivial::severity_level level = boost::log::trivial::i
      * [TimeStamp] [Severity Level] [Scope] Log message
      */
     auto timestamp = boost::log::expressions::
-        format_date_time<boost::posix_time::ptime>("TimeStamp", "%Y-%m-%d %H:%M:%S.%f");
+        format_date_time<boost::posix_time::ptime>("TimeStamp", "%H:%M:%S.%f");
     auto severity = boost::log::expressions::
         attr<boost::log::trivial::severity_level>("Severity");
     auto scope = boost::log::expressions::format_named_scope("Scope",
@@ -109,7 +109,7 @@ void init_log(boost::log::trivial::severity_level level = boost::log::trivial::i
         boost::log::keywords::iteration = boost::log::expressions::reverse,
         boost::log::keywords::depth = 2);
     boost::log::formatter final_format =
-        boost::log::expressions::format("[%1%] (%2%): %3%")
+        boost::log::expressions::format("[%1% %2%]: %3%")
         % timestamp % severity
         % boost::log::expressions::smessage;
 

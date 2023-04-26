@@ -115,7 +115,7 @@ public:
     {
         std::string const value = get_pending_prepare_data(key);
         slsfs::leveldb_pack::versionint_t const version = get_pending_prepare_version(key);
-        BOOST_LOG_TRIVIAL(trace) << "commit pending prepare version: " << version;
+        BOOST_LOG_TRIVIAL(trace) << "commit pending prepare version: " << version << " value=" << value;
 
         put_committed_version(key, version);
         save_dest.Put(leveldb::WriteOptions(), key, value);
