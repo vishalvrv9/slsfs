@@ -486,7 +486,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 std::memcpy(std::addressof(filemeta), input.data(), sizeof(filemeta));
 
                 // calculate the append address
-                std::uint32_t const position = (stat.file_count) * sizeof(filemeta);
+                std::uint32_t const position = (++stat.file_count) * sizeof(filemeta);
 
                 // append stat
                 file_content.resize(position + sizeof(filemeta));
@@ -495,7 +495,6 @@ class storage_conf_ssbd_backend : public storage_conf
 
                 std::string f(filemeta.filename.begin(), filemeta.filename.end());
                 slsfs::log::log("start_meta_addfile save filename={}", f);
-                stat.file_count++;
                 slsfs::log::log("start_meta_addfile stat now have {} files", stat.file_count);
 
                 stat.to_network_format();
@@ -608,16 +607,21 @@ class storage_conf_ssbd_backend : public storage_conf
 
                 // get metadata (owner, permission, filename) from request (network format)
                 slsfs::base::buf filenames;
+
+                std::string const total = fmt::format("total: {} files\n", stat.file_count);
+                filenames.insert(filenames.end(),
+                                 total.begin(), total.end());
+
                 for (unsigned int i = 1; i <= stat.file_count; i++)
                 {
                     slsfs::jsre::meta::filemeta filemeta;
                     unsigned int const pos = i * sizeof(filemeta);
                     std::memcpy(std::addressof(filemeta), file_content.data() + pos, sizeof(filemeta));
 
-                    //std::string f(filemeta.filename.begin(), filemeta.filename.end());
-                    //slsfs::log::log("read filename={}", f);
+                    auto end = std::find(filemeta.filename.begin(), filemeta.filename.end(), '\0');
                     filenames.insert(filenames.end(),
-                                     filemeta.filename.begin(), filemeta.filename.end());
+                                     filemeta.filename.begin(), end);
+
                     filenames.push_back('\n');
                 }
 

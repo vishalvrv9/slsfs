@@ -172,9 +172,9 @@ auto iotest (int const times, int const bufsize,
                     [&s, pbuf] () {
                         if constexpr (create_file_before_write)
                         {
-                            //auto mptr = slsfs::client::mkdir("/")->serialize();
+                            auto mptr = slsfs::client::mkdir("/")->serialize();
                             //auto mptr = slsfs::client::addfile("/", "eishin.txt")->serialize();
-                            auto mptr = slsfs::client::ls("/")->serialize();
+                            //auto mptr = slsfs::client::ls("/")->serialize();
                             boost::asio::write(s, boost::asio::buffer(mptr->data(), mptr->size()));
 
                             slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();

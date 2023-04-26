@@ -60,7 +60,7 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:60000:1000:50
 
 export INITINT=1;
-export VERBOSE='-v'
+export VERBOSE='-vvv'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 
