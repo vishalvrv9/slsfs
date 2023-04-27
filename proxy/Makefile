@@ -10,7 +10,7 @@ from-docker:
 	DOCKER_BUILDKIT=1 docker build -t hare1039/transport:0.0.2 .
 
 debug-from-docker:
-	DOCKER_BUILDKIT=1 docker build -t hare1039/transport:0.0.2 . --build-arg debug=true
+	DOCKER_BUILDKIT=1 docker build -t hare1039/transport:0.0.2 . --build-arg debug=true --progress=plain
 
 release:
 	mkdir -p build && \

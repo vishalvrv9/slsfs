@@ -65,7 +65,7 @@ int main(int argc, char* argv[])
     if (vm.count("help"))
     {
         BOOST_LOG_TRIVIAL(info) << desc;
-        return EXIT_FAILURE;
+        return EXIT_SUCCESS;
     }
 
     if (vm.count("verbosity"))

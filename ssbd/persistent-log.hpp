@@ -4,6 +4,9 @@
 #define PERSISTENT_LOG_HPP__
 
 #include "leveldb-serializer.hpp"
+#include <leveldb/cache.h>
+#include <leveldb/db.h>
+
 #include <fmt/core.h>
 
 namespace ssbd
@@ -11,14 +14,21 @@ namespace ssbd
 
 class persistent_log
 {
+    std::unique_ptr<leveldb::Cache> cache_ = nullptr;
     std::unique_ptr<leveldb::DB> db_log_ = nullptr;
 
 public:
-    persistent_log (std::string const &dbname)
+    persistent_log (std::string const &dbname, std::size_t const cache_size)
     {
         leveldb::DB* db = nullptr;
         leveldb::Options options;
+
+        cache_.reset(leveldb::NewLRUCache(cache_size));
+
         options.create_if_missing = true;
+        options.write_buffer_size = 32 * 1024 * 1024;
+        options.block_cache = cache_.get();
+
         leveldb::Status status = leveldb::DB::Open(options, std::string(dbname), &db);
         if (not status.ok())
         {

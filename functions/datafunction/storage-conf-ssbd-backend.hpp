@@ -49,19 +49,22 @@ public:
 class storage_conf_ssbd_backend : public storage_conf
 {
     boost::asio::io_context& io_context_;
-    int replication_size_ = 3;
-    std::vector<std::shared_ptr<slsfs::backend::ssbd>> backendlist_;
+    int replication_size_ = 3, replication_start_index_ = 0;
+
+    // first half is normal operation; second half is backup operation
+    std::vector<std::shared_ptr<slsfs::backend::ssbd>> backend_list_;
+
     detail::recoder recoder_;
 
     void connect() override
     {
-        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backend_list_)
             host->connect();
     }
 
     void close() override
     {
-        for (std::shared_ptr<slsfs::backend::ssbd> host : backendlist_)
+        for (std::shared_ptr<slsfs::backend::ssbd> host : backend_list_)
             host->close();
     }
 
@@ -79,7 +82,7 @@ class storage_conf_ssbd_backend : public storage_conf
         std::seed_seq seeds {uuid.begin(), uuid.end()};
         static_engine().seed(seeds);
 
-        std::uniform_int_distribution<> dist(0, backendlist_.size() - 1);
+        std::uniform_int_distribution<> dist(0, replication_start_index_ - 1);
         static_engine().discard(partition * (partition * replication_index));
 
         return dist(static_engine());
@@ -132,11 +135,11 @@ class storage_conf_ssbd_backend : public storage_conf
             std::uint32_t const offset  = currentpos % blocksize();
             std::uint32_t const blockwritesize = std::min<std::uint32_t>(endpos - currentpos,
                                                                          blocksize() - offset);
-            slsfs::log::log("start_2pc_prepare sending: {}, {}, {}",
+            slsfs::log::log("start_2pc_prepare sending: bid={}, @{}, size={}",
                             blockid, offset, blockwritesize);
 
             int const backend_index = select_replica(input.uuid(), blockid, 0);
-            auto selected = backendlist_.at(backend_index);
+            auto selected = backend_list_.at(backend_index);
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
@@ -219,11 +222,11 @@ class storage_conf_ssbd_backend : public storage_conf
             std::uint32_t const offset  = currentpos % blocksize();
             std::uint32_t const blockwritesize = std::min<std::uint32_t>(endpos - currentpos,
                                                                          blocksize() - offset);
-            slsfs::log::log("start_2pc_commit: {}, {}, {}",
+            slsfs::log::log("start_2pc_commit: bid={}, @{}, size={}",
                             blockid, offset, blockwritesize);
 
             int const selected_index = select_replica(input.uuid(), blockid, 0);
-            auto selected = backendlist_.at(selected_index);
+            auto selected = backend_list_.at(selected_index);
 
             slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                 input.uuid(),
@@ -288,7 +291,7 @@ class storage_conf_ssbd_backend : public storage_conf
             std::uint32_t const offset  = currentpos % blocksize();
             std::uint32_t const blockwritesize = std::min<std::uint32_t>(endpos - currentpos,
                                                                          blocksize() - offset);
-            slsfs::log::log("start_replication: {}, {}, {}",
+            slsfs::log::log("start_replication: bid={}, @{}, size={}",
                             blockid, offset, blockwritesize);
 
             currentpos += blockwritesize;
@@ -296,8 +299,9 @@ class storage_conf_ssbd_backend : public storage_conf
             // we already have one copy at replica_index 0 from the 2pc part, so start at replica 1
             for (int replica_index = 1; replica_index < replication_size_; replica_index++)
             {
-                int const selected_index = select_replica(input.uuid(), blockid, replica_index);
-                auto selected = backendlist_.at(selected_index);
+                int const selected_index =
+                    replication_start_index_ + select_replica(input.uuid(), blockid, replica_index);
+                auto selected = backend_list_.at(selected_index);
 
                 slsfs::leveldb_pack::packet_pointer request = slsfs::leveldb_pack::create_request(
                     input.uuid(),
@@ -408,7 +412,7 @@ class storage_conf_ssbd_backend : public storage_conf
                 blockreadsize);
 
             int const selected_index = select_replica(input.uuid(), blockid, 0);
-            auto selected = backendlist_.at(selected_index);
+            auto selected = backend_list_.at(selected_index);
             selected->start_send_request(
                 request,
                 [result_accumulator, input, next, index, timer, this]
@@ -435,7 +439,8 @@ class storage_conf_ssbd_backend : public storage_conf
     }
 
     void start_meta_addfile (slsfs::jsre::request_parser<slsfs::base::byte> const input,
-                             slsfs::backend::ssbd::handler_ptr next)
+                             slsfs::backend::ssbd::handler_ptr next,
+                             std::uint32_t readsize = 4096)
     {
         slsfs::log::log("start_meta_addfile {}", input.print());
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
@@ -446,7 +451,7 @@ class storage_conf_ssbd_backend : public storage_conf
             .type      = slsfs::jsre::type_t::file,
             .operation = slsfs::jsre::operation_t::read,
             .position  = 0,
-            .size      = blocksize()
+            .size      = readsize
         };
 
         read_request.to_network_format();
@@ -480,6 +485,13 @@ class storage_conf_ssbd_backend : public storage_conf
                 // get number of files
                 std::memcpy(std::addressof(stat), file_content.data(), sizeof(stat));
                 stat.to_host_format();
+
+                // not enough content. reread all file
+                if (stat.file_count * sizeof(slsfs::jsre::meta::filemeta) > file_content.size())
+                {
+                    start_meta_addfile(input, next, stat.file_count * sizeof(slsfs::jsre::meta::filemeta));
+                    return;
+                }
 
                 // get metadata (owner, permission, filename) from request (network format)
                 slsfs::jsre::meta::filemeta filemeta;
@@ -557,7 +569,8 @@ class storage_conf_ssbd_backend : public storage_conf
     }
 
     void start_meta_ls (slsfs::jsre::request_parser<slsfs::base::byte> const input,
-                        slsfs::backend::ssbd::handler_ptr next)
+                        slsfs::backend::ssbd::handler_ptr next,
+                        std::uint32_t readsize = 4096)
     {
         slsfs::log::log("start_meta_ls {}", input.print());
         slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
@@ -568,7 +581,7 @@ class storage_conf_ssbd_backend : public storage_conf
             .type      = slsfs::jsre::type_t::file,
             .operation = slsfs::jsre::operation_t::read,
             .position  = 0,
-            .size      = blocksize()
+            .size      = readsize
         };
 
         read_request.to_network_format();
@@ -602,6 +615,13 @@ class storage_conf_ssbd_backend : public storage_conf
                 // get number of files
                 std::memcpy(std::addressof(stat), file_content.data(), sizeof(stat));
                 stat.to_host_format();
+
+                // not enough content. reread all file
+                if (stat.file_count * sizeof(slsfs::jsre::meta::filemeta) > file_content.size())
+                {
+                    start_meta_ls(input, next, stat.file_count * sizeof(slsfs::jsre::meta::filemeta));
+                    return;
+                }
 
                 slsfs::log::log("start_meta_ls stat have {} files", stat.file_count);
 
@@ -644,13 +664,26 @@ public:
     void init(slsfs::base::json const& config) override
     {
         replication_size_ = config["replication_size"].get<int>();
+
+        // setup normal operating host
         for (auto&& element : config["hosts"])
         {
             std::string const host = element["host"].get<std::string>();
             std::string const port = element["port"].get<std::string>();
             slsfs::log::log("adding {}:{}", host, port);
 
-            backendlist_.push_back(std::make_shared<slsfs::backend::ssbd>(io_context_, host, port));
+            backend_list_.push_back(std::make_shared<slsfs::backend::ssbd>(io_context_, host, port));
+        }
+
+        replication_start_index_ = backend_list_.size();
+         // setup replication operating host (but as the second half of the vector)
+        for (auto&& element : config["hosts"])
+        {
+            std::string const host = element["host"].get<std::string>();
+            std::string const port = element["port"].get<std::string>();
+            slsfs::log::log("adding replication {}:{}", host, port);
+
+            backend_list_.push_back(std::make_shared<slsfs::backend::ssbd>(io_context_, host, port));
         }
         storage_conf::init(config);
     }

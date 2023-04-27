@@ -1,15 +1,16 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts1[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=2
-export TOTAL_CLIENT=1
-export BUFSIZE=4096
-#export UNIFORM_DIST="--uniform-dist"
-export UNIFORM_DIST=""
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=16
 
-export MEMO="create-file"
+export BUFSIZE=$(( 4096 * 1 ))
+export UNIFORM_DIST="--uniform-dist"
+#export UNIFORM_DIST=""
+
+export MEMO="lvlcache-replication-1"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -20,6 +21,9 @@ export CLIENT_TESTNAME=0-100
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
 export BACKEND_CONFIG=/backend/ssbd.json
+#export BACKEND_CONFIG=/backend/ssbd-repl-none.json
+#export BACKEND_CONFIG=/backend/ssbd-repl1.json
+#export BACKEND_CONFIG=/backend/ssbd-repl-none.json
 #export BACKEND_CONFIG=/backend/ssbd-debug.json
 #export BACKEND_CONFIG=/backend/ssbd-single.json
 #export BACKEND_CONFIG=/backend/ssbd-stripe.json
@@ -42,8 +46,8 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
-#export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc #Replica Compare
-export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
+export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare
+#export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
 # [random-assign, lowest-load, active-load-balance]
 export POLICY_FILETOWORKER=active-load-balance
@@ -51,7 +55,7 @@ export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
 export POLICY_LAUNCH=max-queue
-export POLICY_LAUNCH_ARGS=10:3000 #average queue = 2kb
+export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -60,7 +64,7 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:60000:1000:50
 
 export INITINT=1;
-export VERBOSE='-vvv'
+export VERBOSE='-v'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 

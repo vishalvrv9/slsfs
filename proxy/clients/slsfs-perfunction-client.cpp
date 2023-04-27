@@ -331,6 +331,12 @@ int main(int argc, char *argv[])
               .positional(pos_po).run(), vm);
     po::notify(vm);
 
+    if (vm.count("help"))
+    {
+        BOOST_LOG_TRIVIAL(info) << desc;
+        return EXIT_SUCCESS;
+    }
+
     std::mt19937 engine(19937);
 
     int const total_times   = vm["total-times"].as<int>();

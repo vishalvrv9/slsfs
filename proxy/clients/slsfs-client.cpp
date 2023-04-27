@@ -27,8 +27,6 @@
 
 using boost::asio::ip::tcp;
 
-bool constexpr create_file_before_write = true;
-
 template<typename Function>
 auto record(Function &&f) -> long int
 {
@@ -42,7 +40,7 @@ auto record(Function &&f) -> long int
 
 template<typename Iterator>
 auto stats (Iterator start, Iterator end, std::string const memo = "")
-    -> std::tuple<std::map<int, int>, int, int>
+    -> std::tuple<std::map<int, int>, int, int, int>
 {
     int const size = std::distance(start, end);
 
@@ -61,11 +59,12 @@ auto stats (Iterator start, Iterator end, std::string const memo = "")
     }
 
     var /= size;
-    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f} med={3:.3f}", memo, mean, std::sqrt(var), 1.0 * copied.at(copied.size()/2));
+    int med = copied.at(copied.size()/2);
+    BOOST_LOG_TRIVIAL(info) << fmt::format("{0} avg={1:.3f} sd={2:.3f} med={3:.3f}", memo, mean, std::sqrt(var), med * 1.0);
     for (auto && [time, count] : dist)
         BOOST_LOG_TRIVIAL(info) << fmt::format("{0} {1}: {2}", memo, time, count);
 
-    return {dist, mean, std::sqrt(var)};
+    return {dist, mean, std::sqrt(var), med};
 }
 
 
@@ -170,10 +169,10 @@ auto iotest (int const times, int const bufsize,
             [&s, &record_list, pbuf, genpos] {
                 record_list.push_back(record(
                     [&s, pbuf] () {
-                        if constexpr (create_file_before_write)
+                        if constexpr (false /* no create file */)
                         {
-                            auto mptr = slsfs::client::mkdir("/")->serialize();
-                            //auto mptr = slsfs::client::addfile("/", "eishin.txt")->serialize();
+                            //auto mptr = slsfs::client::mkdir("/")->serialize();
+                            auto mptr = slsfs::client::addfile("/", "eishin.txt")->serialize();
                             //auto mptr = slsfs::client::ls("/")->serialize();
                             boost::asio::write(s, boost::asio::buffer(mptr->data(), mptr->size()));
 
@@ -267,7 +266,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
         fullstat.insert(fullstat.end(), std::next(result.begin()), result.end());
     }
 
-    auto [dist, avg, stdev] = stats(fullstat.begin(), fullstat.end());
+    auto [dist, avg, stdev, med] = stats(fullstat.begin(), fullstat.end());
     for (unsigned int row = 0; row < static_cast<unsigned int>(total_times); row++)
     {
         if (row <= gathered_durations.size() && row != 0)
@@ -285,26 +284,27 @@ void start_test(std::string const testname, boost::program_options::variables_ma
             out_csv << ",stdev," << stdev;
             break;
         case 3:
-            out_csv << ",bufsize," << bufsize;
+            out_csv << ",med," << med;
             break;
         case 4:
-            out_csv << ",zipf-alpha," << zipf_alpha;
+            out_csv << ",bufsize," << bufsize;
             break;
         case 5:
+            out_csv << ",zipf-alpha," << zipf_alpha;
+            break;
+        case 6:
             out_csv << ",file-range," << file_range;
             break;
-
-        case 6:
+        case 7:
             out_csv << ",,";
             break;
-
-        case 7:
+        case 8:
             out_csv << ",dist(ms) bucket,";
             break;
 
         default:
         {
-            int distindex = static_cast<int>(row) - 8;
+            int distindex = static_cast<int>(row) - 9;
             if (0 <= distindex && static_cast<unsigned int>(distindex) < dist.size())
                 out_csv << "," << std::next(dist.begin(), distindex)->first
                         << "," << std::next(dist.begin(), distindex)->second;
@@ -357,6 +357,12 @@ int main(int argc, char *argv[])
               .options(desc)
               .positional(pos_po).run(), vm);
     po::notify(vm);
+
+    if (vm.count("help"))
+    {
+        BOOST_LOG_TRIVIAL(info) << desc;
+        return EXIT_SUCCESS;
+    }
 
     std::mt19937 engine(19937);
 

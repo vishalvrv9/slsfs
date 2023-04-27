@@ -1,14 +1,14 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TOTAL_REQUEST=20000
+TOTAL_REQUEST=100000
 TOTAL_DF=4
 CONCURRENT_EXECUTER=128
-ENDPORT=13000
+ENDPORT=13007
 #hosts1=(proxy-1 proxy-2 proxy-3)
 hosts1=(proxy-1 proxy-2 proxy-3)
 
-TESTNAME="MODssbd-DEBUG-N4-${#hosts1[@]}_host_${BACKEND_CONFIG_NAME}_T+${CONCURRENT_EXECUTER}_EXEC+${ENDPORT}+${TOTAL_DF}_DF"
+TESTNAME="ssbdMOD-norepli-${#hosts1[@]}_host_${BACKEND_CONFIG_NAME}_T+${CONCURRENT_EXECUTER}_EXEC+${ENDPORT}+${TOTAL_DF}_DF"
 echo "testname: $TESTNAME"
 
 bash -c 'cd ../functions/datafunction; make function;' &

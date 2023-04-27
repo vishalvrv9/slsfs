@@ -16,10 +16,13 @@ auto mkdir(pack::key_t const& directory)
     cptr->header.type = pack::msg_t::trigger;
     cptr->header.key  = directory;
 
-    jsre::request r;
-    r.type = jsre::type_t::metadata;
-    r.operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::mkdir);
-    r.size = 0;
+    jsre::request r{
+        .type      = jsre::type_t::metadata,
+        .operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::mkdir),
+        .position  = 0,
+        .size      = 0,
+    };
+
     r.to_network_format();
 
     cptr->data.buf.resize(sizeof (r));
@@ -85,10 +88,12 @@ auto ls (pack::key_t const& directory)
     cptr->header.type = pack::msg_t::trigger;
     cptr->header.key = directory;
 
-    jsre::request r;
-    r.type = jsre::type_t::metadata;
-    r.operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::ls);
-    r.size = 0;
+    jsre::request r {
+        .type = jsre::type_t::metadata,
+        .operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::ls),
+        .position = 0,
+        .size = 0,
+    };
     r.to_network_format();
 
     cptr->data.buf.resize(sizeof (r));
@@ -108,7 +113,6 @@ template<typename BufContainer>
 auto write (pack::key_t const& filename, BufContainer const& buf)
     -> pack::packet_pointer
 {
-    BOOST_LOG_TRIVIAL(debug) << "creating file write request";
     pack::packet_pointer ptr = std::make_shared<pack::packet>();
 
     ptr->header.type = pack::msg_t::trigger;
@@ -126,6 +130,7 @@ auto write (pack::key_t const& filename, BufContainer const& buf)
     std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
 
     ptr->header.gen();
+    BOOST_LOG_TRIVIAL(debug) << "creating file write request";
     return ptr;
 }
 
@@ -138,7 +143,6 @@ auto write (std::string const filename, BufContainer const& buf)
 auto read (pack::key_t const& filename, std::uint32_t const size)
     -> pack::packet_pointer
 {
-    BOOST_LOG_TRIVIAL(debug) << "creating file read request";
     pack::packet_pointer ptr = std::make_shared<pack::packet>();
 
     ptr->header.type = pack::msg_t::trigger;
@@ -155,7 +159,7 @@ auto read (pack::key_t const& filename, std::uint32_t const size)
     std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
 
     ptr->header.gen();
-
+    BOOST_LOG_TRIVIAL(debug) << "creating file read request";
     return ptr;
 }
 

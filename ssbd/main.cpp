@@ -13,6 +13,7 @@
 #include <oneapi/tbb/concurrent_queue.h>
 
 #include <leveldb/db.h>
+#include <leveldb/cache.h>
 
 #include <algorithm>
 #include <iostream>
@@ -62,35 +63,30 @@ public:
                     pack->header.parse(read_buf->data());
                     //BOOST_LOG_TRIVIAL(trace) << "start_read_header start with header: " << pack->header;
 
+                    slsfs::leveldb_pack::packet_pointer resp2 = std::make_shared<slsfs::leveldb_pack::packet>();
                     switch (pack->header.type)
                     {
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare:
-                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_prepare " << pack->header;
                         self->start_two_pc_prepare(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_prepare_quick:
-                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_prepare " << pack->header;
                         self->start_two_pc_prepare_quick(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_commit_execute:
-                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_execute " << pack->header;
                         self->start_two_pc_commit_execute(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::two_pc_commit_rollback:
-                        //BOOST_LOG_TRIVIAL(debug) << "two_pc_commit_rollback " << pack->header;
                         self->start_two_pc_commit_rollback(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::replication:
-                        //BOOST_LOG_TRIVIAL(debug) << "replication " << pack->header;
                         self->start_replication(pack);
                         break;
 
                     case slsfs::leveldb_pack::msg_t::get:
-                        BOOST_LOG_TRIVIAL(debug) << "get " << pack->header;
                         self->start_db_read(pack);
                         break;
 
@@ -196,16 +192,7 @@ public:
                     BOOST_LOG_TRIVIAL(error) << "start_two_pc_prepare_quick: " << ec.message();
                     return;
                 }
-
-//                slsfs::leveldb_pack::packet_pointer resp2 = std::make_shared<slsfs::leveldb_pack::packet>();
-//                resp2->header = pack->header;
-//                resp2->header.type = slsfs::leveldb_pack::msg_t::two_pc_prepare_agree;
-//
-//                self->start_write_socket(resp2);
-//                self->start_read_header();
-//
-//                return;
-
+                self->start_read_header();
                 BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare_quick process packet: " << pack->header;
 
                 pack->data.parse(length, read_buf->data());
@@ -242,7 +229,6 @@ public:
 
                 BOOST_LOG_TRIVIAL(trace) << "start_two_pc_prepare_quick return packet: " << pack->header;
                 self->start_write_socket(resp);
-                self->start_read_header();
             });
     }
 
@@ -255,21 +241,22 @@ public:
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
                 if (ec)
-                    BOOST_LOG_TRIVIAL(error) << "error start_two_pc_commit_execute: " << ec.message();
-                else
                 {
-                    pack->data.parse(length, read_buf->data());
-                    std::string const key = pack->header.as_string();
-
-                    self->db_log_.commit_pending_prepare(key, self->db_);
-
-                    slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
-                    resp->header = pack->header;
-                    resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_commit_ack;
-
-                    self->start_write_socket(resp);
-                    self->start_read_header();
+                    BOOST_LOG_TRIVIAL(error) << "error start_two_pc_commit_execute: " << ec.message();
+                    return;
                 }
+                self->start_read_header();
+
+                pack->data.parse(length, read_buf->data());
+                std::string const key = pack->header.as_string();
+
+                self->db_log_.commit_pending_prepare(key, self->db_);
+
+                slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+                resp->header = pack->header;
+                resp->header.type = slsfs::leveldb_pack::msg_t::two_pc_commit_ack;
+
+                self->start_write_socket(resp);
             });
     }
 
@@ -298,30 +285,31 @@ public:
             net::buffer(read_buf->data(), read_buf->size()),
             [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
                 if (ec)
-                    BOOST_LOG_TRIVIAL(error) << "start_replication: " << ec.message();
-                else
                 {
-                    pack->data.parse(length, read_buf->data());
-
-                    slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
-                    resp->header = pack->header;
-                    resp->header.type = slsfs::leveldb_pack::msg_t::ack;
-
-                    std::string const key = pack->header.as_string() + "repl";
-                    std::string old_block;
-                    self->db_.Get(leveldb::ReadOptions(), key, &old_block);
-
-                    old_block.resize(
-                        std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
-                                                old_block.size())); // make sure all buffer can write to old_block
-
-                    std::copy(read_buf->begin(), read_buf->end(),
-                              std::next(old_block.begin(), pack->header.position));
-
-                    self->db_.Put(leveldb::WriteOptions(), key, old_block);
-                    self->start_write_socket(resp);
-                    self->start_read_header();
+                    BOOST_LOG_TRIVIAL(error) << "start_replication: " << ec.message();
+                    return;
                 }
+
+                self->start_read_header();
+                pack->data.parse(length, read_buf->data());
+
+                slsfs::leveldb_pack::packet_pointer resp = std::make_shared<slsfs::leveldb_pack::packet>();
+                resp->header = pack->header;
+                resp->header.type = slsfs::leveldb_pack::msg_t::ack;
+
+                std::string const key = pack->header.as_string() + "repl";
+                std::string old_block;
+                self->db_.Get(leveldb::ReadOptions(), key, &old_block);
+
+                old_block.resize(
+                    std::max<std::uint32_t>(pack->header.position + pack->header.datasize,
+                                            old_block.size())); // make sure all buffer can write to old_block
+
+                std::copy(read_buf->begin(), read_buf->end(),
+                          std::next(old_block.begin(), pack->header.position));
+
+                self->db_.Put(leveldb::WriteOptions(), key, old_block);
+                self->start_write_socket(resp);
             });
     }
 
@@ -377,18 +365,26 @@ class tcp_server
 {
     net::io_context& io_context_;
     tcp::acceptor acceptor_;
+    std::unique_ptr<leveldb::Cache> cache_ = nullptr;
     std::unique_ptr<leveldb::DB> db_ = nullptr;
+
     persistent_log db_log_;
 
 public:
-    tcp_server(net::io_context& io_context, net::ip::port_type port, std::string dbname)
+    tcp_server(net::io_context& io_context, net::ip::port_type const port, std::string const dbname, std::size_t const cache_size)
         : io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-          db_log_{dbname + "_log"}
+          db_log_{dbname + "_log", cache_size}
     {
         leveldb::DB* db = nullptr;
         leveldb::Options options;
+
+        cache_.reset(leveldb::NewLRUCache(cache_size));
+
         options.create_if_missing = true;
+        options.write_buffer_size = 32 * 1024 * 1024;
+        options.block_cache = cache_.get();
+
         leveldb::Status status = leveldb::DB::Open(options, dbname, &db);
         if (not status.ok())
         {
@@ -432,9 +428,10 @@ int main(int argc, char* argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("listen,l", po::value<unsigned short>()->default_value(12000), "listen on this port")
-        ("db,d",     po::value<std::string>()->default_value("/tmp/haressbd/db"), "leveldb save path")
-        ("blocksize,b", po::value<std::size_t>()->default_value(4 * 1024), "set block size (in bytes)");
+        ("listen,l", po::value<unsigned short>()->default_value(12000),             "listen on this port")
+        ("db,d",     po::value<std::string>()->default_value("/tmp/haressbd/db"),   "leveldb save path")
+        ("blocksize,b", po::value<std::size_t>()->default_value(4 * 1024),          "set block size (in bytes)")
+        ("cachesize,c", po::value<std::size_t>()->default_value(100 * 1024 * 1024), "set leveldb cachesize (in bytes)" );
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -445,7 +442,7 @@ int main(int argc, char* argv[])
     if (vm.count("help"))
     {
         BOOST_LOG_TRIVIAL(info) << desc;
-        return EXIT_FAILURE;
+        return EXIT_SUCCESS;
     }
 
     int const worker = std::thread::hardware_concurrency();
@@ -460,10 +457,11 @@ int main(int argc, char* argv[])
     unsigned short const port = vm["listen"].as<unsigned short>();
     std::size_t    const size = vm["blocksize"].as<std::size_t>();
     std::string    const path = vm["db"].as<std::string>();
+    std::size_t    const cachesize = vm["cachesize"].as<std::size_t>();
 
     slsfs::leveldb_pack::rawblocks {}.fullsize() = size;
 
-    ssbd::tcp_server server{ioc, port, path};
+    ssbd::tcp_server server{ioc, port, path, cachesize};
     BOOST_LOG_TRIVIAL(info) << "listen :" << port << " blocksize=" << size << " thread=" << worker;
     BOOST_LOG_TRIVIAL(trace) << "trace enabled";
 

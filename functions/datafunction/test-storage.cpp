@@ -27,7 +27,7 @@
 #include <map>
 #include <ctime>
 
-int constexpr requestsize = 16384;
+int constexpr requestsize = 4096;
 
 auto get_uuid(std::string const& buffer) -> slsfs::pack::key_t
 {
@@ -119,7 +119,7 @@ void send_one_request (int left_request,
     static std::mt19937 engine (19937);
     std::uniform_int_distribution<std::uint8_t> dist{0, 255};
 
-    auto ptr = client_request::create_read(slsfs::pack::key_t{dist(engine)}, 0, 4096);
+    auto ptr = client_request::create_write(slsfs::pack::key_t{dist(engine)}, 0, buf);
 
     start_send_request_sequence (
         conf, ptr,
