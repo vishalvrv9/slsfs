@@ -29,4 +29,4 @@ FROM busybox:glibc
 COPY --from=builder /final/build/bin/client /final/build/bin/client
 COPY --from=builder /final/build/bin/run /final/build/bin/run
 
-ENTRYPOINT ["/final/build/bin/run", "--listen", "12000"]
+ENTRYPOINT ["/final/build/bin/run"]
