@@ -83,7 +83,7 @@ class storage_conf_ssbd_backend : public storage_conf
         static_engine().seed(seeds);
 
         std::uniform_int_distribution<> dist(0, replication_start_index_ - 1);
-        static_engine().discard(partition * (partition * replication_index));
+        //static_engine().discard(partition * (partition * replication_index));
 
         return dist(static_engine());
     }
