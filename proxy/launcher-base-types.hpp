@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <concepts>
 #include <chrono>
+#include <filesystem>
 
 namespace slsfs::launcher
 {
@@ -82,12 +83,17 @@ class reporter : public policy::info
 
     struct history
     {
-        int worker_count;
-        int number_of_incoming_request;
+        std::uint64_t worker_count;
+        std::uint64_t number_of_incoming_request;
+        std::uint64_t finished_job_count;
+        double        job_latency;
         basic::time_point when = basic::now();
     };
 
-    std::atomic<int> worker_count_ = 0, number_of_incoming_request_ = 0;
+    std::atomic<std::uint64_t> worker_count_ = 0,
+                               number_of_incoming_request_ = 0,
+                               finished_job_count_global_ = 0,
+                               job_latency_total_ = 0;
     oneapi::tbb::concurrent_vector<history> history_;
 
 public:
@@ -95,7 +101,13 @@ public:
 
     void execute() override
     {
-        std::ofstream output{report_file_};
+        history_.emplace_back(worker_count_.load(),
+                              number_of_incoming_request_.load(),
+                              finished_job_count_global_.load(),
+                              job_latency_total_.load() / (finished_job_count_global_.load() == 0? 1.0 : 1.0 * finished_job_count_global_.load()));
+
+        finished_job_count_global_ = job_latency_total_ = number_of_incoming_request_ = 0;
+
         json report;
         report["total_duration"] = (basic::now() - start_time_).count();
         report["started_df"] = started_worker_.load();
@@ -117,22 +129,26 @@ public:
         }
 
         report["history"] = json::array();
-        history_.emplace_back(worker_count_, number_of_incoming_request_);
         for (history &h : history_)
         {
             json obj;
             obj["timestamp"] = (h.when - start_time_).count();
             obj["worker_count"] = h.worker_count;
             obj["number_of_incoming_request"] = h.number_of_incoming_request;
+            obj["finished_job_count"] = h.finished_job_count;
+            obj["job_latency"] = h.job_latency;
             report["history"].push_back(obj);
         }
 
-        number_of_incoming_request_ = 0;
+        std::ofstream output{report_file_};
         output << report.dump();
     }
 
-    void finished_a_job(df::worker* ptr, job_ptr) override
+    void finished_a_job(df::worker* ptr, job_ptr job) override
     {
+        finished_job_count_global_.fetch_add(1, std::memory_order_relaxed);
+        job_latency_total_.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(basic::now() - job->start_time_point_).count(), std::memory_order_relaxed);
+
         worker_info_map_accessor it;
         if (worker_info_map_.find(it, ptr->worker_id_))
             it->second.finished_job_count.fetch_add(1, std::memory_order_relaxed);

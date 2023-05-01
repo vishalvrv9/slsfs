@@ -17,7 +17,6 @@ namespace slsfs::launcher::policy
 /* Ring buffer implementation of a simple moving average */
 class SMA_global
 {
-private:
     std::uint32_t N_ = 1;
     std::uint32_t index_ = 0;
     std::vector<std::uint32_t> previous_inputs_;
@@ -49,7 +48,7 @@ public:
             return (sum_ + (N_ / 2)) / N_;
     }
 
-    std::uint32_t get_sma()
+    auto get_sma() -> std::uint32_t
     {
         if (iter_counter_ < N_ + 1)
             return (sum_ + (N_ / 2)) / iter_counter_;
@@ -58,7 +57,7 @@ public:
     }
 
     template<typename Iterator>
-    auto stats(Iterator start, Iterator end) -> int
+    int stats(Iterator start, Iterator end)
     {
         int const size = std::distance(start, end);
 
@@ -92,14 +91,12 @@ public:
    requests for each worker and adapts the keep alive accordingly */
 class keepalive_moving_interval_global : public worker_keepalive
 {
-private:
     SMA_global sma_;
     double error_margin_;
     bool first_req_ = true;
     pack::waittime_type default_wait_time_;
     pack::waittime_type concurrency_threshold_;
     std::chrono::high_resolution_clock::time_point last_request_;
-
 
 public:
     keepalive_moving_interval_global (

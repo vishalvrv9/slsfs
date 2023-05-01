@@ -48,12 +48,11 @@ class launcher
                 switch (error.value())
                 {
                 case boost::system::errc::success: // timer timeout
-                {
-                    start_execute_policy();
                     launcher_policy_.execute();
                     start_create_worker_with_policy();
+                    start_execute_policy();
                     break;
-                }
+
                 case boost::system::errc::operation_canceled: // timer canceled
                     BOOST_LOG_TRIVIAL(error) << "getting an operation_aborted error on launcher start_execute_policy()";
                     break;

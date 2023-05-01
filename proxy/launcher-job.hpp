@@ -29,6 +29,7 @@ public:
         finished
     };
     state state_ = state::registered;
+    basic::time_point start_time_point_ = basic::now();
 
     using on_completion_callable = boost::signals2::signal<void (pack::packet_pointer)>;
     on_completion_callable on_completion_;

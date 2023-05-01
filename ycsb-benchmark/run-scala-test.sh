@@ -50,14 +50,18 @@ start-test()
     local EACH_CLIENT_ISSUE_LOCAL=$2;
     local TOTAL_CLIENT_LOCAL=$3;
     local TESTNAME_LOCAL=$4;
-    local CLIENT_TESTNAME_LOCAL=$5;
 
+    echo "wait $WAITTIME"
     sleep $WAITTIME;
-    echo "starting"
+    echo "starting @$WAITTIME"
 
     for h in "${hosts[@]}"; do
-        ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE_LOCAL} --total-clients ${TOTAL_CLIENT_LOCAL} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME_LOCAL --test-name $CLIENT_TESTNAME_LOCAL'" &
+        ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE_LOCAL} --total-clients ${TOTAL_CLIENT_LOCAL} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME_LOCAL --test-name $CLIENT_TESTNAME'" &
     done
+
+    echo "waiting test @$WAITTIME to finish";
+    wait;
+    echo "test @$WAITTIME finished";
 }
 
 for h in "${hosts[@]}"; do
@@ -74,8 +78,16 @@ export TOTAL_CLIENT=8
 start-test 10 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part2 ${CLIENT_TESTNAME}-part2 &
 
 export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=16
+export TOTAL_CLIENT=32
 start-test 20 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part3 ${CLIENT_TESTNAME}-part3 &
+
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=64
+start-test 30 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part4 ${CLIENT_TESTNAME}-part4 &
+
+export EACH_CLIENT_ISSUE=100
+export TOTAL_CLIENT=2
+start-test 50 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part5 ${CLIENT_TESTNAME}-part5 &
 
 wait < <(jobs -p);
 

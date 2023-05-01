@@ -82,6 +82,7 @@ wait < <(jobs -p);
 cd "$TESTNAME-result/"
 rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
 python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
+cp ${TESTNAME}_summary.csv ${TESTNAME}_summary_original.csv
 head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
 ../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
 echo -e "\a finish test: $TESTNAME"
