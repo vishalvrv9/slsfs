@@ -116,7 +116,7 @@ public:
             report["df"].push_back(dfstat);
         }
 
-        //report["history"] = json::array();
+        report["history"] = json::array();
         history_.emplace_back(worker_count_, number_of_incoming_request_);
         for (history &h : history_)
         {
@@ -124,7 +124,7 @@ public:
             obj["timestamp"] = (h.when - start_time_).count();
             obj["worker_count"] = h.worker_count;
             obj["number_of_incoming_request"] = h.number_of_incoming_request;
-            //report["history"].push_back(obj);
+            report["history"].push_back(obj);
         }
 
         number_of_incoming_request_ = 0;

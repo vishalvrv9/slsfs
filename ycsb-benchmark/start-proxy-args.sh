@@ -6,11 +6,11 @@ export hosts=("${hosts16[@]}")
 export EACH_CLIENT_ISSUE=1000
 export TOTAL_CLIENT=32
 
-export BUFSIZE=$(( 4096 * 2 ))
+export BUFSIZE=$(( 4096 ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvlcache-same-2"
+export MEMO="lvlcache-scale"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
