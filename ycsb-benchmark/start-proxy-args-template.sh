@@ -6,8 +6,8 @@ export hosts=("${hosts16[@]}")
 export EACH_CLIENT_ISSUE=1000
 export TOTAL_CLIENT=32
 
-export QSIZE=5
-export QTEST=4
+export QSIZE=QSIZE_ARGS
+export QTEST=QTEST_ARGS
 export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
