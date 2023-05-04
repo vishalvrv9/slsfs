@@ -123,7 +123,7 @@ int pick_proxy(std::vector<slsfs::uuid::uuid> const& proxy_uuid, slsfs::pack::ke
     return d;
 }
 
-auto iotest (int const times, int const bufsize,
+auto iotest (int const times, int const total_duration, int const bufsize,
              std::vector<int> rwdist,
              std::function<slsfs::pack::key_t(void)> genname,
              std::function<int(int)> genpos,
@@ -205,6 +205,26 @@ auto iotest (int const times, int const bufsize,
     }
 
     std::vector<std::thread> ths;
+    auto timer = std::make_shared<boost::asio::steady_timer>(io_context_list.back());
+    using namespace std::chrono_literals;
+    timer->expires_from_now(1s * total_duration);
+    timer->async_wait(
+        [&io_context_list, timer] (boost::system::error_code error) {
+            switch (error.value())
+            {
+            case boost::system::errc::success: // timer timeout
+                BOOST_LOG_TRIVIAL(error) << "Closing down io_context";
+                for (unsigned int i = 0; i < io_context_list.size(); i++)
+                    io_context_list.at(i).stop();
+                break;
+
+            case boost::system::errc::operation_canceled: // timer canceled
+                BOOST_LOG_TRIVIAL(error) << "getting an operation_aborted error";
+                break;
+            default:
+                BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message();
+            }
+        });
 
     auto start = std::chrono::high_resolution_clock::now();
     for (unsigned int i = 0; i < io_context_list.size(); i++)
@@ -343,6 +363,7 @@ int main(int argc, char *argv[])
     desc.add_options()
         ("help,h", "Print this help messages")
         ("total-times",   po::value<int>()->default_value(10000),     "each client run # total times")
+        ("total-duration",po::value<int>()->default_value(60*60),     "max duration for this client to live")
         ("total-clients", po::value<int>()->default_value(1),         "# of clients")
         ("bufsize",       po::value<int>()->default_value(4096),      "Size of the read/write buffer")
         ("zipf-alpha",    po::value<double>()->default_value(1.2),    "set the alpha value of zipf dist")
@@ -366,11 +387,12 @@ int main(int argc, char *argv[])
 
     std::mt19937 engine(19937);
 
-    int const total_times   = vm["total-times"].as<int>();
-    int const bufsize       = vm["bufsize"].as<int>();
-    double const zipf_alpha = vm["zipf-alpha"].as<double>();
-    int const file_range    = vm["file-range"].as<int>();
-    bool const use_uniform  = vm["uniform-dist"].as<bool>();
+    int const total_times    = vm["total-times"].as<int>();
+    int const total_duration = vm["total-duration"].as<int>();
+    int const bufsize        = vm["bufsize"].as<int>();
+    double const zipf_alpha  = vm["zipf-alpha"].as<double>();
+    int const file_range     = vm["file-range"].as<int>();
+    bool const use_uniform   = vm["uniform-dist"].as<bool>();
 
     std::string const test_name  = vm["test-name"].as<std::string>();
     std::string const resultfile = vm["result"].as<std::string>();
@@ -425,7 +447,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, file_range, bufsize,
+                    iotest, file_range, total_duration, bufsize,
                     std::vector<int> {1},
                     allname,
                     [bufsize](int) { return 0; },
@@ -440,7 +462,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, file_range, bufsize,
+                    iotest, file_range, total_duration, bufsize,
                     std::vector<int> {1},
                     anyname,
                     [bufsize](int) { return 0; },
@@ -455,7 +477,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, bufsize,
+                    iotest, total_times, total_duration, bufsize,
                     std::vector<int> {0, 1},
                     selected,
                     [bufsize](int) { return 0; },
@@ -470,7 +492,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, bufsize,
+                    iotest, total_times, total_duration, bufsize,
                     std::vector<int>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                     selected,
                     [bufsize](int) { return 0; },
@@ -485,7 +507,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, bufsize,
+                    iotest, total_times, total_duration, bufsize,
                     std::vector<int> {0},
                     selected,
                     [bufsize](int) { return 0; },
@@ -500,7 +522,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, bufsize,
+                    iotest, total_times, total_duration, bufsize,
                     std::vector<int> {1},
                     selected,
                     [bufsize](int) { return 0; },
@@ -515,7 +537,7 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, bufsize,
+                    iotest, total_times, total_duration, bufsize,
                     std::vector<int> {1},
                     []()  { slsfs::pack::key_t t{}; return t; },
                     [bufsize](int) { return 0; },
