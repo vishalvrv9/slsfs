@@ -123,7 +123,7 @@ int pick_proxy(std::vector<slsfs::uuid::uuid> const& proxy_uuid, slsfs::pack::ke
     return d;
 }
 
-auto iotest (int const times, int const total_duration, int const bufsize,
+auto iotest (int const times, int const total_duration, std::string const& buf,
              std::vector<int> rwdist,
              std::function<slsfs::pack::key_t(void)> genname,
              std::function<int(int)> genpos,
@@ -144,21 +144,12 @@ auto iotest (int const times, int const total_duration, int const bufsize,
         boost::asio::connect(proxy_sockets.back(), proxy_endpoint.at(i));
     }
 
-    std::string const buf(bufsize, 'A');
-
-    std::uniform_int_distribution<> dist(0, rwdist.size()-1);
-    std::mt19937 engine(std::random_device{}());
+    static std::mt19937 engine(std::random_device{}());
 
     for (int i = 0; i < times; i++)
     {
-        slsfs::pack::packet_pointer ptr = nullptr;
-        if (rwdist.at(dist(engine)))
-            ptr = slsfs::client::write(genname(), buf);
-        else
-            ptr = slsfs::client::read(genname(), buf.size());
-
-        auto pbuf = ptr->serialize();
-        int index = pick_proxy(proxy_uuid, ptr->header.key);
+        slsfs::pack::key_t key = genname();
+        int index = pick_proxy(proxy_uuid, key);
 
         tcp::socket& s = proxy_sockets.at(index);
         boost::asio::io_context& io = io_context_list.at(index);
@@ -166,9 +157,18 @@ auto iotest (int const times, int const total_duration, int const bufsize,
 
         boost::asio::post(
             io,
-            [&s, &record_list, pbuf, genpos] {
+            [&s, &record_list, key, &rwdist, &genpos, &buf] {
                 record_list.push_back(record(
-                    [&s, pbuf] () {
+                    [&s, key, &rwdist, &genpos, &buf] {
+                        slsfs::pack::packet_pointer ptr = nullptr;
+                        std::uniform_int_distribution<> dist(0, rwdist.size()-1);
+                        if (rwdist.at(dist(engine)))
+                            ptr = slsfs::client::write(key, buf);
+                        else
+                            ptr = slsfs::client::read(key, buf.size());
+
+                        auto pbuf = ptr->serialize();
+
                         if constexpr (false /* no create file */)
                         {
                             //auto mptr = slsfs::client::mkdir("/")->serialize();
@@ -438,7 +438,7 @@ int main(int argc, char *argv[])
     boost::asio::io_context io_context;
     auto&& proxylistpair = setup_slsfs(io_context);
 
-
+    std::string const buf(bufsize, 'A');
     switch (slsfs::basic::sswitcher::hash(test_name))
     {
         using namespace slsfs::basic::sswitcher;
@@ -449,10 +449,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, file_range, total_duration, bufsize,
+                    iotest, file_range, total_duration, buf,
                     std::vector<int> {1},
                     allname,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -464,10 +464,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, file_range, total_duration, bufsize,
+                    iotest, file_range, total_duration, buf,
                     std::vector<int> {1},
                     anyname,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -479,10 +479,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, total_duration, bufsize,
+                    iotest, total_times, total_duration, buf,
                     std::vector<int> {0, 1},
                     selected,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -494,10 +494,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, total_duration, bufsize,
+                    iotest, total_times, total_duration, buf,
                     std::vector<int>{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1},
                     selected,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -509,10 +509,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, total_duration, bufsize,
+                    iotest, total_times, total_duration, buf,
                     std::vector<int> {0},
                     selected,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -524,10 +524,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, total_duration, bufsize,
+                    iotest, total_times, total_duration, buf,
                     std::vector<int> {1},
                     selected,
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
@@ -539,10 +539,10 @@ int main(int argc, char *argv[])
             [&]() {
                 return std::async(
                     std::launch::async,
-                    iotest, total_times, total_duration, bufsize,
+                    iotest, total_times, total_duration, buf,
                     std::vector<int> {1},
                     []()  { slsfs::pack::key_t t{}; return t; },
-                    [bufsize](int) { return 0; },
+                    [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });

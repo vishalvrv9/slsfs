@@ -10,7 +10,7 @@ ssh proxy-3 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function;' &
 bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit' &
-bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
 hostparis=("proxy-1:12001"
@@ -49,14 +49,16 @@ start-test()
     local WAITTIME=$1;
     local EACH_CLIENT_ISSUE_LOCAL=$2;
     local TOTAL_CLIENT_LOCAL=$3;
-    local TESTNAME_LOCAL=$4;
+    local TOTAL_TIME_AVAILABLE_LOCAL=$4;
+    local TESTNAME_LOCAL=$5;
+
 
     echo "wait $WAITTIME"
     sleep $WAITTIME;
     echo "starting @$WAITTIME"
 
     for h in "${hosts[@]}"; do
-        ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE_LOCAL} --total-clients ${TOTAL_CLIENT_LOCAL} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME_LOCAL --test-name $CLIENT_TESTNAME'" &
+        ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE_LOCAL} --total-clients ${TOTAL_CLIENT_LOCAL} --total-duration ${TOTAL_TIME_AVAILABLE_LOCAL} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME_LOCAL --test-name $CLIENT_TESTNAME'" &
     done
 
     echo "waiting test @$WAITTIME to finish";
@@ -68,28 +70,28 @@ for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
 done
 
-export EACH_CLIENT_ISSUE=10000
-export TOTAL_CLIENT=4
-
-start-test 0 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part1 ${CLIENT_TESTNAME}-part1 &
-
-export EACH_CLIENT_ISSUE=2000
-export TOTAL_CLIENT=8
-start-test 10 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part2 ${CLIENT_TESTNAME}-part2 &
-
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=32
-start-test 20 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part3 ${CLIENT_TESTNAME}-part3 &
-
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=64
-start-test 30 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part4 ${CLIENT_TESTNAME}-part4 &
-
-export EACH_CLIENT_ISSUE=100
 export TOTAL_CLIENT=2
-start-test 50 $EACH_CLIENT_ISSUE $TOTAL_CLIENT ${TESTNAME}-part5 ${CLIENT_TESTNAME}-part5 &
+export TOTAL_TIME_AVAILABLE=60
 
-wait < <(jobs -p);
+start-test  0 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part1 ${CLIENT_TESTNAME} &
+
+export TOTAL_CLIENT=4
+export TOTAL_TIME_AVAILABLE=50
+start-test 10 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part2 ${CLIENT_TESTNAME} &
+
+export TOTAL_CLIENT=8
+export TOTAL_TIME_AVAILABLE=30
+start-test 20 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part3 ${CLIENT_TESTNAME} &
+
+export TOTAL_CLIENT=16
+export TOTAL_TIME_AVAILABLE=10
+start-test 30 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part4 ${CLIENT_TESTNAME} &
+
+#export TOTAL_CLIENT=32
+#export TOTAL_TIME_AVAILABLE=10
+#start-test 40 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part5 ${CLIENT_TESTNAME} &
+
+wait;
 
 mkdir -p $TESTNAME-result;
 
