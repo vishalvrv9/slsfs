@@ -3,8 +3,9 @@
 source avaliable-host.sh
 export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=32
+export EACH_CLIENT_ISSUE=1000000
+export TOTAL_CLIENT=1
+export TOTAL_TIME_AVAILABLE=10
 
 export QSIZE=1
 export QTEST=1

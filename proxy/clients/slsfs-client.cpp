@@ -205,6 +205,8 @@ auto iotest (int const times, int const total_duration, int const bufsize,
     }
 
     std::vector<std::thread> ths;
+
+    BOOST_LOG_TRIVIAL(info) << "Max test time is " << total_duration << "seconds";
     auto timer = std::make_shared<boost::asio::steady_timer>(io_context_list.back());
     using namespace std::chrono_literals;
     timer->expires_from_now(1s * total_duration);
@@ -213,7 +215,7 @@ auto iotest (int const times, int const total_duration, int const bufsize,
             switch (error.value())
             {
             case boost::system::errc::success: // timer timeout
-                BOOST_LOG_TRIVIAL(error) << "Closing down io_context";
+                BOOST_LOG_TRIVIAL(info) << "Time out. Closing down io_context";
                 for (unsigned int i = 0; i < io_context_list.size(); i++)
                     io_context_list.at(i).stop();
                 break;
