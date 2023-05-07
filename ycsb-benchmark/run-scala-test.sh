@@ -1,7 +1,7 @@
 #!/bin/bash
 source start-proxy-args.sh;
 
-TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
+TESTNAME="${MEMO}3_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
@@ -71,21 +71,21 @@ for h in "${hosts[@]}"; do
 done
 
 export TOTAL_CLIENT=2
-export TOTAL_TIME_AVAILABLE=60
+export TOTAL_TIME_AVAILABLE=120
 
 start-test  0 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part1 ${CLIENT_TESTNAME} &
 
 export TOTAL_CLIENT=4
-export TOTAL_TIME_AVAILABLE=50
-start-test 10 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part2 ${CLIENT_TESTNAME} &
+export TOTAL_TIME_AVAILABLE=60
+start-test 20 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part2 ${CLIENT_TESTNAME} &
 
 export TOTAL_CLIENT=8
-export TOTAL_TIME_AVAILABLE=30
-start-test 20 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part3 ${CLIENT_TESTNAME} &
+export TOTAL_TIME_AVAILABLE=20
+start-test 40 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part3 ${CLIENT_TESTNAME} &
 
 export TOTAL_CLIENT=16
 export TOTAL_TIME_AVAILABLE=10
-start-test 30 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part4 ${CLIENT_TESTNAME} &
+start-test 50 $EACH_CLIENT_ISSUE $TOTAL_CLIENT $TOTAL_TIME_AVAILABLE ${TESTNAME}-part4 ${CLIENT_TESTNAME} &
 
 #export TOTAL_CLIENT=32
 #export TOTAL_TIME_AVAILABLE=10
@@ -98,7 +98,7 @@ mkdir -p $TESTNAME-result;
 for h in "${hosts[@]}"; do
     scp "$h:/tmp/$h-$TESTNAME*" $TESTNAME-result/
 done
-cp start-proxy-args.sh $TESTNAME-result/
+cp start-proxy-args.sh run-scala-test.sh $TESTNAME-result/
 scp proxy-1:/tmp/proxy-report.json $TESTNAME-result/proxy-report-1.json
 scp proxy-2:/tmp/proxy-report.json $TESTNAME-result/proxy-report-2.json
 scp proxy-3:/tmp/proxy-report.json $TESTNAME-result/proxy-report-3.json

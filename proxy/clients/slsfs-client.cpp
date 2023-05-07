@@ -218,6 +218,7 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                 BOOST_LOG_TRIVIAL(info) << "Time out. Closing down io_context";
                 for (unsigned int i = 0; i < io_context_list.size(); i++)
                     io_context_list.at(i).stop();
+                //std::exit(0);
                 break;
 
             case boost::system::errc::operation_canceled: // timer canceled
