@@ -137,6 +137,31 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
     std::vector<std::list<double>> records(proxy_endpoint.size());
     std::vector<boost::asio::io_context> io_context_list(proxy_endpoint.size());
 
+    auto timer = std::make_shared<boost::asio::steady_timer>(io_context_list.back());
+    using namespace std::chrono_literals;
+    timer->expires_from_now(1s * total_duration);
+    timer->async_wait(
+        [&io_context_list, timer] (boost::system::error_code error) {
+            switch (error.value())
+            {
+            case boost::system::errc::success: // timer timeout
+                BOOST_LOG_TRIVIAL(info) << "Time out. Closing down io_context";
+                for (unsigned int i = 0; i < io_context_list.size(); i++)
+                    io_context_list.at(i).stop();
+                //std::exit(0);
+                break;
+
+            case boost::system::errc::operation_canceled: // timer canceled
+                BOOST_LOG_TRIVIAL(info) << "Test finished (no more request). ";
+                //for (unsigned int i = 0; i < io_context_list.size(); i++)
+                //    io_context_list.at(i).stop();
+                break;
+            default:
+                BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message();
+            }
+        });
+
+
     for (unsigned int i = 0; i < proxy_endpoint.size(); i++)
     {
         proxy_sockets.emplace_back(io_context_list.at(i));
@@ -145,6 +170,7 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
     }
 
     static std::mt19937 engine(std::random_device{}());
+    std::atomic<int> end_signal = io_context_list.size();
 
     for (int i = 0; i < times; i++)
     {
@@ -157,9 +183,9 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
 
         boost::asio::post(
             io,
-            [&s, &record_list, key, &rwdist, &genpos, &buf] {
+            [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal] {
                 record_list.push_back(record(
-                    [&s, key, &rwdist, &genpos, &buf] {
+                    [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal] {
                         slsfs::pack::packet_pointer ptr = nullptr;
                         std::uniform_int_distribution<> dist(0, rwdist.size()-1);
                         if (rwdist.at(dist(engine)))
@@ -195,39 +221,19 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                         boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
                         resp->header.parse(headerbuf.data());
-                        BOOST_LOG_TRIVIAL(debug) << "write resp:" << resp->header;
+                        BOOST_LOG_TRIVIAL(debug) << "write index " << i << " resp:" << resp->header;
 
                         std::string data(resp->header.datasize, '\0');
                         boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-                        BOOST_LOG_TRIVIAL(debug) << data ;
+                        BOOST_LOG_TRIVIAL(debug) << i << " response " << data ;
+
+                        if (i + 1 == times)
+                            timer->cancel();
                     }));
             });
     }
 
     std::vector<std::thread> ths;
-
-    BOOST_LOG_TRIVIAL(info) << "Max test time is " << total_duration << "seconds";
-    auto timer = std::make_shared<boost::asio::steady_timer>(io_context_list.back());
-    using namespace std::chrono_literals;
-    timer->expires_from_now(1s * total_duration);
-    timer->async_wait(
-        [&io_context_list, timer] (boost::system::error_code error) {
-            switch (error.value())
-            {
-            case boost::system::errc::success: // timer timeout
-                BOOST_LOG_TRIVIAL(info) << "Time out. Closing down io_context";
-                for (unsigned int i = 0; i < io_context_list.size(); i++)
-                    io_context_list.at(i).stop();
-                //std::exit(0);
-                break;
-
-            case boost::system::errc::operation_canceled: // timer canceled
-                BOOST_LOG_TRIVIAL(error) << "getting an operation_aborted error";
-                break;
-            default:
-                BOOST_LOG_TRIVIAL(error) << "getting error: " << error.message();
-            }
-        });
 
     auto start = std::chrono::high_resolution_clock::now();
     for (unsigned int i = 0; i < io_context_list.size(); i++)
@@ -254,6 +260,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
 {
     int const total_times   = vm["total-times"].as<int>();
     int const total_clients = vm["total-clients"].as<int>();
+    int const total_duration = vm["total-duration"].as<int>();
     int const bufsize       = vm["bufsize"].as<int>();
     double const zipf_alpha = vm["zipf-alpha"].as<double>();
     int const file_range    = vm["file-range"].as<int>();
@@ -279,7 +286,7 @@ void start_test(std::string const testname, boost::program_options::variables_ma
     std::vector<std::list<double>> gathered_results;
     std::vector<std::chrono::nanoseconds> gathered_durations;
 
-    BOOST_LOG_TRIVIAL(info) << "Start. save: " << result_filename;
+    BOOST_LOG_TRIVIAL(info) << "Start test; timeout=" << total_duration << ". save: " << std::filesystem::path(result_filename).filename();
     for (auto it = results.begin(); it != results.end(); ++it)
     {
         auto && [result, duration] = it->get();

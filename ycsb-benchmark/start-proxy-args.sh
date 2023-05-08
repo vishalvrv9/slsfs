@@ -3,17 +3,17 @@
 source avaliable-host.sh
 export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=30000
-export TOTAL_CLIENT=1
-export TOTAL_TIME_AVAILABLE=10
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=32
+export TOTAL_TIME_AVAILABLE=100000
 
-export QSIZE=1
-export QTEST=1
+export QSIZE=5
+export QTEST=3
 export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvl-scala-exp$QTEST-$QSIZE"
+export MEMO="lvl-samessbdY-exp$QTEST-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -49,8 +49,8 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=1pApoEAeNjSc2zx_VSOvN0DfF4e_X8oX6n3DnKW9FB1g
 #export UPLOAD_GDRIVE=1hSNHYNEQEh0MsqcPGYtKwDlxAI29vM4mwJ31cZydqqw
 #export UPLOAD_GDRIVE=13v7F8u5T4oTz5y2FouoM_rOZlsJ5xpRRIzLriEz55K4
-#export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
-export UPLOAD_GDRIVE=1qn_DTIzNEyWs4WxnToti2FJp73Th78eik4JtjnxpWGo #Scala
+export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
+#export UPLOAD_GDRIVE=1qn_DTIzNEyWs4WxnToti2FJp73Th78eik4JtjnxpWGo #Scala
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
 #export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare

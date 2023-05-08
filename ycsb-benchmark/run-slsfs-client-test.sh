@@ -11,7 +11,7 @@ ssh proxy-3 docker rm -f proxy2&
 bash -c 'cd ../functions/datafunction; make function;' &
 #bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;' &
 bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit' &
-bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
 #echo starting remote hosts
@@ -85,4 +85,4 @@ python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
 cp ${TESTNAME}_summary.csv ${TESTNAME}_summary_original.csv
 head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
 ../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
-echo -e "\a finish test: $TESTNAME"
+echo -e "finish test: $TESTNAME"
