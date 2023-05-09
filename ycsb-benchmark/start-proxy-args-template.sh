@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts4[@]}")
 
-export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=2
+export EACH_CLIENT_ISSUE=2000
+export TOTAL_CLIENT=32
 export TOTAL_TIME_AVAILABLE=100000
 
 export QSIZE=QSIZE_ARGS
@@ -13,7 +13,7 @@ export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvl-createfile-create-exp$QTEST-$QSIZE"
+export MEMO="lvl-replica1-exp$QTEST-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -24,8 +24,8 @@ export CLIENT_TESTNAME=0-100
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
 #export BACKEND_CONFIG=/backend/ssbd.json
-export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
-#export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
+#export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
+export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
 #export BACKEND_CONFIG=/backend/ssbd-27-repl-2.json    #replica=1
 #export BACKEND_CONFIG=/backend/ssbd-repl-none.json
 #export BACKEND_CONFIG=/backend/ssbd-repl1.json
@@ -53,8 +53,8 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=1qn_DTIzNEyWs4WxnToti2FJp73Th78eik4JtjnxpWGo #Scala
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
-#export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare
-export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
+export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare
+#export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
 # [random-assign, lowest-load, active-load-balance]
 export POLICY_FILETOWORKER=active-load-balance

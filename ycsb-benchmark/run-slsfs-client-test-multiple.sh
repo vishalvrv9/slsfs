@@ -1,6 +1,6 @@
 #!/bin/bash
 
-for qsize in {1..1}; do
+for qsize in {1..3}; do
     for qtest in {1..3}; do
         cat start-proxy-args-template.sh | \
             sed "s/QSIZE_ARGS/$qsize/" |

@@ -152,7 +152,7 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                 break;
 
             case boost::system::errc::operation_canceled: // timer canceled
-                BOOST_LOG_TRIVIAL(info) << "Test finished (no more request). ";
+                BOOST_LOG_TRIVIAL(trace) << "Test finished (no more request). ";
                 //for (unsigned int i = 0; i < io_context_list.size(); i++)
                 //    io_context_list.at(i).stop();
                 break;
@@ -171,6 +171,7 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
 
     static std::mt19937 engine(std::random_device{}());
     std::atomic<int> end_signal = io_context_list.size();
+    std::chrono::time_point const end_time = std::chrono::system_clock::now() + (total_duration * 1s);
 
     for (int i = 0; i < times; i++)
     {
@@ -183,9 +184,15 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
 
         boost::asio::post(
             io,
-            [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal] {
+            [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
                 record_list.push_back(record(
-                    [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal] {
+                    [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
+                        if (i + 1 == times)
+                            timer->cancel();
+
+                        if (std::chrono::system_clock::now() > end_time)
+                            return;
+
                         slsfs::pack::packet_pointer ptr = nullptr;
                         std::uniform_int_distribution<> dist(0, rwdist.size()-1);
                         if (rwdist.at(dist(engine)))
@@ -226,9 +233,6 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                         std::string data(resp->header.datasize, '\0');
                         boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
                         BOOST_LOG_TRIVIAL(debug) << i << " response " << data ;
-
-                        if (i + 1 == times)
-                            timer->cancel();
                     }));
             });
     }
