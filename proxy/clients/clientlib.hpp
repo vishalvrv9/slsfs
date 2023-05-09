@@ -118,11 +118,12 @@ auto write (pack::key_t const& filename, BufContainer const& buf)
     ptr->header.type = pack::msg_t::trigger;
     ptr->header.key = filename;
 
-    jsre::request r;
-    r.type = jsre::type_t::file;
-    r.operation = jsre::operation_t::write;
-    r.position = 0;
-    r.size = buf.size();
+    jsre::request r {
+        .type = jsre::type_t::file,
+        .operation = jsre::operation_t::write,
+        .position = 0,
+        .size = buf.size(),
+    };
     r.to_network_format();
 
     ptr->data.buf.resize(sizeof (r) + buf.size());
@@ -148,11 +149,12 @@ auto read (pack::key_t const& filename, std::uint32_t const size)
     ptr->header.type = pack::msg_t::trigger;
     ptr->header.key = filename;
 
-    jsre::request r;
-    r.type = jsre::type_t::file;
-    r.operation = jsre::operation_t::read;
-    r.position = 0;
-    r.size = size;
+    jsre::request r {
+        .type = jsre::type_t::file,
+        .operation = jsre::operation_t::read,
+        .position = 0,
+        .size = size,
+    };
     r.to_network_format();
 
     ptr->data.buf.resize(sizeof (r));
