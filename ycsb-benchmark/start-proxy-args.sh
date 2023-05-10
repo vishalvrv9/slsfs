@@ -1,9 +1,9 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts4[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=2000000
+export EACH_CLIENT_ISSUE=2000
 export TOTAL_CLIENT=32
 export TOTAL_TIME_AVAILABLE=100000
 
@@ -13,7 +13,7 @@ export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvl-m-exp$QTEST-$QSIZE"
+export MEMO="lvl3-replica1-exp$QTEST-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
