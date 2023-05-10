@@ -212,7 +212,7 @@ try
 catch (std::exception const & e)
 {
     slsfs::log::log(std::string("exception thrown ") + e.what());
-    std::cerr << "do function ecxception: " << e.what() << std::endl;
+    std::cerr << "do function exception: " << e.what() << std::endl;
     return -1;
 }
 

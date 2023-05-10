@@ -24,8 +24,8 @@ export CLIENT_TESTNAME=0-100
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
 #export BACKEND_CONFIG=/backend/ssbd.json
-#export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
-export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
+export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
+#export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
 #export BACKEND_CONFIG=/backend/ssbd-27-repl-2.json    #replica=1
 #export BACKEND_CONFIG=/backend/ssbd-repl-none.json
 #export BACKEND_CONFIG=/backend/ssbd-repl1.json

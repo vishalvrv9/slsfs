@@ -1,19 +1,19 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts4[@]}")
 
-export EACH_CLIENT_ISSUE=2000
+export EACH_CLIENT_ISSUE=2000000
 export TOTAL_CLIENT=32
 export TOTAL_TIME_AVAILABLE=100000
 
-export QSIZE=3
-export QTEST=3
+export QSIZE=1
+export QTEST=1
 export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvl-replica1-exp$QTEST-$QSIZE"
+export MEMO="lvl-m-exp$QTEST-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -24,8 +24,8 @@ export CLIENT_TESTNAME=0-100
 #export BACKEND_CONFIG=/backend/cassandra-repl3.json
 #export BACKEND_CONFIG=/backend/ssbd-basic-async.json
 #export BACKEND_CONFIG=/backend/ssbd.json
-#export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
-export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
+export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
+#export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
 #export BACKEND_CONFIG=/backend/ssbd-27-repl-2.json    #replica=1
 #export BACKEND_CONFIG=/backend/ssbd-repl-none.json
 #export BACKEND_CONFIG=/backend/ssbd-repl1.json

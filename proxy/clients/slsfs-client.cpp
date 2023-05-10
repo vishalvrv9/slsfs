@@ -185,7 +185,7 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
         boost::asio::post(
             io,
             [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
-                record_list.push_back(record(
+                long int r = record(
                     [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
                         if (i + 1 == times)
                             timer->cancel();
@@ -233,7 +233,10 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                         std::string data(resp->header.datasize, '\0');
                         boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
                         BOOST_LOG_TRIVIAL(debug) << i << " response " << data ;
-                    }));
+                    });
+
+                if (std::chrono::system_clock::now() <= end_time)
+                    record_list.push_back(r);
             });
     }
 
