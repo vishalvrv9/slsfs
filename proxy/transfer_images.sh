@@ -1,4 +1,4 @@
-hosts1=(proxy-1 proxy-2 proxy-3)
+hosts1=(proxy-1 proxy-2 proxy-3 zookeeper-1 zookeeper-2 zookeeper-3)
 
 images=(hare1039/transport:0.0.2)
 

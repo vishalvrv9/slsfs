@@ -3,17 +3,17 @@
 source avaliable-host.sh
 export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=2000
-export TOTAL_CLIENT=32
+export EACH_CLIENT_ISSUE=10000
+export TOTAL_CLIENT=16
 export TOTAL_TIME_AVAILABLE=100000
 
 export QSIZE=1
-export QTEST=1
+export QTEST=3
 export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="lvl3-replica1-exp$QTEST-$QSIZE"
+export MEMO="lvlproxy5x-exp$QTEST-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -53,7 +53,8 @@ export BACKEND_BLOCKSIZE=4096
 #export UPLOAD_GDRIVE=1qn_DTIzNEyWs4WxnToti2FJp73Th78eik4JtjnxpWGo #Scala
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
-export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare
+export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compare
+#export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc   #Replica Compare
 #export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
 # [random-assign, lowest-load, active-load-balance]

@@ -7,10 +7,17 @@ echo "testname: $TESTNAME"
 ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
+ssh zookeeper-1 docker rm -f proxy2&
+ssh zookeeper-2 docker rm -f proxy2&
+ssh zookeeper-3 docker rm -f proxy2&
+
 
 bash -c 'cd ../functions/datafunction; make function;' &
 #bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;' &
-bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
+#bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit; start-proxy-remote zookeeper-1 noinit;' &
+#bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit; start-proxy-remote zookeeper-1 noinit; start-proxy-remote zookeeper-2 noinit; ' &
+
 bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
@@ -21,8 +28,9 @@ wait < <(jobs -p);
 hostparis=("proxy-1:12001"
            "proxy-2:12001"
            "proxy-3:12001");
-#           "192.168.0.48:12001"
-#           "192.168.0.241:12001"
+#           "zookeeper-1:12001"
+#           "zookeeper-2:12001");
+#           "zookeeper-3:12001");
 #           "192.168.0.139:12001" );
 
 
