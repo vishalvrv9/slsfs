@@ -56,13 +56,13 @@ echo starting;
 
 wait < <(jobs -p);
 
-mkdir -p trace_emulator_rerun/$TESTNAME-result;
-mkdir -p trace_emulator_rerun/$TESTNAME-result/activation-list/;
+mkdir -p trace_emulator_rerun_new/$TESTNAME-result;
+mkdir -p trace_emulator_rerun_new/$TESTNAME-result/activation-list/;
 
 start-watching-ow()
 {
     for i in {1..10000}; do
-        wsk -i activation list --limit 200 --skip 0 > trace_emulator_rerun/$TESTNAME-result/activation-list/ow-activation-list-$i.txt;
+        wsk -i activation list --limit 200 --skip 0 > trace_emulator_rerun_new/$TESTNAME-result/activation-list/ow-activation-list-$i.txt;
         sleep 60;
     done
 }
@@ -72,8 +72,8 @@ OW_WATCHING=$!
 
 ssh ow-invoker-1
 
-mkdir -p trace_emulator_caching/$TESTNAME-result/
-cd "trace_emulator_caching/$TESTNAME-result/";
+mkdir -p trace_emulator_rerun_new/$TESTNAME-result/
+cd "trace_emulator_rerun_new/$TESTNAME-result/";
 
 cp ../../start-proxy-args.sh .
 scp proxy-1:/tmp/proxy-report.json proxy-report-1.json;
