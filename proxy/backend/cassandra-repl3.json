@@ -6,7 +6,7 @@
     "blocksize":  %3%,
     "storagetype": "cassandra",
     "storageconfig": {
-        "host": "192.168.0.66",
+        "host": "192.168.0.141",
         "tablename": "replication3.tableB"
     }
 }

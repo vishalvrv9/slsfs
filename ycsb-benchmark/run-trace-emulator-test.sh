@@ -10,7 +10,7 @@ ssh proxy-1 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function;' &
 bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
-bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
