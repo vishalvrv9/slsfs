@@ -8,3 +8,4 @@ ycsb-benchmark/*result*
 ycsb-benchmark/block-mappings-to-psb
 ycsb-benchmark/trace_emulator_*
 ycsb-benchmark/test*
+ycsb-benchmark/start-proxy-args.sh

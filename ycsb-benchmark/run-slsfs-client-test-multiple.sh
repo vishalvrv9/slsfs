@@ -1,7 +1,13 @@
 #!/bin/bash
 
-for qsize in {1..1}; do
-    for qtest in {1..5}; do
+bash -c 'cd ../functions/datafunction; make function;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh;' &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh" &
+
+wait;
+
+for qsize in {1..5}; do
+    for qtest in {1..3}; do
         cat start-proxy-args-template.sh | \
             sed "s/QSIZE_ARGS/$qsize/" |
             sed "s/QTEST_ARGS/$qtest/" \

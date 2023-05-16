@@ -13,7 +13,7 @@ export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="nextREDOproxy5x-exp$QTEST-$QSIZE"
+export MEMO="evenproxy-size-$QSIZE-test-$QTEST"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -31,11 +31,11 @@ export CLIENT_TESTNAME=0-100
 #export UPLOAD_GDRIVE=1pApoEAeNjSc2zx_VSOvN0DfF4e_X8oX6n3DnKW9FB1g
 #export UPLOAD_GDRIVE=1hSNHYNEQEh0MsqcPGYtKwDlxAI29vM4mwJ31cZydqqw
 #export UPLOAD_GDRIVE=13v7F8u5T4oTz5y2FouoM_rOZlsJ5xpRRIzLriEz55K4
-#export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
+export UPLOAD_GDRIVE=1bXijTlCXewz5uCihQDKa1LYhEZ0f-CtIbW5hcxUoYXo #same vs scattered
 #export UPLOAD_GDRIVE=1qn_DTIzNEyWs4WxnToti2FJp73Th78eik4JtjnxpWGo #Scala
 #export UPLOAD_GDRIVE=1lwRVGAiX_81rkk1Ml7iBTOVm_iiqGxfIUTdu4hzaMiY #Direct (request per function)
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
-export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compare
+#export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compare
 #export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc  #Replica Compare
 #export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
@@ -87,13 +87,13 @@ start-proxy-remote()
     if [[ "$h" == "proxy-1" ]]; then
         ssh $h "echo 'export SERVER_ID=0' >> ./start-proxy-args.sh"
     elif [[ "$h" == "proxy-2" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.20' >> ./start-proxy-args.sh"
+        ssh $h "echo 'export SERVER_ID=0.33' >> ./start-proxy-args.sh"
     elif [[ "$h" == "proxy-3" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.40' >> ./start-proxy-args.sh"
-    elif [[ "$h" == "zookeeper-1" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.60' >> ./start-proxy-args.sh"
-    elif [[ "$h" == "zookeeper-2" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.80' >> ./start-proxy-args.sh"
+        ssh $h "echo 'export SERVER_ID=0.67' >> ./start-proxy-args.sh"
+#    elif [[ "$h" == "zookeeper-1" ]]; then
+#        ssh $h "echo 'export SERVER_ID=0.60' >> ./start-proxy-args.sh"
+#    elif [[ "$h" == "zookeeper-2" ]]; then
+#        ssh $h "echo 'export SERVER_ID=0.80' >> ./start-proxy-args.sh"
 #    elif [[ "$h" == "zookeeper-3" ]]; then
 #        ssh $h "echo 'export SERVER_ID=0.84' >> ./start-proxy-args.sh"
     fi
