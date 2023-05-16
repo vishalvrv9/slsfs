@@ -44,6 +44,7 @@ int main(int argc, char* argv[])
         ("init",      po::bool_switch(),                                            "reset all system (clear zookeeper entries)")
         ("initint",   po::value<int>()->default_value(0),                           "reset all system with 0, 1")
         ("thread",    po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
+        ("server-id", po::value<double>()->default_value(-1.0),                     "server id position in ring [0-1]")
         ("announce",  po::value<std::string>(),                                     "announce this ip address for other proxy to connect")
         ("report",    po::value<std::string>()->default_value("/dev/null"),         "path to save report every seconds")
         ("policy-filetoworker",      po::value<std::string>(),                      "file to worker policy name")
@@ -79,13 +80,21 @@ int main(int argc, char* argv[])
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
 
-    unsigned short const port  = vm["listen"].as<unsigned short>();
-    std::string const announce = vm["announce"].as<std::string>();
+    unsigned short const port     = vm["listen"].as<unsigned short>();
+    std::string const announce    = vm["announce"].as<std::string>();
     std::string const save_report = vm["report"].as<std::string>();
-    int  const blocksize       = vm["blocksize"].as<int>();
-    bool const init_cluster    = vm["init"].as<bool>();
-    //slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid();
-    slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid_static_seed(announce);
+    int  const blocksize          = vm["blocksize"].as<int>();
+    bool const init_cluster       = vm["init"].as<bool>();
+    double const server_id_location = vm["server-id"].as<double>();
+
+    slsfs::uuid::uuid server_id;
+    if (0 <= server_id_location && server_id_location <= 1) // set the id according to fix location
+        server_id.front() = server_id_location * 255;
+    else
+    {
+        server_id = slsfs::uuid::gen_uuid_static_seed(announce);
+        BOOST_LOG_TRIVIAL(info) << "Generated server id = " << server_id;
+    }
 
     std::string worker_config;
     {

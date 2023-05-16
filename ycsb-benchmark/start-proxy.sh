@@ -2,6 +2,10 @@
 IP=$(ip addr | grep 'inet ' | grep ens3 | awk '{ print $2 }');
 IP="${IP%???}"
 
+if [[ -z "$SERVER_ID" ]]; then
+    SERVER_ID=-1;
+fi
+
 source start-proxy-args.sh;
 docker rm -f proxy2;
 docker run --privileged -d \
@@ -13,7 +17,8 @@ docker run --privileged -d \
            --listen $PORT \
            --announce $IP \
            $VERBOSE \
-           --report /tmp/proxy-report.json \
+           --server-id                "$SERVER_ID" \
+           --report                   /tmp/proxy-report.json \
            --initint                  "$INITINT" \
            --policy-filetoworker      "$POLICY_FILETOWORKER" \
            --policy-filetoworker-args "$POLICY_FILETOWORKER_ARGS" \
