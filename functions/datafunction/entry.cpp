@@ -155,64 +155,69 @@ int do_datafunction_direct (
 }
 
 int do_datafunction(std::ostream &ow_out)
-try
 {
-    boost::asio::io_context ioc;
-
     json input;
+    try
+    {
+        boost::asio::io_context ioc;
 
-    // cannot use '\n' because '\n' does not flush the stream
-    ow_out << "{\"nya\": \"halo\"}" << std::endl;
-    std::cin >> input;
+        // cannot use '\n' because '\n' does not flush the stream
+        ow_out << "{\"nya\": \"halo\"}" << std::endl;
+        std::cin >> input;
 
 #ifdef AS_ACTIONLOOP
-    input = input["value"];
+        input = input["value"];
 #endif
-    std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
+        std::shared_ptr<slsfsdf::storage_conf> conf = nullptr;
 
-    std::string const storagetype = input["storagetype"].get<std::string>();
-    switch (slsfs::sswitch::hash(storagetype))
-    {
-    using namespace slsfs::sswitch;
-    case "ssbd"_:
-        conf = std::make_shared<slsfsdf::storage_conf_ssbd_backend>(ioc);
-        break;
-    case "cassandra"_:
-        conf = std::make_shared<slsfsdf::storage_conf_cass>();
-        break;
-    case "swift"_:
-        conf = std::make_shared<slsfsdf::storage_conf_swift>();
-        break;
+        std::string const storagetype = input["storagetype"].get<std::string>();
+        switch (slsfs::sswitch::hash(storagetype))
+        {
+            using namespace slsfs::sswitch;
+        case "ssbd"_:
+            conf = std::make_shared<slsfsdf::storage_conf_ssbd_backend>(ioc);
+            break;
+        case "cassandra"_:
+            conf = std::make_shared<slsfsdf::storage_conf_cass>();
+            break;
+        case "swift"_:
+            conf = std::make_shared<slsfsdf::storage_conf_swift>();
+            break;
+        }
+        conf->init(input["storageconfig"]);
+
+        int returnvalue = 0;
+        switch (slsfs::sswitch::hash(input["launch"].get<std::string>()))
+        {
+            using namespace slsfs::sswitch;
+        case "direct"_:
+            returnvalue = do_datafunction_direct(ioc, ow_out, input, conf);
+            break;
+        case "server"_:
+            returnvalue = do_datafunction_with_proxy(ioc, ow_out, input, conf);
+            break;
+        default:
+            slsfs::log::log("unsupported launch method: '{}'", input["launch"].get<std::string>());
+        }
+        std::vector<std::thread> threadpool;
+        unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
+        threadpool.reserve(worker);
+        for (unsigned int i = 0; i < worker; i++)
+            threadpool.emplace_back([&ioc] { ioc.run(); });
+
+
+        for (std::thread& th : threadpool)
+            th.join();
+
+        return returnvalue;
     }
-    conf->init(input["storageconfig"]);
-
-    int returnvalue = 0;
-    switch (slsfs::sswitch::hash(input["launch"].get<std::string>()))
+    catch (std::exception const & e)
     {
-    using namespace slsfs::sswitch;
-    case "direct"_:
-        returnvalue = do_datafunction_direct(ioc, ow_out, input, conf);
-        break;
-    case "server"_:
-        returnvalue = do_datafunction_with_proxy(ioc, ow_out, input, conf);
-        break;
-    default:
-        slsfs::log::log("unsupported launch method: '{}'", input["launch"].get<std::string>());
+        slsfs::log::log(std::string("exception thrown ") + e.what());
+        std::cerr << "input json " << input << std::endl;
+        std::cerr << "do function exception: " << e.what() << std::endl;
     }
-    std::vector<std::thread> threadpool;
-    unsigned int const worker = std::min<unsigned int>(4, std::thread::hardware_concurrency());
-    threadpool.reserve(worker);
-    for (unsigned int i = 0; i < worker; i++)
-        threadpool.emplace_back([&ioc] { ioc.run(); });
 
-    for (std::thread& th : threadpool)
-        th.join();
-    return returnvalue;
-}
-catch (std::exception const & e)
-{
-    slsfs::log::log(std::string("exception thrown ") + e.what());
-    std::cerr << "do function exception: " << e.what() << std::endl;
     return -1;
 }
 
