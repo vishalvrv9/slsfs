@@ -6,8 +6,8 @@ bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh" &
 
 wait;
 
-for qsize in {3..3}; do
-    for qtest in {4..4}; do
+for qsize in {1..1}; do
+    for qtest in {1..1}; do
         cat start-proxy-args-template.sh | \
             sed "s/QSIZE_ARGS/$qsize/" |
             sed "s/QTEST_ARGS/$qtest/" \

@@ -1,10 +1,10 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts16[@]}")
+export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=4000
-export TOTAL_CLIENT=32
+export EACH_CLIENT_ISSUE=100
+export TOTAL_CLIENT=1
 export TOTAL_TIME_AVAILABLE=100000
 
 export QSIZE=QSIZE_ARGS
@@ -13,20 +13,21 @@ export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
-export MEMO="evenproxy-repl1-size-$QSIZE-test-$QTEST"
+export MEMO="createwrite-size-$QSIZE-test-$QTEST"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
 #export CLIENT_TESTNAME=100-0
-export CLIENT_TESTNAME=0-100
+#export CLIENT_TESTNAME=0-100
 #export CLIENT_TESTNAME=samename
+export CLIENT_TESTNAME=samename
 
 #export UPLOAD_GDRIVE=11XxuGx1nAAUyJBq1e-Gltdml0h6UJDKWEKe_1CgxVoU
 #export UPLOAD_GDRIVE=1J4ZMcP0RF6zGHzocOtFMgNe8G92TPPG5Y1oE5Z7UyeI
 #export UPLOAD_GDRIVE=1luyQR39ALkms4cvKTsmQO1nVrQhDF-P8IDIQ9f8jDuU
 #export UPLOAD_GDRIVE=1lIPaPVSvfBi0ArjKag6Z-0spgltrRo1Yk2bJ3pgc7So #New best backend
 #export UPLOAD_GDRIVE=1e0PVLkncIAxI1XiSjVIcGunEvAwKsBAx23ZiQUhzdxI #Block size
-export UPLOAD_GDRIVE=1J4ZMcP0RF6zGHzocOtFMgNe8G92TPPG5Y1oE5Z7UyeI #repl
+#export UPLOAD_GDRIVE=1J4ZMcP0RF6zGHzocOtFMgNe8G92TPPG5Y1oE5Z7UyeI #repl
 #export UPLOAD_GDRIVE=1luyQR39ALkms4cvKTsmQO1nVrQhDF-P8IDIQ9f8jDuU #ceph
 #export UPLOAD_GDRIVE=1pApoEAeNjSc2zx_VSOvN0DfF4e_X8oX6n3DnKW9FB1g
 #export UPLOAD_GDRIVE=1hSNHYNEQEh0MsqcPGYtKwDlxAI29vM4mwJ31cZydqqw
@@ -37,7 +38,7 @@ export UPLOAD_GDRIVE=1J4ZMcP0RF6zGHzocOtFMgNe8G92TPPG5Y1oE5Z7UyeI #repl
 #export UPLOAD_GDRIVE=1L81OCqWnoEQGVNsrJ4iCv3Qg_IUFtkwNdcKFKMGW63Q
 #export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compare
 #export UPLOAD_GDRIVE=1KNYWYCxvLO7jDQ208bHGBkBl1KDV777VcOaqAYOw3Lc  #Replica Compare
-#export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
+export UPLOAD_GDRIVE=11xXR56mAy8osxR8jL7hnhWnQ98F7M_ZaDycD-xkAG0Y  #Create file compare
 
 ##### ----- proxy args ----- #####
 

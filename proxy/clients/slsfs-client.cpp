@@ -385,7 +385,7 @@ int main(int argc, char *argv[])
         ("bufsize",       po::value<int>()->default_value(4096),      "Size of the read/write buffer")
         ("zipf-alpha",    po::value<double>()->default_value(1.2),    "set the alpha value of zipf dist")
         ("file-range",    po::value<int>()->default_value(256*256*4), "set the total different number of files")
-        ("test-name",     po::value<std::string>(),                   "oneof [fill, 50-50, 95-5, 100-0, 0-100, samename]; format: read-write")
+        ("test-name",     po::value<std::string>(),                   "oneof [fill, 50-50, 95-5, 100-0, 0-100, samename, samename-read]; format: read-write")
         ("uniform-dist",  po::bool_switch(),                          "use uniform distribution")
         ("result",        po::value<std::string>()->default_value("/dev/null"), "save result to this file");
 
@@ -556,13 +556,27 @@ int main(int argc, char *argv[])
                     std::launch::async,
                     iotest, total_times, total_duration, buf,
                     std::vector<int> {1},
-                    []()  { slsfs::pack::key_t t{}; return t; },
+                    []()  { slsfs::pack::key_t t{3, 3, 3}; return t; },
                     [buf](int) { return 0; },
                     proxylistpair,
                     "");
         });
         break;
-
+    case "samename-read"_:
+        start_test(
+            "samename-read",
+            vm,
+            [&]() {
+                return std::async(
+                    std::launch::async,
+                    iotest, total_times, total_duration, buf,
+                    std::vector<int> {0},
+                    []()  { slsfs::pack::key_t t{3, 3, 3}; return t; },
+                    [buf](int) { return 0; },
+                    proxylistpair,
+                    "");
+        });
+        break;
     default:
         BOOST_LOG_TRIVIAL(error) << "unknown test name << " << test_name;
     }
