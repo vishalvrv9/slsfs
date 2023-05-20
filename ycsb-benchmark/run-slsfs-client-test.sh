@@ -7,23 +7,23 @@ echo "testname: $TESTNAME"
 ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
-#ssh zookeeper-1 docker rm -f proxy2&
-#ssh zookeeper-2 docker rm -f proxy2&
-#ssh zookeeper-3 docker rm -f proxy2&
+ssh zookeeper-1 docker rm -f proxy2&
+ssh zookeeper-2 docker rm -f proxy2&
+ssh zookeeper-3 docker rm -f proxy2&
 wait < <(jobs -p);
 
 #bash -c 'cd ../functions/datafunction; make function;' &
 #bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
 #bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
-bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
+bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;' &
 bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 wait < <(jobs -p);
 
-hostparis=("proxy-1:12001"
-           "proxy-2:12001"
-           "proxy-3:12001");
+hostparis=("proxy-1:12001")
+#           "proxy-2:12001"
+#           "proxy-3:12001");
 #           "zookeeper-1:12001"
 #           "zookeeper-2:12001");
 #           "zookeeper-3:12001");
@@ -57,22 +57,24 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 
+rm -rf $TESTNAME-result/;
 mkdir -p $TESTNAME-result;
 
+cd "$TESTNAME-result/";
+
 for h in "${hosts[@]}"; do
-    scp "$h:/tmp/$h-$TESTNAME*" $TESTNAME-result/
+    scp "$h:/tmp/$h-$TESTNAME*" .
 done
-cp start-proxy-args.sh $TESTNAME-result/
-scp proxy-1:/tmp/proxy-report.json $TESTNAME-result/proxy-report-1.json
-scp proxy-2:/tmp/proxy-report.json $TESTNAME-result/proxy-report-2.json
-scp proxy-3:/tmp/proxy-report.json $TESTNAME-result/proxy-report-3.json
+cp ../start-proxy-args.sh .
+scp proxy-1:/tmp/proxy-report.json proxy-report-1.json
+scp proxy-2:/tmp/proxy-report.json proxy-report-2.json
+scp proxy-3:/tmp/proxy-report.json proxy-report-3.json
 wait < <(jobs -p);
 
-cd "$TESTNAME-result/"
 rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
 python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
 cp ${TESTNAME}_summary.csv ${TESTNAME}_summary_original.csv

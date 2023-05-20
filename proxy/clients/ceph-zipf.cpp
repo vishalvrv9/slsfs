@@ -88,10 +88,10 @@ auto iotest (int const times, int const bufsize,
 
         std::string fullpath = genname();
 
-        //int fd = open(fullpath.c_str(),  O_CREAT | O_RDWR | O_DIRECT, 0666); // int fd = open(fullpath.c_str(), O_CREAT | O_RDWR, 0666); // O_SYNC  |
-        int fd = open(fullpath.c_str(), O_RDWR, 0666); // int fd = open(fullpath.c_str(), O_CREAT | O_RDWR, 0666); // O_SYNC  |
+        int fd = open(fullpath.c_str(),  O_CREAT | O_RDWR | O_DIRECT, 0666); // int fd = open(fullpath.c_str(), O_CREAT | O_RDWR, 0666); // O_SYNC  |
+        //int fd = open(fullpath.c_str(), O_RDWR, 0666); // int fd = open(fullpath.c_str(), O_CREAT | O_RDWR, 0666); // O_SYNC  |
         if (fd < 0)
-            BOOST_LOG_TRIVIAL(error) << "error getting fd: " << std::strerror(errno) << "\n";
+            BOOST_LOG_TRIVIAL(error) << fullpath << " error getting fd: " << std::strerror(errno) << "\n";
         SCOPE_DEFER([fd]{ close(fd); });
 
         void *buffer = std::aligned_alloc(alignment, bufsize);
@@ -249,6 +249,12 @@ int main(int argc, char *argv[])
               .options(desc)
               .positional(pos_po).run(), vm);
     po::notify(vm);
+
+    if (vm.count("help"))
+    {
+        BOOST_LOG_TRIVIAL(info) << desc;
+        return EXIT_SUCCESS;
+    }
 
     std::mt19937 engine(19937);
 

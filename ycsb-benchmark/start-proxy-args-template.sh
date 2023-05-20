@@ -18,9 +18,9 @@ export MEMO="createwrite-size-$QSIZE-test-$QTEST"
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
 #export CLIENT_TESTNAME=100-0
-#export CLIENT_TESTNAME=0-100
+export CLIENT_TESTNAME=0-100
 #export CLIENT_TESTNAME=samename
-export CLIENT_TESTNAME=samename
+#export CLIENT_TESTNAME=samename
 
 #export UPLOAD_GDRIVE=11XxuGx1nAAUyJBq1e-Gltdml0h6UJDKWEKe_1CgxVoU
 #export UPLOAD_GDRIVE=1J4ZMcP0RF6zGHzocOtFMgNe8G92TPPG5Y1oE5Z7UyeI
