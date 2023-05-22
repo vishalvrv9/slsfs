@@ -122,7 +122,7 @@ auto write (pack::key_t const& filename, BufContainer const& buf)
         .type = jsre::type_t::file,
         .operation = jsre::operation_t::write,
         .position = 0,
-        .size = buf.size(),
+        .size = static_cast<std::uint32_t>(buf.size()),
     };
     r.to_network_format();
 

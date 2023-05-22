@@ -1,11 +1,11 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts1[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=100
-export TOTAL_CLIENT=1
-export TOTAL_TIME_AVAILABLE=100000
+export EACH_CLIENT_ISSUE=2000000
+export TOTAL_CLIENT=16
+export TOTAL_TIME_AVAILABLE=200
 
 export QSIZE=QSIZE_ARGS
 export QTEST=QTEST_ARGS
@@ -75,28 +75,27 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:4000:1000:50
 
 export INITINT=1;
-export VERBOSE='-v'
+export VERBOSE='-vvv'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 
 start-proxy-remote()
 {
     local h=$1;
-    docker save hare1039/transport:0.0.2  | pv | ssh "$h" docker load;
     scp start-proxy* avaliable-host.sh $h:
 
     if [[ "$h" == "proxy-1" ]]; then
         ssh $h "echo 'export SERVER_ID=0' >> ./start-proxy-args.sh"
     elif [[ "$h" == "proxy-2" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.33' >> ./start-proxy-args.sh"
+        ssh $h "echo 'export SERVER_ID=0.66' >> ./start-proxy-args.sh"
     elif [[ "$h" == "proxy-3" ]]; then
-        ssh $h "echo 'export SERVER_ID=0.67' >> ./start-proxy-args.sh"
-#    elif [[ "$h" == "zookeeper-1" ]]; then
-#        ssh $h "echo 'export SERVER_ID=0.60' >> ./start-proxy-args.sh"
-#    elif [[ "$h" == "zookeeper-2" ]]; then
-#        ssh $h "echo 'export SERVER_ID=0.80' >> ./start-proxy-args.sh"
-#    elif [[ "$h" == "zookeeper-3" ]]; then
-#        ssh $h "echo 'export SERVER_ID=0.84' >> ./start-proxy-args.sh"
+        ssh $h "echo 'export SERVER_ID=0.32' >> ./start-proxy-args.sh"
+    elif [[ "$h" == "zookeeper-1" ]]; then
+        ssh $h "echo 'export SERVER_ID=0.49' >> ./start-proxy-args.sh"
+    elif [[ "$h" == "zookeeper-2" ]]; then
+        ssh $h "echo 'export SERVER_ID=0.16' >> ./start-proxy-args.sh"
+    elif [[ "$h" == "zookeeper-3" ]]; then
+        ssh $h "echo 'export SERVER_ID=0.84' >> ./start-proxy-args.sh"
     fi
 
     if [[ "$2" == "noinit" ]]; then
