@@ -183,7 +183,8 @@ public:
 
                 case slsfs::pack::msg_t::worker_reg:
                     BOOST_LOG_TRIVIAL(trace) << "server add worker" << pack->header;
-                    self->launcher_.add_worker(std::move(self->socket_), pack);
+
+                    self->start_add_worker(pack);
                     break;
 
                 case slsfs::pack::msg_t::trigger:
@@ -253,6 +254,27 @@ public:
                 pack->data.parse(length, read_buf->data());
                 self->start_store(pack);
                 self->start_read_header();
+            });
+    }
+
+    void start_add_worker(slsfs::pack::packet_pointer pack)
+    {
+        BOOST_LOG_TRIVIAL(trace) << "start_add_worker";
+        auto read_buf = std::make_shared<std::vector<slsfs::pack::unit_t>>(pack->header.datasize);
+        net::async_read(
+            socket_,
+            net::buffer(read_buf->data(), read_buf->size()),
+            [self=shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
+                if (ec)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "start_read_body: " << ec.message();
+                    return;
+                }
+
+                pack->data.parse(length, read_buf->data());
+
+                // transfer the ownership to launcher's worker set, so no need to start read header again
+                self->launcher_.add_worker(std::move(self->socket_), pack);
             });
     }
 
@@ -430,7 +452,7 @@ void set_policy_launch(tcp_server& server, std::string const& policy, std::strin
             throw std::runtime_error("unable to parse args for launch policy; should be max_latency:min_process");
         break;
     }
-    case "worker-launch-fix-pool"_:
+    case "fix-pool"_:
     {
         std::regex const pattern("(\\d+):(\\d+)");
         std::smatch match;

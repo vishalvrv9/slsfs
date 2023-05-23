@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < worker; i++)
         pool.emplace_back(
-            [total_times, worker, bufsize, start, total_duration, last_update, zookeeper_host, i, singledist] () mutable {
+            [total_times, worker, bufsize, start, total_duration, singledist, last_update, zookeeper_host, i] () mutable {
                 std::random_device rd;
                 int const seed = rd();
                 std::mt19937 engine(seed);
@@ -91,7 +91,6 @@ int main(int argc, char *argv[])
                             n = singledist(engine);
                         return t;
                     };
-
 
                 BOOST_LOG_TRIVIAL(info) << "thread id=" << i << " seed=" << seed;
 

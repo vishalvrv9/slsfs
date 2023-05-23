@@ -18,7 +18,7 @@
 namespace slsfs::launcher
 {
 
-using worker_set = oneapi::tbb::concurrent_hash_map<df::worker_ptr, int /* not used */>;
+using worker_set = oneapi::tbb::concurrent_hash_map<df::worker_ptr, boost::asio::ip::tcp::endpoint>;
 using worker_set_accessor = worker_set::accessor;
 
 using fileid_map =

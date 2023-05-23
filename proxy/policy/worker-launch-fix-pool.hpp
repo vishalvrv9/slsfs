@@ -16,6 +16,10 @@ public:
         worker_launch{max_outstanding_starting_request} {
         worker_launch::default_pool_value_ = size;
     }
+
+    int get_ideal_worker_count(worker_set &) override {
+        return 2;
+    }
 };
 
 } // namespace slsfs::launcher::policy

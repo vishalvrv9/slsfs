@@ -52,5 +52,6 @@ COPY --from=builder /bin/ceph-zipf    /bin/ceph-zipf
 COPY --from=builder /bin/datafunction-profile /bin/datafunction-profile
 COPY --from=builder /bin/slsfs-cmd    /bin/slsfs-cmd
 COPY --from=builder /bin/slsfs-client-dynamic /bin/slsfs-client-dynamic
+COPY --from=builder /bin/slsfs-client-ddf /bin/slsfs-client-ddf
 
 ENTRYPOINT ["/bin/slsfs-proxy"]

@@ -52,10 +52,6 @@ public:
         return filetoworker_policy_->get_available_worker(ptr, worker_set_);
     }
 
-    auto fileid_to_worker() -> fileid_map& {
-        return filetoworker_policy_->fileid_to_worker_;
-    }
-
     int get_ideal_worker_count_delta() {
         return launch_policy_->get_ideal_worker_count_delta(worker_set_);
     }

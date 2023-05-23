@@ -4,6 +4,7 @@
 #include "../uuid.hpp"
 #include "../scope_exit.hpp"
 #include "clientlib.hpp"
+#include "clientlib-direct-client.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -79,7 +80,7 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < worker; i++)
         pool.emplace_back(
-            [total_times, worker, bufsize, start, total_duration, last_update, zookeeper_host, i] () mutable {
+            [total_times, worker, bufsize, start, total_duration, singledist, last_update, zookeeper_host, i] () mutable {
                 std::random_device rd;
                 int const seed = rd();
                 std::mt19937 engine(seed);
@@ -99,7 +100,7 @@ int main(int argc, char *argv[])
                     try
                     {
                         boost::asio::io_context io_context;
-                        slsfs::client::client slsfs_client{io_context, zookeeper_host};
+                        slsfs::client::direct_client slsfs_client{io_context, zookeeper_host};
 
                         std::string buf(bufsize, 'A');
                         for (int i = 0; i < total_times/worker; i++)

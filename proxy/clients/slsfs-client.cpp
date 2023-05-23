@@ -184,9 +184,9 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
 
         boost::asio::post(
             io,
-            [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
+            [&s, &record_list, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time, &io] {
                 long int r = record(
-                    [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time] {
+                    [&s, key, &rwdist, &genpos, &buf, timer, i, times, &end_signal, end_time, &io] {
                         if (i + 1 == times)
                             timer->cancel();
 
@@ -220,8 +220,9 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                             boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
                             BOOST_LOG_TRIVIAL(debug) << data ;
                         }
-
+                        BOOST_LOG_TRIVIAL(debug) << "before write " << ptr->header;
                         boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
+                        BOOST_LOG_TRIVIAL(debug) << "after write " << ptr->header;
 
                         slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
                         std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
@@ -233,6 +234,42 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                         std::string data(resp->header.datasize, '\0');
                         boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
                         BOOST_LOG_TRIVIAL(debug) << i << " response " << data ;
+
+                        boost::asio::ip::address_v4::bytes_type host;
+                        std::memcpy(&host, data.data(), sizeof(host));
+                        boost::asio::ip::address address = boost::asio::ip::make_address_v4(host);
+
+                        std::uint16_t port = 0;
+                        std::memcpy(&port, data.data() + sizeof(host), sizeof(port));
+                        port = slsfs::pack::hton(port);
+
+                        boost::asio::ip::tcp::endpoint endpoint(address, port);
+
+                        
+                        BOOST_LOG_TRIVIAL(debug) << "address "<< address;
+                        BOOST_LOG_TRIVIAL(debug) << "port "<< port;
+                        // get ip:port
+                        // connect to ip:port
+                        // send request
+                        // get reponse
+
+                        {
+                            tcp::socket s(io);
+                            s.connect(endpoint);
+                            //boost::asio::connect(s, endpoint);
+                            boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
+
+                            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+                            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+                            boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
+
+                            resp->header.parse(headerbuf.data());
+                            BOOST_LOG_TRIVIAL(debug) << "write index " << i << " resp:" << resp->header;
+
+                            std::string data(resp->header.datasize, '\0');
+                            boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
+                            BOOST_LOG_TRIVIAL(debug) << i << " response " << data ;
+                        }
                     });
 
                 if (std::chrono::system_clock::now() <= end_time)

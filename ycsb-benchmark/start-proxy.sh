@@ -6,13 +6,21 @@ if [[ -z "$SERVER_ID" ]]; then
     SERVER_ID=-1;
 fi
 
+#           -ex=r \
+#               --args /bin/slsfs-proxy \
+#       --entrypoint gdb -it \
+
+
 source start-proxy-args.sh;
 docker rm -f proxy2;
 docker run --privileged -d \
        --name=proxy2 \
        --net=host \
+       --entrypoint gdb -it \
        --volume=/tmp:/tmp \
        hare1039/transport:0.0.2 \
+           -ex=r \
+           --args /bin/slsfs-proxy \
            --listen $PORT \
            --announce $IP \
            $VERBOSE \
@@ -28,8 +36,3 @@ docker run --privileged -d \
            --worker-config            "$BACKEND_CONFIG" \
            --max-function-count       "$MAX_FUNCTION_COUNT" \
            --blocksize                "$BACKEND_BLOCKSIZE"
-
-
-#           -ex=r \
-#               --args /bin/slsfs-proxy \
-#       --entrypoint gdb -it \

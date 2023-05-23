@@ -33,6 +33,7 @@ public:
 
     using on_completion_callable = boost::signals2::signal<void (pack::packet_pointer)>;
     on_completion_callable on_completion_;
+
     pack::packet_pointer pack_;
 
     boost::asio::steady_timer timer_;

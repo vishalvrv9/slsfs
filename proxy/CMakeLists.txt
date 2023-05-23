@@ -39,6 +39,7 @@ add_executable(datafunction-profile     clients/datafunction-profile.cpp)
 add_executable(ceph-zipf                clients/ceph-zipf.cpp)
 add_executable(slsfs-cmd                clients/slsfs-cmd.cpp)
 add_executable(slsfs-client-dynamic     clients/slsfs-client-dynamic.cpp)
+add_executable(slsfs-client-ddf         clients/slsfs-client-ddf.cpp)
 
 set(CMAKE_PCH_INSTANTIATE_TEMPLATES ON)
 
@@ -49,10 +50,14 @@ target_precompile_headers(slsfs-proxy PRIVATE <boost/beast/core.hpp>)
 target_precompile_headers(slsfs-proxy PRIVATE <oneapi/tbb/concurrent_queue.h>)
 target_precompile_headers(slsfs-proxy PRIVATE <oneapi/tbb/concurrent_hash_map.h>)
 target_precompile_headers(slsfs-proxy PRIVATE <oneapi/tbb/concurrent_vector.h>)
+
+
 target_precompile_headers(slsfs-client         REUSE_FROM slsfs-proxy)
 target_precompile_headers(ceph-zipf            REUSE_FROM slsfs-proxy)
 target_precompile_headers(slsfs-cmd            REUSE_FROM slsfs-proxy)
 target_precompile_headers(slsfs-client-dynamic REUSE_FROM slsfs-proxy)
+target_precompile_headers(slsfs-client-ddf     REUSE_FROM slsfs-proxy)
+
 
 target_link_libraries(slsfs-proxy  -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(slsfs-client -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
@@ -61,3 +66,4 @@ target_link_libraries(datafunction-profile -static-libstdc++ -static-libgcc ${CR
 target_link_libraries(ceph-zipf    -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(slsfs-cmd    -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
 target_link_libraries(slsfs-client-dynamic -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})
+target_link_libraries(slsfs-client-ddf -static-libstdc++ -static-libgcc ${CROSS_LINKER_FLAGS} ${CONAN_LIBS})

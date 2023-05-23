@@ -12,29 +12,37 @@ ssh zookeeper-2 docker rm -f proxy2&
 ssh zookeeper-3 docker rm -f proxy2&
 wait < <(jobs -p);
 
+#bash -c 'cd ../functions/datafunction; make function-debug;' &
 #bash -c 'cd ../functions/datafunction; make function;' &
-#bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
+# bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; '&
 #bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
-
-bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;' &
-bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+# start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;
+#here start proxy
+# bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;' &
+# start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;
+#bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 wait < <(jobs -p);
 
-hostparis=("proxy-1:12001")
-#           "proxy-2:12001"
-#           "proxy-3:12001");
+
+#bash -c 'source start-proxy-args.sh; cd ../proxy; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;'
+
+#listens to proxy
+hostparis=("proxy-1:12001"
+           "proxy-2:12001"
+           "proxy-3:12001")
 #           "zookeeper-1:12001"
-#           "zookeeper-2:12001");
+#           "zookeeper-2:12001")
 #           "zookeeper-3:12001");
 
-rm -f /tmp/slsfs-client;
-docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client > /tmp/slsfs-client;
-chmod +x /tmp/slsfs-client
+rm -f /tmp/slsfs-client-ddf;
+docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client-ddf > /tmp/slsfs-client-ddf;
+chmod +x /tmp/slsfs-client-ddf
 
 for h in "${hosts[@]}"; do
-    ssh $h rm -f /tmp/slsfs-client;
-    scp /tmp/slsfs-client "$h":/tmp/slsfs-client;
+    ssh $h rm -f /tmp/slsfs-client-ddf;
+    scp /tmp/slsfs-client-ddf "$h":/tmp/slsfs-client-ddf;
 done
 wait < <(jobs -p);
 
@@ -56,8 +64,8 @@ done
 echo starting;
 
 for h in "${hosts[@]}"; do
-    ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "sudo rm -f /tmp/$h-$TESTNAME*";
+    ssh "$h" "bash -c 'ulimit -n 8192; docker run --rm -v /tmp:/tmp --network=datachannel hare1039/slsfs-client:0.0.1 /tmp/slsfs-client-ddf --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.1 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 

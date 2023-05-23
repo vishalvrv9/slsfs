@@ -5,10 +5,12 @@
 
 // temp remove for compile
 #include "caching.hpp"
+#include "tcp-server.hpp"
 
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <boost/signals2.hpp>
 #include <boost/exception/diagnostic_information.hpp>
+#include <boost/asio.hpp>
 
 #include <slsfs.hpp>
 #include <optional>
@@ -57,7 +59,10 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
-    cache::cache cache_engine_;
+    std::uint16_t server_port_ = 2000;
+    std::shared_ptr<tcp_server> tcp_server_ = nullptr;
+
+    cache::cache cache_engine_{100, "LRU"};
 
     static
     auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
@@ -118,7 +123,10 @@ public:
           datastorage_conf_{conf},
           writer_{io_context_, socket_},
           queue_map_{qm},
-          proxy_set_{ps} {}
+          proxy_set_{ps},
+          tcp_server_{std::make_shared<tcp_server>(io_context_, *this, server_port_)} {
+        tcp_server_->start_accept();
+    }
 
     void close()
     {
@@ -145,15 +153,46 @@ public:
                 }
                 self->socket_.set_option(tcp::no_delay(true));
 
+                boost::asio::ip::address_v4::bytes_type ip_bytes = self->get_host();
                 slsfs::log::log("connected. start write and listen");
                 slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
                 ptr->header.type = slsfs::pack::msg_t::worker_reg;
                 ptr->header.gen();
 
+                std::uint16_t port = self->server_port_;
+                port = slsfs::pack::hton(port);
+
+                ptr->data.buf.resize(sizeof(ip_bytes) + sizeof(port));
+
+                std::memcpy(ptr->data.buf.data(), std::addressof(ip_bytes), sizeof(ip_bytes));
+                std::memcpy(ptr->data.buf.data() + sizeof(ip_bytes),
+                            std::addressof(port), sizeof(port));
                 self->start_write(ptr);
                 self->start_listen_commands();
                 self->timer_reset();
             });
+    }
+
+    auto get_host() -> boost::asio::ip::address_v4::bytes_type
+    {
+        boost::system::error_code ec;
+
+        boost::asio::ip::tcp::resolver resolver(io_context_);
+        boost::asio::ip::tcp::resolver::query query (boost::asio::ip::host_name(),"");
+        boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query, ec);
+        boost::asio::ip::tcp::resolver::iterator end;
+
+        std::stringstream ss;
+        ss << it->endpoint();
+        slsfs::log::log("my ip is ", ss.str());
+
+        slsfs::log::log("my ip {}", std::system("hostname -i"));
+
+        if (ec)
+            return {};
+
+
+        return it->endpoint().address().to_v4().to_bytes();
     }
 
     void start_listen_commands()
@@ -272,6 +311,43 @@ public:
         writer_.start_write_socket(pack, next_warpper);
     }
 
+
+    template<typename Func>
+    void start_job (slsfs::pack::packet_pointer pack, Func next)
+    {
+        queue_map::accessor it;
+        boost::asio::io_context::strand * ptr = nullptr;
+        if (not queue_map_.find(it, slsfs::uuid::to_uuid(pack->header.key)))
+        {
+            auto new_strand = std::make_unique<boost::asio::io_context::strand>(io_context_);
+            ptr = new_strand.get();
+            queue_map_.emplace(slsfs::uuid::to_uuid(pack->header.key), std::move(new_strand));
+        }
+        else
+            ptr = it->second.get();
+
+        boost::asio::post(
+            boost::asio::bind_executor(
+                *ptr,
+                [self=this->shared_from_this(), pack, next] {
+                    auto const start = std::chrono::high_resolution_clock::now();
+
+                    slsfs::jsre::request_parser<slsfs::base::byte> input {pack};
+                    slsfs::log::log("process request: {}", pack->header.print());
+
+                    if (self->datastorage_conf_->use_async())
+                    {
+                        self->start_storage_perform(
+                            input,
+                            [self=self->shared_from_this(), pack, start, next] (slsfs::base::buf buf) {
+                                std::invoke(next, std::move(buf));
+                            });
+                    }
+                }
+            )
+        );
+    }
+
     void start_job(slsfs::pack::packet_pointer pack)
     {
         queue_map::accessor it;
@@ -348,25 +424,27 @@ public:
                 slsfs::base::buf buf (single_input.size());
                 std::memcpy(buf.data(), single_input.data(), single_input.size());
 
-                cache_engine_.write_to_cache(single_input, buf);
+                //cache_engine_.write_to_cache(single_input, buf);
                 return datastorage_conf_->perform(single_input);
             }
             else
             {
-                // TODO: switch it to real type later please!!!!!!!
-                auto cached_file = cache_engine_.read_from_cache(single_input);
-
-                if (cached_file){
-                    slsfs::log::log("CACHE HIT");
-                    return cached_file.value();
-                }
-                else // Cache miss
-                {
-                    // write to cache
-                    auto data = datastorage_conf_->perform(single_input);
-                    cache_engine_.write_to_cache(single_input, data);
-                    return data;
-                }
+//                // TODO: switch it to real type later please!!!!!!!
+//                auto cached_file = cache_engine_.read_from_cache(single_input);
+//
+//                if (cached_file)
+//                {
+//                    slsfs::log::log("CACHE HIT");
+//                    return cached_file.value();
+//                }
+//                else // Cache miss
+//                {
+//                    // write to cache
+//                    auto data = datastorage_conf_->perform(single_input);
+//                    cache_engine_.write_to_cache(single_input, data);
+//                    return data;
+//                }
+                return datastorage_conf_->perform(single_input);
             }
             break;
 

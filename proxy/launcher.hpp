@@ -113,10 +113,6 @@ public:
         launcher_policy_.filetoworker_policy_ = std::make_unique<PolicyType>(std::forward<Args>(args)...);
     }
 
-    auto fileid_to_worker() -> fileid_map& {
-        return launcher_policy_.filetoworker_policy_->fileid_to_worker_;
-    }
-
     template<typename PolicyType, typename ... Args>
     void set_policy_launch (Args&& ... args) {
         launcher_policy_.launch_policy_       = std::make_unique<PolicyType>(std::forward<Args>(args)...);
@@ -132,11 +128,27 @@ public:
         launcher_policy_.worker_config_ = worker_config(std::forward<Args>(args)...);
     }
 
-    void add_worker (tcp::socket socket, [[maybe_unused]] pack::packet_pointer worker_info)
+    auto fileid_to_worker() -> fileid_map& {
+        return launcher_policy_.filetoworker_policy_->fileid_to_worker_;
+    }
+
+    void add_worker (tcp::socket socket, pack::packet_pointer worker_info)
     {
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
-        bool ok = worker_set_.emplace(worker_ptr, 0);
 
+        boost::asio::ip::address_v4::bytes_type host;
+        std::memcpy(&host, worker_info->data.buf.data(), sizeof(host));
+        boost::asio::ip::address address = boost::asio::ip::make_address_v4(host);
+
+        std::uint16_t port = 0;
+        std::memcpy(&port, worker_info->data.buf.data() + sizeof(host), sizeof(port));
+        port = pack::ntoh(port);
+
+        boost::asio::ip::tcp::endpoint endpoint(address, port);
+
+        BOOST_LOG_TRIVIAL(info) << "worker address: " << endpoint;
+
+        bool ok = worker_set_.emplace(worker_ptr, endpoint);
         BOOST_LOG_TRIVIAL(info) << "Get new worker [" << worker_ptr->id_ << "]. Active worker count: " << worker_set_.size();
 
         if (not ok)
@@ -185,22 +197,56 @@ public:
 
         BOOST_LOG_TRIVIAL(trace) << "Starting jobs, Start post.";
 
+
+
+
         // async launch stat calculator
-        launcher_policy_.started_a_new_job(worker_ptr.get(), job);
+//        launcher_policy_.started_a_new_job(worker_ptr.get(), job);
+//
+//        worker_ptr->start_write(job);
+//
+//        using namespace std::chrono_literals;
+//        job->timer_.expires_from_now(2s);
+//        job->timer_.async_wait(
+//            [this, job] (boost::system::error_code ec) {
+//                if (ec && ec != net::error::operation_aborted)
+//                {
+//                    BOOST_LOG_TRIVIAL(error) << "error: " << ec << "repush job " << job->pack_->header;
+//                    reschedule(job);
+//                }
+//            });
+//        BOOST_LOG_TRIVIAL(trace) << "job started" << job->pack_->header;
+    }
 
-        worker_ptr->start_write(job);
+    template<typename Next>
+    void process_job_with_worker (pack::packet_pointer pack, Next next)
+    {
+        df::worker_ptr worker_ptr = launcher_policy_.get_assigned_worker(pack);
+        if (!worker_ptr || not worker_ptr->is_valid())
+        {
+            worker_ptr = launcher_policy_.get_available_worker(pack);
 
-        using namespace std::chrono_literals;
-        job->timer_.expires_from_now(2s);
-        job->timer_.async_wait(
-            [this, job] (boost::system::error_code ec) {
-                if (ec && ec != net::error::operation_aborted)
-                {
-                    BOOST_LOG_TRIVIAL(error) << "error: " << ec << "repush job " << job->pack_->header;
-                    reschedule(job);
-                }
-            });
-        BOOST_LOG_TRIVIAL(trace) << "job started" << job->pack_->header;
+            // no available worker. Re-scheduling request
+            if (!worker_ptr || not worker_ptr->is_valid())
+            {
+                //BOOST_LOG_TRIVIAL(trace) << "No available worker. Re-scheduling request";
+                //start_create_worker_with_policy();
+
+                // need to post in io context to avoid segmentation fault (stack overflow)
+                net::post(io_context_,
+                          [this, pack, next] {
+                              process_job_with_worker (pack, next);
+                          });
+                return;
+            }
+
+            //worker_ptr->soft_close();
+            fileid_to_worker().emplace(pack->header, worker_ptr);
+        }
+
+        BOOST_LOG_TRIVIAL(trace) << "Starting job worker";
+
+        std::invoke(next, worker_ptr);
     }
 
     template<typename Callback>
@@ -211,8 +257,77 @@ public:
         pack->header.type = pack::msg_t::worker_push_request;
         std::swap(pack->data.buf, body);
 
-        auto job_ptr = std::make_shared<job>(io_context_, pack, next);
-        schedule(job_ptr);
+        process_job_with_worker(
+            pack,
+            [this, pack, original_pack, next=std::move(next)] (df::worker_ptr worker_ptr) {
+                boost::asio::ip::tcp::endpoint endpoint;
+                {
+                    worker_set_accessor acc;
+                    if (worker_set_.find (acc, worker_ptr))
+                        endpoint = acc->second;
+                }
+
+                boost::asio::ip::address_v4::bytes_type bytes = endpoint.address().to_v4().to_bytes();
+                std::uint16_t port = pack::hton(endpoint.port());
+
+                pack->data.buf.resize(sizeof(bytes) + sizeof(port));
+                std::memcpy(pack->data.buf.data(), &bytes, sizeof(bytes));
+                std::memcpy(pack->data.buf.data() + sizeof(bytes),
+                            std::addressof(port), sizeof(port));
+
+                std::invoke(next, pack);
+            });
+//        schedule(job_ptr);
+
+//        auto start_next = std::make_shared<std::function<void(void)>>(
+//            [this] () {
+//                // return the address of the worker
+//                df::worker_ptr worker_ptr = nullptr;
+//
+//                worker_ptr = launcher_policy_.get_assigned_worker(original_pack);
+//                if (!worker_ptr || not worker_ptr->is_valid())
+//                {
+//                    worker_ptr = launcher_policy_.get_available_worker(original_pack);
+//
+//                    // no available worker. Re-scheduling request
+//                    if (!worker_ptr || not worker_ptr->is_valid())
+//                    {
+//
+//                        return;
+//                    }
+//
+//                    fileid_to_worker().emplace(original_pack->header, worker_ptr);
+//                    break;
+//                }
+//
+//                // not found. redo
+//                if (!worker_ptr)
+//                    boost::asio::post(io_context_, *start_next);
+//                else
+//                {
+//                    boost::asio::ip::tcp::endpoint endpoint;
+//                    {
+//                        worker_set_accessor acc;
+//                        if (worker_set_.find(acc, worker_ptr))
+//                            endpoint = acc->second;
+//                    }
+//
+//                    boost::asio::ip::address_v4::bytes_type bytes = endpoint.address().to_v4().to_bytes();
+//                    std::uint16_t port = pack::hton(endpoint.port());
+//
+//                    pack->data.buf.resize(sizeof(bytes) + sizeof(port));
+//                    std::memcpy(pack->data.buf.data(), &bytes, sizeof(bytes));
+//                    std::memcpy(pack->data.buf.data() + sizeof(bytes),
+//                                std::addressof(port), sizeof(port));
+//
+//                    std::invoke(next, pack);
+//
+//                    //auto job_ptr = std::make_shared<job>(io_context_, pack, next);
+//                    //schedule(job_ptr);
+//                }
+//            });
+//
+//        boost::asio::post(io_context_, *start_next);
     }
 
     void schedule (job_ptr job)
