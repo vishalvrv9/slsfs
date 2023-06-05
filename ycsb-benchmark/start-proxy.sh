@@ -9,7 +9,6 @@ fi
 source start-proxy-args.sh;
 docker rm -f proxy2;
 docker run --privileged -d \
-       --rm \
        --name=proxy2 \
        --net=host \
        --volume=/tmp:/tmp \

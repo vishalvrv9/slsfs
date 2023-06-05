@@ -235,17 +235,17 @@ auto iotest (int const times, int const total_duration, std::string const& buf,
                         slsfs::pack::packet_pointer ptr = nullptr;
                         std::uniform_int_distribution<> dist(0, rwdist.size()-1);
                         if (rwdist.at(dist(engine)))
-                            ptr = slsfs::client::write(key, buf);
+                            ptr = slsfs::client::packet_create::write(key, buf);
                         else
-                            ptr = slsfs::client::read(key, buf.size());
+                            ptr = slsfs::client::packet_create::read(key, buf.size());
 
                         auto pbuf = ptr->serialize();
 
                         if constexpr (false /* no create file */)
                         {
-                            //auto mptr = slsfs::client::mkdir("/")->serialize();
-                            auto mptr = slsfs::client::addfile("/", "eishin.txt")->serialize();
-                            //auto mptr = slsfs::client::ls("/")->serialize();
+                            //auto mptr = slsfs::client::packet_create::mkdir("/")->serialize();
+                            auto mptr = slsfs::client::packet_create::addfile("/", "eishin.txt")->serialize();
+                            //auto mptr = slsfs::client::packet_create::ls("/")->serialize();
                             boost::asio::write(s, boost::asio::buffer(mptr->data(), mptr->size()));
 
                             slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();

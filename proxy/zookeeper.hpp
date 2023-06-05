@@ -133,7 +133,7 @@ public:
                     [this, children=std::move(children)] (zk::future<zk::event> event) {
                         zk::event const & e = event.get();
                         BOOST_LOG_TRIVIAL(info) << "watch event get: " << e.type();
-                        //start_reconfigure();
+                        start_reconfigure();
                         start_watch();
                     });
             });

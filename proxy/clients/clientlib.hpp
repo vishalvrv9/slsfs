@@ -3,172 +3,118 @@
 #ifndef CLIENT_CLIENTLIB_HPP__
 #define CLIENT_CLIENTLIB_HPP__
 
+#include "clientlib-packet-create.hpp"
+#include "clientlib-zookeeper.hpp"
 #include "../uuid.hpp"
+
+#include <oneapi/tbb/concurrent_map.h>
+
+#include <shared_mutex>
 
 namespace slsfs::client
 {
 
-auto mkdir(pack::key_t const& directory)
-    -> pack::packet_pointer
+class client
 {
-    pack::packet_pointer cptr = std::make_shared<slsfs::pack::packet>();
+    boost::asio::io_context& io_context_;
+    zookeeper zoo_client_;
+    oneapi::tbb::concurrent_map<slsfs::uuid::uuid,
+                                std::shared_ptr<boost::asio::ip::tcp::socket>> proxys_;
+    std::shared_mutex proxy_mutex_;
 
-    cptr->header.type = pack::msg_t::trigger;
-    cptr->header.key  = directory;
+    void reconfigure(std::vector<uuid::uuid> &new_sorted_proxy_list)
+    {
+        BOOST_LOG_TRIVIAL(trace) << "on reconfigure";
+        for (uuid::uuid const & id : new_sorted_proxy_list)
+        {
+            auto acc = proxys_.find(id);
 
-    jsre::request r{
-        .type      = jsre::type_t::metadata,
-        .operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::mkdir),
-        .position  = 0,
-        .size      = 0,
-    };
+            if (acc != proxys_.end() && acc->second->is_open())
+                continue;
 
-    r.to_network_format();
+            boost::asio::ip::tcp::endpoint endpoint = zoo_client_.get_uuid(id.encode_base64());
+            auto proxy_socket = std::make_shared<boost::asio::ip::tcp::socket> (io_context_);
+            proxy_socket->connect(endpoint);
 
-    cptr->data.buf.resize(sizeof (r));
-    std::memcpy(cptr->data.buf.data(), &r, sizeof (r));
+            proxys_.emplace(id, proxy_socket);
+        }
 
-    cptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating mkdir meta request " << cptr->header;
+        if (proxys_.size() != new_sorted_proxy_list.size())
+        {
+            std::sort(new_sorted_proxy_list.begin(), new_sorted_proxy_list.end());
 
-    return cptr;
-}
+            // remove all id not in the new_sorted_proxy_list
+            // only need at unsafe erase
+            std::unique_lock lock(proxy_mutex_);
+            for (auto it = proxys_.begin(); it != proxys_.end(); )
+            {
+                if (std::binary_search(new_sorted_proxy_list.begin(),
+                                       new_sorted_proxy_list.end(),
+                                       it->first))
+                    ++it;
+                else
+                    it = proxys_.unsafe_erase(it);
+            }
+        }
+    }
 
-auto mkdir(std::string const directory)
-    -> pack::packet_pointer {
-    return mkdir(uuid::get_uuid(directory));
-}
+    auto send_request(slsfs::pack::packet_pointer pack) -> std::string
+    {
+        auto pbuf = pack->serialize();
+        //BOOST_LOG_TRIVIAL(trace) << "send " << pack->header;
 
-auto addfile(pack::key_t const& directory, std::string const filename)
-    -> pack::packet_pointer
-{
-    pack::packet_pointer cptr = std::make_shared<pack::packet>();
+        std::shared_ptr<boost::asio::ip::tcp::socket> selected = nullptr;
+        {
+            std::shared_lock lock(proxy_mutex_);
 
-    jsre::meta::filemeta filemeta {
-        .owner = 0,
-        .permission = 040777,
-        .filename = {}
-    };
+            auto it = proxys_.upper_bound(slsfs::uuid::up_cast(pack->header.key));
+            if (it == proxys_.end())
+                it = proxys_.begin();
 
-    std::memcpy(filemeta.filename.data(),
-                filename.data(), std::min(filename.size(), sizeof(filemeta)));
+            selected = it->second;
+        }
 
-    filemeta.to_network_format();
+        BOOST_LOG_TRIVIAL(trace) << "sending packet " << pack->header;
+        boost::asio::write(*selected, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
-    cptr->header.type = pack::msg_t::trigger;
-    cptr->header.key = directory;
+        slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+        std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+        boost::asio::read(*selected, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
-    jsre::request r;
-    r.type = jsre::type_t::metadata;
-    r.operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::addfile);
-    r.size = sizeof(filemeta);
-    r.position = 0;
-    r.to_network_format();
+        resp->header.parse(headerbuf.data());
 
-    cptr->data.buf.resize(sizeof (r) + sizeof(filemeta));
-    std::memcpy(cptr->data.buf.data(), &r, sizeof (r));
-    std::memcpy(cptr->data.buf.data() + sizeof (r), &filemeta, sizeof(filemeta));
+        std::string data(resp->header.datasize, '\0');
+        boost::asio::read(*selected, boost::asio::buffer(data.data(), data.size()));
+        //BOOST_LOG_TRIVIAL(debug) << "response " << data ;
+        return data;
+    }
 
-    cptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating addfile meta request " << cptr->header;
+public:
+    client(boost::asio::io_context& io, std::string const& zkhost):
+        io_context_{io}, zoo_client_{io, zkhost}
+    {
+        zoo_client_.bind_reconfigure(
+            [this](std::vector<uuid::uuid> &list) { reconfigure(list); });
+        zoo_client_.reconfigure();
+    }
 
-    return cptr;
-}
-
-auto addfile(std::string const directory, std::string const filename)
-    -> pack::packet_pointer {
-    return addfile(uuid::get_uuid(directory), filename);
-}
-
-auto ls (pack::key_t const& directory)
-    -> pack::packet_pointer
-{
-    pack::packet_pointer cptr = std::make_shared<pack::packet>();
-
-    cptr->header.type = pack::msg_t::trigger;
-    cptr->header.key = directory;
-
-    jsre::request r {
-        .type = jsre::type_t::metadata,
-        .operation = static_cast<jsre::operation_t>(jsre::meta_operation_t::ls),
-        .position = 0,
-        .size = 0,
-    };
-    r.to_network_format();
-
-    cptr->data.buf.resize(sizeof (r));
-    std::memcpy(cptr->data.buf.data(), &r, sizeof (r));
-
-    cptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating ls meta request " << cptr->header;
-    return cptr;
-}
-
-auto ls (std::string const directory)
-    -> pack::packet_pointer {
-    return ls (uuid::get_uuid(directory));
-}
-
-template<typename BufContainer>
-auto write (pack::key_t const& filename, BufContainer const& buf)
-    -> pack::packet_pointer
-{
-    pack::packet_pointer ptr = std::make_shared<pack::packet>();
-
-    ptr->header.type = pack::msg_t::trigger;
-    ptr->header.key = filename;
-
-    jsre::request r {
-        .type = jsre::type_t::file,
-        .operation = jsre::operation_t::write,
-        .position = 0,
-        .size = static_cast<std::uint32_t>(buf.size()),
-    };
-    r.to_network_format();
-
-    ptr->data.buf.resize(sizeof (r) + buf.size());
-    std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-    std::memcpy(ptr->data.buf.data() + sizeof (r), buf.data(), buf.size());
-
-    ptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating file write request";
-    return ptr;
-}
-
-template<typename BufContainer>
-auto write (std::string const filename, BufContainer const& buf)
-    -> pack::packet_pointer {
-    return write(uuid::get_uuid(filename), buf);
-}
-
-auto read (pack::key_t const& filename, std::uint32_t const size)
-    -> pack::packet_pointer
-{
-    pack::packet_pointer ptr = std::make_shared<pack::packet>();
-
-    ptr->header.type = pack::msg_t::trigger;
-    ptr->header.key = filename;
-
-    jsre::request r {
-        .type = jsre::type_t::file,
-        .operation = jsre::operation_t::read,
-        .position = 0,
-        .size = size,
-    };
-    r.to_network_format();
-
-    ptr->data.buf.resize(sizeof (r));
-    std::memcpy(ptr->data.buf.data(), &r, sizeof (r));
-
-    ptr->header.gen();
-    BOOST_LOG_TRIVIAL(debug) << "creating file read request";
-    return ptr;
-}
-
-auto read (std::string const filename, std::uint32_t const size)
-    -> pack::packet_pointer {
-    return read(uuid::get_uuid(filename), size);
-}
+    auto send(slsfs::pack::packet_pointer pack) -> std::string
+    {
+        bool success = false;
+        std::string rv;
+        do
+        {
+            try
+            {
+                rv = send_request(pack);
+                success = true;
+            } catch (boost::system::system_error& e) {
+                BOOST_LOG_TRIVIAL(error) << "getin' system error when sending request. retry. err=" << e.what();
+            }
+        } while (not success);
+        return rv;
+    }
+};
 
 } // namespace client
 

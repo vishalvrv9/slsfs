@@ -26,7 +26,7 @@ public:
     {
         ideal_worker_count_.store(queue_size_ / max_average_queue_);
 
-        BOOST_LOG_TRIVIAL(debug) << "queue size: " << queue_size_
+        BOOST_LOG_TRIVIAL(trace) << "queue size: " << queue_size_
                                  << " internal count: " << ideal_worker_count_;
     }
 

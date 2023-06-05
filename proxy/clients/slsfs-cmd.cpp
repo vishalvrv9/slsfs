@@ -119,22 +119,22 @@ void run()
         {
             using namespace slsfs::basic::sswitcher;
         case "ls"_:
-            ptr = slsfs::client::ls(arg1);
+            ptr = slsfs::client::packet_create::ls(arg1);
             break;
         case "mkdir"_:
-            ptr = slsfs::client::mkdir(arg1);
+            ptr = slsfs::client::packet_create::mkdir(arg1);
             break;
         case "addfile"_:
             std::cin >> arg2;
-            ptr = slsfs::client::addfile(arg1, arg2);
+            ptr = slsfs::client::packet_create::addfile(arg1, arg2);
             break;
         case "write"_:
             std::cin >> arg2;
-            ptr = slsfs::client::write(arg1, arg2);
+            ptr = slsfs::client::packet_create::write(arg1, arg2);
             break;
         case "read"_:
             std::cin >> arg2;
-            ptr = slsfs::client::read(arg1, std::stoi(arg2));
+            ptr = slsfs::client::packet_create::read(arg1, std::stoi(arg2));
             break;
         default:
             BOOST_LOG_TRIVIAL(error) << "unknown cmd '" << cmd << "'";

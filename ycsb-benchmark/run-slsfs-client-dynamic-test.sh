@@ -4,6 +4,10 @@ source start-proxy-args.sh;
 TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
 
+for h in "${hosts[@]}"; do
+    ssh "$h" "bash -c 'pkill -f /tmp/slsfs-client-dynamic'" &
+done
+
 ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
 ssh proxy-3 docker rm -f proxy2&
@@ -13,18 +17,12 @@ ssh zookeeper-3 docker rm -f proxy2&
 wait < <(jobs -p);
 
 bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; start-proxy-remote proxy-1;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit; start-proxy-remote zookeeper-1 noinit; start-proxy-remote zookeeper-2 noinit; start-proxy-remote zookeeper-3 noinit;' &
 bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 wait < <(jobs -p);
-
-bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-2 noinit;'
-bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-3 noinit;'
-bash -c 'source start-proxy-args.sh; start-proxy-remote zookeeper-1 noinit;'
-bash -c 'source start-proxy-args.sh; start-proxy-remote zookeeper-2 noinit;'
-bash -c 'source start-proxy-args.sh; start-proxy-remote zookeeper-3 noinit;'
 
 hostparis=("proxy-1:12001"
            "proxy-2:12001"
@@ -33,13 +31,13 @@ hostparis=("proxy-1:12001"
            "zookeeper-2:12001"
            "zookeeper-3:12001");
 
-rm -f /tmp/slsfs-client-time-sequence;
-docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client-time-sequence > /tmp/slsfs-client-time-sequence;
-chmod +x /tmp/slsfs-client-time-sequence
+rm -f /tmp/slsfs-client-dynamic;
+docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client-dynamic > /tmp/slsfs-client-dynamic;
+chmod +x /tmp/slsfs-client-dynamic
 
 for h in "${hosts[@]}"; do
-    ssh $h rm -f /tmp/slsfs-client-time-sequence;
-    scp /tmp/slsfs-client-time-sequence "$h":/tmp/slsfs-client-time-sequence;
+    ssh $h rm -f /tmp/slsfs-client-dynamic;
+    scp /tmp/slsfs-client-dynamic "$h":/tmp/slsfs-client-dynamic;
 done
 wait < <(jobs -p);
 
@@ -62,15 +60,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
-#    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-time-sequence --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c 'ulimit -n 1048576; /tmp/slsfs-client-dynamic --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 
 wait < <(jobs -p);
