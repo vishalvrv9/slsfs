@@ -61,7 +61,7 @@ public:
                     pool_,
                     [this, children=std::move(children)] (zk::future<zk::event> event) {
                         zk::event const & e = event.get();
-                        BOOST_LOG_TRIVIAL(info) << "watch event get: " << e.type();
+                        BOOST_LOG_TRIVIAL(trace) << "watch event get: " << e.type();
                         start_watch();
                         reconfigure();
                     });
