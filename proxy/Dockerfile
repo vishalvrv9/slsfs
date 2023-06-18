@@ -2,7 +2,7 @@ FROM gcc:12 AS builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache git wget libzookeeper-mt-dev clang && \
-    pip3 install conan==1.59
+    pip3 install conan==1.59 --break-system-packages
 
 RUN conan profile new default --detect &&\
     conan profile update settings.compiler.libcxx=libstdc++11 default
@@ -35,7 +35,7 @@ RUN --mount=type=cache,target=/final/build \
     chmod +x /bin/slsfs-proxy
 
 #FROM busybox:glibc
-FROM ubuntu:22.04
+FROM ubuntu:23.04
 
 RUN apt-get update && apt-get install -y --no-install-recommends gdb
 

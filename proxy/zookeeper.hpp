@@ -120,23 +120,23 @@ public:
         if (closed_)
             return;
 
-        BOOST_LOG_TRIVIAL(trace) << "watch /slsfs/proxy start";
-
-        client_.watch_children("/slsfs/proxy").then(
-            pool_,
-            [this] (zk::future<zk::watch_children_result> children) {
-                auto&& res = children.get();
-                BOOST_LOG_TRIVIAL(trace) << "set watch ok";
-
-                res.next().then(
-                    pool_,
-                    [this, children=std::move(children)] (zk::future<zk::event> event) {
-                        zk::event const & e = event.get();
-                        BOOST_LOG_TRIVIAL(info) << "watch event get: " << e.type();
-                        start_reconfigure();
-                        start_watch();
-                    });
-            });
+//        BOOST_LOG_TRIVIAL(trace) << "watch /slsfs/proxy start";
+//
+//        client_.watch_children("/slsfs/proxy").then(
+//            pool_,
+//            [this] (zk::future<zk::watch_children_result> children) {
+//                auto&& res = children.get();
+//                BOOST_LOG_TRIVIAL(trace) << "set watch ok";
+//
+//                res.next().then(
+//                    pool_,
+//                    [this, children=std::move(children)] (zk::future<zk::event> event) {
+//                        zk::event const & e = event.get();
+//                        BOOST_LOG_TRIVIAL(info) << "watch event get: " << e.type();
+//                        //start_reconfigure();
+//                        start_watch();
+//                    });
+//            });
     }
 
     void start_reconfigure()

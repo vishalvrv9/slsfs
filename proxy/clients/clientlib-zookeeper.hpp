@@ -74,7 +74,7 @@ public:
 
         std::vector<std::string> list = client_.get_children("/slsfs/proxy").get().children();
 
-        BOOST_LOG_TRIVIAL(trace) << "reconfigure of client size: " << list.size();
+        BOOST_LOG_TRIVIAL(trace) << "proxy reconfigured. size: " << list.size();
 
         std::vector<uuid::uuid> new_proxy_list;
         std::transform (list.begin(), list.end(),

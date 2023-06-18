@@ -9,13 +9,13 @@ bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
 bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 wait < <(jobs -p);
 
-rm -f /tmp/slsfs-perfunction-client;
-docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-perfunction-client > /tmp/slsfs-perfunction-client;
-chmod +x /tmp/slsfs-perfunction-client
+rm -f /tmp/slsfs-client-dynamic;
+docker run --rm --entrypoint cat hare1039/transport:0.0.2 /bin/slsfs-client-dynamic > /tmp/slsfs-client-dynamic;
+chmod +x /tmp/slsfs-client-dynamic
 
 for h in "${hosts[@]}"; do
-    ssh $h rm -f /tmp/slsfs-perfunction-client;
-    scp /tmp/slsfs-perfunction-client "$h":/tmp/slsfs-perfunction-client;
+    ssh $h rm -f /tmp/slsfs-client-dynamic;
+    scp /tmp/slsfs-client-dynamic "$h":/tmp/slsfs-client-dynamic;
 done
 wait < <(jobs -p);
 
@@ -28,7 +28,7 @@ echo starting
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-perfunction-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client-dynamic --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --bufsize $BUFSIZE --zipf-alpha 1.05 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 

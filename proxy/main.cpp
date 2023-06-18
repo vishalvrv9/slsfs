@@ -142,14 +142,11 @@ int main(int argc, char* argv[])
             ioc.stop();
         });
 
-    std::vector<std::thread> worker_threads;
+    std::vector<std::jthread> worker_threads;
     worker_threads.reserve(worker);
     for(int i = 1; i < worker; i++)
         worker_threads.emplace_back([&ioc] { ioc.run(); });
     ioc.run();
-
-    for (std::thread& th : worker_threads)
-        th.join();
 
     return EXIT_SUCCESS;
 }

@@ -28,3 +28,8 @@ docker run --privileged -d \
            --worker-config            "$BACKEND_CONFIG" \
            --max-function-count       "$MAX_FUNCTION_COUNT" \
            --blocksize                "$BACKEND_BLOCKSIZE"
+
+
+#           -ex=r \
+#               --args /bin/slsfs-proxy \
+#       --entrypoint gdb -it \

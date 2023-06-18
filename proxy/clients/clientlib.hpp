@@ -24,7 +24,8 @@ class client
 
     void reconfigure(std::vector<uuid::uuid> &new_sorted_proxy_list)
     {
-        BOOST_LOG_TRIVIAL(trace) << "on reconfigure";
+        //BOOST_LOG_TRIVIAL(trace) << "on reconfigure";
+        BOOST_LOG_TRIVIAL(info) << "proxy reconfigured. new proxy size = " << new_sorted_proxy_list.size();
         for (uuid::uuid const & id : new_sorted_proxy_list)
         {
             auto acc = proxys_.find(id);
@@ -33,10 +34,21 @@ class client
                 continue;
 
             boost::asio::ip::tcp::endpoint endpoint = zoo_client_.get_uuid(id.encode_base64());
-            auto proxy_socket = std::make_shared<boost::asio::ip::tcp::socket> (io_context_);
-            proxy_socket->connect(endpoint);
+            BOOST_LOG_TRIVIAL(trace) << "connecting to " << id << " " << endpoint;
 
-            proxys_.emplace(id, proxy_socket);
+            try
+            {
+                auto proxy_socket = std::make_shared<boost::asio::ip::tcp::socket> (io_context_);
+                proxy_socket->connect(endpoint);
+
+                proxys_.emplace(id, proxy_socket);
+            }
+            catch (boost::exception & e)
+            {
+                using host_endpoint = boost::error_info<struct tag_host_endpoint, boost::asio::ip::tcp::endpoint>;
+                e << host_endpoint{endpoint};
+                throw;
+            }
         }
 
         if (proxys_.size() != new_sorted_proxy_list.size())
@@ -72,6 +84,7 @@ class client
                 it = proxys_.begin();
 
             selected = it->second;
+            BOOST_LOG_TRIVIAL(trace) << "selected proxy " << selected->remote_endpoint() << " from " << proxys_.size() << " proxys";
         }
 
         BOOST_LOG_TRIVIAL(trace) << "sending packet " << pack->header;
@@ -85,9 +98,9 @@ class client
 
         std::string data(resp->header.datasize, '\0');
         boost::asio::read(*selected, boost::asio::buffer(data.data(), data.size()));
-        //BOOST_LOG_TRIVIAL(debug) << "response " << data ;
         return data;
     }
+
 
 public:
     client(boost::asio::io_context& io, std::string const& zkhost):
@@ -100,19 +113,15 @@ public:
 
     auto send(slsfs::pack::packet_pointer pack) -> std::string
     {
-        bool success = false;
-        std::string rv;
         do
         {
-            try
-            {
-                rv = send_request(pack);
-                success = true;
-            } catch (boost::system::system_error& e) {
-                BOOST_LOG_TRIVIAL(error) << "getin' system error when sending request. retry. err=" << e.what();
+            try {
+                return send_request(pack);
+            } catch (boost::system::system_error const& e) {
+                BOOST_LOG_TRIVIAL(error) << "getin' system error when sending request. retry. " << boost::diagnostic_information(e);
             }
-        } while (not success);
-        return rv;
+        } while (true);
+        return "";
     }
 };
 

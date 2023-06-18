@@ -2,7 +2,7 @@ FROM gcc:12 as builder
 
 RUN apt-get update && \
     apt-get install -y --no-install-recommends python3-pip make cmake ninja-build ccache && \
-    pip3 install conan==1.59
+    pip3 install conan==1.59 --break-system-packages
 
 RUN conan profile new default --detect &&\
     sed -i 's/compiler.libcxx=libstdc++/compiler.libcxx=libstdc++11/g' /root/.conan/profiles/default

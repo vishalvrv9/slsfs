@@ -14,7 +14,7 @@ exceeds a preset threshold  */
 class max_queue : public worker_launch
 {
     std::uint64_t const max_average_queue_; // max queue size (bytes)
-    std::atomic<std::uint64_t> queue_size_ = 0;
+    std::atomic<std::int64_t> queue_size_ = 0;
     std::atomic<int> ideal_worker_count_ = 0;
 
 public:

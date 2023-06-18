@@ -12,13 +12,13 @@
 #include <boost/asio.hpp>
 #include <boost/config.hpp>
 
-#include <boost/log/trivial.hpp>
-#include <boost/log/core.hpp>
 
 #if defined(__clang__)
     #pragma clang diagnostic push
     #pragma clang diagnostic ignored "-Wunknown-warning-option"
 #endif
+#include <boost/log/trivial.hpp>
+#include <boost/log/core.hpp>
 #include <boost/log/expressions.hpp>
 #if defined(__clang__)
     #pragma clang diagnostic pop
