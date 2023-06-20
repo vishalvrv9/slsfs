@@ -18,6 +18,86 @@
 
 #include <chrono>
 
+void start_test(boost::program_options::variables_map &vm)
+{
+    int    const total_times     = vm["total-times"].as<int>();
+    int    const total_duration  = vm["total-duration"].as<int>();
+    int    const bufsize         = vm["bufsize"].as<int>();
+    double const zipf_alpha      = vm["zipf-alpha"].as<double>();
+    int    const file_range      = vm["file-range"].as<int>();
+    int    const worker          = vm["total-clients"].as<int>();
+    std::string const test_name  = vm["test-name"].as<std::string>();
+    std::string const resultfile = vm["result"].as<std::string>();
+    std::string const zookeeper_host = vm["zookeeper"].as<std::string>();
+
+    absl::zipf_distribution namedist(file_range, zipf_alpha);
+    std::uniform_int_distribution<int> uniformdist(0, file_range), singledist(0, 255);
+
+    auto start = std::chrono::system_clock::now();
+    std::atomic<int> counter = 0;
+
+    BOOST_LOG_TRIVIAL(info) << "starting test (thread=" << worker << ")";
+    std::vector<std::thread> pool;
+
+    for (int i = 0; i < worker; i++)
+        pool.emplace_back(
+            [total_times, worker, bufsize, start, total_duration, singledist, zookeeper_host, i, &counter] () mutable {
+                std::random_device rd;
+                int const seed = rd();
+                std::mt19937 engine(seed);
+
+                auto anyname =
+                    [&engine, &singledist] {
+                        slsfs::pack::key_t t{};
+                        for (slsfs::pack::unit_t& n : t)
+                            n = singledist(engine);
+                        return t;
+                    };
+
+                BOOST_LOG_TRIVIAL(info) << "thread id=" << i << " seed=" << seed;
+
+                do
+                {
+                    try
+                    {
+                        boost::asio::io_context io_context;
+                        slsfs::client::direct_client slsfs_client{io_context, zookeeper_host};
+
+                        std::string buf(bufsize, 'A');
+                        for (int i = 0; i < total_times/worker; i++)
+                        {
+                            using namespace std::chrono_literals;
+                            if (std::chrono::system_clock::now() - start > total_duration * 1s)
+                            {
+                                BOOST_LOG_TRIVIAL(info) << "Timeout (" << total_duration << "s). Closing client\n";
+                                return;
+                            }
+
+                            slsfs::pack::packet_pointer request = slsfs::client::packet_create::write(anyname(), buf);
+                            std::string response = slsfs_client.send(request);
+                            BOOST_LOG_TRIVIAL(trace) << response << "\n";
+                            counter++;
+                        }
+                        return;
+                    } catch (boost::exception const& e) {
+                        BOOST_LOG_TRIVIAL(error) << "boost exception catched at client " << i << " " << boost::diagnostic_information(e);
+                    }
+                } while (true);
+            });
+
+    for (std::thread& th : pool)
+        th.join();
+
+    auto end = std::chrono::system_clock::now();
+
+    double const duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+
+    BOOST_LOG_TRIVIAL(info) << "Finish " << counter.load() * bufsize << " in " << duration_us / 1000 << "ms";
+    BOOST_LOG_TRIVIAL(info) << "Throughput = "
+                            << counter.load() * bufsize / duration_us * 1000000;
+}
+
+
 int main(int argc, char *argv[])
 {
     slsfs::basic::init_log();
@@ -57,69 +137,5 @@ int main(int argc, char *argv[])
         return EXIT_SUCCESS;
     }
 
-    int    const total_times     = vm["total-times"].as<int>();
-    int    const total_duration  = vm["total-duration"].as<int>();
-    int    const bufsize         = vm["bufsize"].as<int>();
-    double const zipf_alpha      = vm["zipf-alpha"].as<double>();
-    int    const file_range      = vm["file-range"].as<int>();
-    //bool   const use_uniform     = vm["uniform-dist"].as<bool>();
-    int    const worker          = vm["total-clients"].as<int>();
-    std::string const test_name  = vm["test-name"].as<std::string>();
-    std::string const resultfile = vm["result"].as<std::string>();
-    std::string const zookeeper_host = vm["zookeeper"].as<std::string>();
-
-    absl::zipf_distribution namedist(file_range, zipf_alpha);
-    std::uniform_int_distribution<int> uniformdist(0, file_range), singledist(0, 255);
-
-    BOOST_LOG_TRIVIAL(info) << "starting test (thread=" << worker << ")";
-    SCOPE_DEFER([]{ BOOST_LOG_TRIVIAL(info) << "end test"; });
-    std::vector<std::jthread> pool;
-
-    auto start = std::chrono::system_clock::now();
-    auto last_update = std::chrono::system_clock::now();
-
-    for (int i = 0; i < worker; i++)
-        pool.emplace_back(
-            [total_times, worker, bufsize, start, total_duration, singledist, last_update, zookeeper_host, i] () mutable {
-                std::random_device rd;
-                int const seed = rd();
-                std::mt19937 engine(seed);
-
-                auto anyname =
-                    [&engine, &singledist] {
-                        slsfs::pack::key_t t{};
-                        for (slsfs::pack::unit_t& n : t)
-                            n = singledist(engine);
-                        return t;
-                    };
-
-                BOOST_LOG_TRIVIAL(info) << "thread id=" << i << " seed=" << seed;
-
-                do
-                {
-                    try
-                    {
-                        boost::asio::io_context io_context;
-                        slsfs::client::direct_client slsfs_client{io_context, zookeeper_host};
-
-                        std::string buf(bufsize, 'A');
-                        for (int i = 0; i < total_times/worker; i++)
-                        {
-                            using namespace std::chrono_literals;
-                            if (std::chrono::system_clock::now() - start > total_duration * 1s)
-                            {
-                                BOOST_LOG_TRIVIAL(info) << "Timeout (" << total_duration << "s). Closing client\n";
-                                return;
-                            }
-
-                            slsfs::pack::packet_pointer request = slsfs::client::packet_create::write(anyname(), buf);
-                            std::string response = slsfs_client.send(request);
-                            BOOST_LOG_TRIVIAL(trace) << response << "\n";
-                        }
-                        return;
-                    } catch (boost::exception const& e) {
-                        BOOST_LOG_TRIVIAL(error) << "boost exception catched at client " << i << " " << boost::diagnostic_information(e);
-                    }
-                } while (true);
-            });
+    start_test(vm);
 }

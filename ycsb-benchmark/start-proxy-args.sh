@@ -3,9 +3,9 @@
 source avaliable-host.sh
 export hosts=("${hosts1[@]}")
 
-export EACH_CLIENT_ISSUE=10000
+export EACH_CLIENT_ISSUE=1000000
 export TOTAL_CLIENT=1
-export TOTAL_TIME_AVAILABLE=100000
+export TOTAL_TIME_AVAILABLE=10
 
 export QSIZE=1
 export QTEST=1
@@ -84,18 +84,18 @@ export POLICY_FILETOWORKER_ARGS=""
 #export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 
 export POLICY_LAUNCH=fix-pool
-export POLICY_LAUNCH_ARGS=10:20 #average queue = 2kb
+export POLICY_LAUNCH_ARGS=8:20 #average queue = 2kb
 
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
 #export POLICY_KEEPALIVE_ARGS=100000
 export POLICY_KEEPALIVE=moving-interval-global
-export POLICY_KEEPALIVE_ARGS=5:100000:1000:50
+export POLICY_KEEPALIVE_ARGS=5:120000:1000:50
 
 
 export INITINT=1;
-export VERBOSE='-vvv'
+export VERBOSE='-v'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
 

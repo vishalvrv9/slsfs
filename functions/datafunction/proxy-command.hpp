@@ -182,15 +182,10 @@ public:
         boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query, ec);
         boost::asio::ip::tcp::resolver::iterator end;
 
-        std::stringstream ss;
-        ss << it->endpoint();
-        slsfs::log::log("my ip is ", ss.str());
-
-        slsfs::log::log("my ip {}", std::system("hostname -i"));
+        slsfs::log::log("my ip is ", it->endpoint().address().to_string());
 
         if (ec)
             return {};
-
 
         return it->endpoint().address().to_v4().to_bytes();
     }
@@ -252,7 +247,7 @@ public:
                     if (proxy_set::accessor acc;
                         !self->proxy_set_.find(acc, ep))
                     {
-                        slsfs::log::log("try connect to {}", ep);
+                        slsfs::log::log("try connect to {}:{}", ep.address().to_string(), ep.port());
 
                         auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(
                             self->io_context_,

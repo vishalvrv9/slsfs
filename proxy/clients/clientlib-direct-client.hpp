@@ -33,7 +33,11 @@ class direct_client
 
         BOOST_LOG_TRIVIAL(trace) << "sending packet to proxy " << pack->header;
         // get address
-        std::string raw_buffer = client_.send(pack);
+
+        pack::packet_pointer copy = std::make_shared<pack::packet>();
+        copy->header = pack->header;
+
+        std::string raw_buffer = client_.send(copy);
 
         boost::asio::ip::address_v4::bytes_type host;
         std::memcpy(&host, raw_buffer.data(), sizeof(host));
@@ -67,7 +71,7 @@ class direct_client
         std::shared_ptr<tcp::socket> selected = get_direct_worker_socket(pack);
 
         auto pbuf = pack->serialize();
-        BOOST_LOG_TRIVIAL(trace) << "sending packet to df " << pack->header;
+        BOOST_LOG_TRIVIAL(trace) << "sending packet to df " << selected->remote_endpoint() << " " << pack->header;
         boost::asio::write(*selected, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
         pack::packet_pointer resp = std::make_shared<pack::packet>();

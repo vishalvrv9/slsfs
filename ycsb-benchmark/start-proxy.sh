@@ -16,11 +16,8 @@ docker rm -f proxy2;
 docker run --privileged -d \
        --name=proxy2 \
        --net=host \
-       --entrypoint gdb -it \
        --volume=/tmp:/tmp \
        hare1039/transport:0.0.2 \
-           -ex=r \
-           --args /bin/slsfs-proxy \
            --listen $PORT \
            --announce $IP \
            $VERBOSE \

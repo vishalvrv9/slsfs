@@ -58,7 +58,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 1048576; docker run --name slsfs-client -d --rm --network=datachannel -v /tmp:/tmp hare1039/slsfs-client:0.0.2 /bin/slsfs-client-ddf --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME --zookeeper zk://192.168.0.48:2181'" &
+    ssh "$h" "bash -c 'ulimit -n 1048576; docker run --name slsfs-client -d --network=datachannel -v /tmp:/tmp hare1039/slsfs-client:0.0.2 /bin/slsfs-client-ddf --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME --zookeeper zk://192.168.0.48:2181'" &
 done
 
 wait < <(jobs -p);
@@ -66,8 +66,6 @@ wait < <(jobs -p);
 for h in "${hosts[@]}"; do
     ssh "$h" "docker stop slsfs-client" &
 done
-
-
 
 rm -rf $TESTNAME-result/;
 mkdir -p $TESTNAME-result;
@@ -86,9 +84,14 @@ scp zookeeper-2:/tmp/proxy-report.json proxy-report-5.json
 scp zookeeper-3:/tmp/proxy-report.json proxy-report-6.json
 wait < <(jobs -p);
 
-rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
-python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
-cp ${TESTNAME}_summary.csv ${TESTNAME}_summary_original.csv
-head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
-../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
+
+for h in "${hosts[@]}"; do
+    ssh "$h" "docker logs slsfs-client 2>&1" >> slsfs-client-output.txt
+done
+
+#rm -f ${TESTNAME}_summary.csv ${TESTNAME}_summary_for_upload.csv;
+#python3 ../csv-merge.py ${TESTNAME}_summary.csv *${TESTNAME}*.csv
+#cp ${TESTNAME}_summary.csv ${TESTNAME}_summary_original.csv
+#head -n 1200 ${TESTNAME}_summary.csv > ${TESTNAME}_summary_for_upload.csv
+#../upload.sh $UPLOAD_GDRIVE $TESTNAME ${TESTNAME}_summary_for_upload.csv
 echo -e "finish test: $TESTNAME"

@@ -147,10 +147,7 @@ public:
 
     void start_accept()
     {
-        boost::system::error_code ec;
-        std::stringstream ss;
-        ss << acceptor_.local_endpoint(ec);
-        slsfs::log::log("tcp server start accepting {}", ss.str());
+        slsfs::log::log("tcp server start accepting :{}", acceptor_.local_endpoint().port());
         acceptor_.async_accept(
             [self=shared_from_this()] (boost::system::error_code const& error, tcp::socket socket) {
                 if (error)
@@ -159,13 +156,14 @@ public:
                     return;
                 }
 
+                self->start_accept();
+
                 auto accepted = std::make_shared<direct_client_connection<proxy_command>>(
                     self->io_context_,
                     std::move(socket),
                     self->proxy_command_);
 
                 accepted->start_read_header();
-                self->start_accept();
             });
     }
 };

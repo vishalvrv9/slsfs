@@ -9,8 +9,6 @@
 
 #include <oneapi/tbb/concurrent_map.h>
 
-#include <shared_mutex>
-
 namespace slsfs::client
 {
 
