@@ -8,6 +8,7 @@
 
 #include <oneapi/tbb/concurrent_hash_map.h>
 #include <boost/signals2.hpp>
+#include <boost/exception/diagnostic_information.hpp>
 
 #include <slsfs.hpp>
 #include <optional>
@@ -24,7 +25,6 @@ namespace
 using queue_map = oneapi::tbb::concurrent_hash_map<slsfs::uuid::uuid,
                                                    std::shared_ptr<boost::asio::io_context::strand>,
                                                    slsfs::uuid::hash_compare<slsfs::uuid::uuid>>;
-using queue_map_accessor = queue_map::accessor;
 
 //std::invocable<slsfs::base::buf(slsfsdf::storage_conf*, jsre::request_parser<base::byte> const&)>;
 template<typename Func>
@@ -38,7 +38,7 @@ concept StorageOperationConcept = requires(Func func)
 
 class proxy_command;
 
-using proxy_set = oneapi::tbb::concurrent_hash_map<std::shared_ptr<proxy_command>, int /* unused */>;
+using proxy_set = oneapi::tbb::concurrent_hash_map<boost::asio::ip::tcp::endpoint, std::shared_ptr<proxy_command>>;
 
 class proxy_command : public std::enable_shared_from_this<proxy_command>
 {
@@ -133,27 +133,26 @@ public:
             });
     }
 
-    template<typename Endpoint>
-    void start_connect(Endpoint endpoint)
+    void start_connect(boost::asio::ip::tcp::endpoint endpoint)
     {
-        boost::asio::async_connect(
-            socket_,
+        socket_.async_connect(
             endpoint,
-            [self=shared_from_this()] (boost::system::error_code const & ec, tcp::endpoint const& endpoint) {
-                self->socket_.set_option(tcp::no_delay(true));
+            [self=shared_from_this()] (boost::system::error_code const & ec) {
                 if (ec)
-                    slsfs::log::log("connect to proxy error: {}", ec.message());
-                else
                 {
-                    slsfs::log::log("connected. start write and listen");
-                    slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
-                    ptr->header.type = slsfs::pack::msg_t::worker_reg;
-                    ptr->header.gen();
-
-                    self->start_write(ptr);
-                    self->start_listen_commands();
-                    self->timer_reset();
+                    slsfs::log::log("connect to proxy error: {}", ec.message());
+                    return;
                 }
+                self->socket_.set_option(tcp::no_delay(true));
+
+                slsfs::log::log("connected. start write and listen");
+                slsfs::pack::packet_pointer ptr = std::make_shared<slsfs::pack::packet>();
+                ptr->header.type = slsfs::pack::msg_t::worker_reg;
+                ptr->header.gen();
+
+                self->start_write(ptr);
+                self->start_listen_commands();
+                self->timer_reset();
             });
     }
 
@@ -165,23 +164,19 @@ public:
         boost::asio::async_read(
             socket_, boost::asio::buffer(readbuf->data(), readbuf->size()),
             [self=this->shared_from_this(), readbuf] (boost::system::error_code ec, std::size_t /*length*/) {
-                //slsfs::log::log("start_listen_commands get cmd");
-
                 if (ec)
-                    slsfs::log::log<slsfs::log::level::error>("error listen command {}", ec.message());
-                else
                 {
-                    //slsfs::log::log("start_listen_commands cancel timer");
-
-                    //slsfs::log::log<slsfs::log::level::debug>("get cmd");
-                    slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
-                    pack->header.parse(readbuf->data());
-
-                    if (pack->header.type != slsfs::pack::msg_t::set_timer)
-                        self->recv_deadline_.cancel();
-
-                    self->start_listen_commands_body(pack);
+                    slsfs::log::log<slsfs::log::level::error>("error listen command {}", ec.message());
+                    return;
                 }
+
+                slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
+                pack->header.parse(readbuf->data());
+
+                if (pack->header.type != slsfs::pack::msg_t::set_timer)
+                    self->recv_deadline_.cancel();
+
+                self->start_listen_commands_body(pack);
             });
     }
 
@@ -192,70 +187,72 @@ public:
             socket_,
             boost::asio::buffer(read_buf->data(), read_buf->size()),
             [self=this->shared_from_this(), read_buf, pack] (boost::system::error_code ec, std::size_t length) {
-                if (not ec)
+                if (ec)
                 {
-                    pack->data.parse(length, read_buf->data());
+                    slsfs::log::log<slsfs::log::level::error>("start_listen_commands_body: "); // + ec.messag$
+                    return;
+                }
 
-                    switch (pack->header.type)
+                pack->data.parse(length, read_buf->data());
+
+                switch (pack->header.type)
+                {
+                case slsfs::pack::msg_t::proxyjoin:
+                {
+                    slsfs::log::log("switch proxy master");
+                    std::uint32_t addr;
+                    std::memcpy(&addr, pack->data.buf.data(), sizeof(addr));
+                    addr = slsfs::pack::ntoh(addr);
+                    boost::asio::ip::address_v4 new_host{addr};
+                    boost::asio::ip::port_type  new_port;
+                    std::memcpy(&new_port, pack->data.buf.data() + 4, sizeof(new_port));
+                    new_port = slsfs::pack::ntoh(new_port);
+
+                    boost::asio::ip::tcp::endpoint ep{new_host, new_port};
+
+                    if (proxy_set::accessor acc;
+                        !self->proxy_set_.find(acc, ep))
                     {
-                    case slsfs::pack::msg_t::proxyjoin:
-                    {
-                        slsfs::log::log("switch proxy master");
-                        std::uint32_t addr;
-                        std::memcpy(&addr, pack->data.buf.data(), sizeof(addr));
-                        addr = slsfs::pack::ntoh(addr);
-                        boost::asio::ip::address_v4 new_host{addr};
-                        boost::asio::ip::port_type  new_port;
-                        std::memcpy(&new_port, pack->data.buf.data() + 4, sizeof(new_port));
-                        new_port = slsfs::pack::ntoh(new_port);
+                        slsfs::log::log("try connect to {}", ep);
 
-                        boost::asio::ip::tcp::endpoint ep{new_host, new_port};
-                        {
-                            std::stringstream ss;
-                            ss << ep;
-                            slsfs::log::log("try connect to {}", ss.str());
-                        }
-
-                        std::list<boost::asio::ip::tcp::endpoint> ep_list {ep};
                         auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(
                             self->io_context_,
                             self->datastorage_conf_,
                             self->queue_map_,
                             self->proxy_set_);
 
-                        proxy_command_ptr->start_connect(ep_list);
-                        self->proxy_set_.emplace(proxy_command_ptr, 0);
-                        break;
+                        proxy_command_ptr->start_connect(ep);
+
+                        self->proxy_set_.emplace(ep, proxy_command_ptr);
                     }
-
-                    case slsfs::pack::msg_t::set_timer:
-                    {
-                        slsfs::pack::waittime_type duration_in_ms = 0;
-                        std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
-                        self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
-                        //slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
-                        break;
-                    }
-
-                    default:
-                        self->start_job(pack);
-                    }
-
-                    slsfs::pack::packet_pointer ok = std::make_shared<slsfs::pack::packet>();
-                    ok->header = pack->header;
-                    ok->header.type = slsfs::pack::msg_t::ack;
-
-                    slsfs::log::log<slsfs::log::level::debug>(fmt::format("ACK ok for: {}", pack->header.print()));
-
-                    self->start_write(ok);
-                    if (pack->header.type != slsfs::pack::msg_t::set_timer)
-                        self->last_update_ = now();
-
-                    self->timer_reset();
-                    self->start_listen_commands();
+                    break;
                 }
-                else
-                    slsfs::log::log<slsfs::log::level::error>("start_listen_commands_body: "); // + ec.messag$
+
+                case slsfs::pack::msg_t::set_timer:
+                {
+                    slsfs::pack::waittime_type duration_in_ms = 0;
+                    std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
+                    self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
+                    //slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
+                    break;
+                }
+
+                default:
+                    self->start_job(pack);
+                }
+
+                slsfs::pack::packet_pointer ok = std::make_shared<slsfs::pack::packet>();
+                ok->header = pack->header;
+                ok->header.type = slsfs::pack::msg_t::ack;
+
+                slsfs::log::log<slsfs::log::level::debug>(fmt::format("ACK ok for: {}", pack->header.print()));
+
+                self->start_write(ok);
+                if (pack->header.type != slsfs::pack::msg_t::set_timer)
+                    self->last_update_ = now();
+
+                self->timer_reset();
+                self->start_listen_commands();
             });
     }
 
@@ -277,7 +274,7 @@ public:
 
     void start_job(slsfs::pack::packet_pointer pack)
     {
-        queue_map_accessor it;
+        queue_map::accessor it;
         boost::asio::io_context::strand * ptr = nullptr;
         if (not queue_map_.find(it, slsfs::uuid::to_uuid(pack->header.key)))
         {

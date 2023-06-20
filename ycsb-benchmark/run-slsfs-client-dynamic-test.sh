@@ -2,15 +2,11 @@
 source start-proxy-args.sh;
 
 bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh;' &
 bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 TESTNAME="${MEMO}_${BACKEND_CONFIG_NAME}_T+${CLIENT_TESTNAME}_H+${#hosts[@]}_TH+${TOTAL_CLIENT}"
 echo "testname: $TESTNAME"
-
-for h in "${hosts[@]}"; do
-    ssh "$h" "bash -c 'pkill -f /tmp/slsfs-client-dynamic'" &
-done
 
 ssh proxy-1 docker rm -f proxy2&
 ssh proxy-2 docker rm -f proxy2&
@@ -26,8 +22,8 @@ wait < <(jobs -p);
 #
 #bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
-wait < <(jobs -p);
 
+bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;'
 hostparis=("proxy-1:12001")
 #           "proxy-2:12001"
 #           "proxy-3:12001"
@@ -36,8 +32,6 @@ hostparis=("proxy-1:12001")
 #           "zookeeper-3:12001");
 
 bash -c "cd slsfs-client-image-build; ./build.sh; ./transfer_images.sh"
-
-wait < <(jobs -p);
 
 #while curl https://localhost:10001/invokers -k 2>&1 | grep -q unhealthy; do
 #    echo 'waiting invoker restart'
@@ -88,8 +82,6 @@ wait < <(jobs -p);
 for h in "${hosts[@]}"; do
     ssh "$h" "docker stop slsfs-client" &
 done
-
-
 
 rm -rf $TESTNAME-result/;
 mkdir -p $TESTNAME-result;

@@ -70,13 +70,6 @@ int main(int argc, char *argv[])
     absl::zipf_distribution namedist(file_range, zipf_alpha);
     std::uniform_int_distribution<int> uniformdist(0, file_range), singledist(0, 255);
 
-    auto anyname = [&engine, &singledist] {
-        slsfs::pack::key_t t{};
-        for (slsfs::pack::unit_t& n : t)
-            n = singledist(engine);
-        return t;
-    };
-
     BOOST_LOG_TRIVIAL(info) << "starting test (thread=" << worker << ")";
     SCOPE_DEFER([]{ BOOST_LOG_TRIVIAL(info) << "end test"; });
     std::vector<std::jthread> pool;
@@ -86,10 +79,19 @@ int main(int argc, char *argv[])
 
     for (int i = 0; i < worker; i++)
         pool.emplace_back(
-            [total_times, worker, bufsize, start, anyname, total_duration, last_update, zookeeper_host, i] () mutable {
+            [total_times, worker, bufsize, start, total_duration, last_update, zookeeper_host, i, singledist] () mutable {
                 std::random_device rd;
                 int const seed = rd();
                 std::mt19937 engine(seed);
+
+                auto anyname =
+                    [&engine, &singledist] {
+                        slsfs::pack::key_t t{};
+                        for (slsfs::pack::unit_t& n : t)
+                            n = singledist(engine);
+                        return t;
+                    };
+
 
                 BOOST_LOG_TRIVIAL(info) << "thread id=" << i << " seed=" << seed;
 

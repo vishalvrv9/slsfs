@@ -54,7 +54,6 @@ int do_datafunction_with_proxy (
     tcp::resolver resolver(ioc);
     slsfsdf::server::proxy_set proxys;
     auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, conf, queue_map, proxys);
-    proxys.emplace(proxy_command_ptr, 0);
 
     std::string const proxyhost = input["proxyhost"].get<std::string>();
     std::string const proxyport = input["proxyport"].get<std::string>();
@@ -72,7 +71,9 @@ int do_datafunction_with_proxy (
             });
     }
 
-    proxy_command_ptr->start_connect(resolver.resolve(proxyhost, proxyport));
+    boost::asio::ip::tcp::endpoint proxy = *resolver.resolve(proxyhost, proxyport);
+    proxy_command_ptr->start_connect(proxy);
+    proxys.emplace(proxy, proxy_command_ptr);
 
     json output;
     output["original-request"] = input;
@@ -211,12 +212,19 @@ int do_datafunction(std::ostream &ow_out)
 
         return returnvalue;
     }
+    catch (boost::exception const & e)
+    {
+        slsfs::log::log("boost exception thrown {}", boost::diagnostic_information(e));
+        std::cerr << "input json " << input << std::endl;
+        std::cerr << "do function exception: " << boost::diagnostic_information(e) << std::endl;
+    }
     catch (std::exception const & e)
     {
-        slsfs::log::log(std::string("exception thrown ") + e.what());
+        slsfs::log::log("std exception thrown {}", boost::diagnostic_information(e));
         std::cerr << "input json " << input << std::endl;
         std::cerr << "do function exception: " << e.what() << std::endl;
     }
+
 
     return -1;
 }

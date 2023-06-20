@@ -18,20 +18,30 @@ class client
 {
     boost::asio::io_context& io_context_;
     zookeeper zoo_client_;
-    oneapi::tbb::concurrent_map<slsfs::uuid::uuid,
-                                std::shared_ptr<boost::asio::ip::tcp::socket>> proxys_;
-    std::shared_mutex proxy_mutex_;
+
+    using proxy_map =
+        oneapi::tbb::concurrent_map<slsfs::uuid::uuid,
+                                    std::shared_ptr<boost::asio::ip::tcp::socket>>;
+
+    // c++11 atomic_exchange solution instead of std::atomic<std::shared_ptr<proxy_map>>
+    std::shared_ptr<proxy_map> proxys_ = std::make_shared<proxy_map>();
 
     void reconfigure(std::vector<uuid::uuid> &new_sorted_proxy_list)
     {
         //BOOST_LOG_TRIVIAL(trace) << "on reconfigure";
         BOOST_LOG_TRIVIAL(info) << "proxy reconfigured. new proxy size = " << new_sorted_proxy_list.size();
+
+        auto new_proxy = std::make_shared<proxy_map>();
+
         for (uuid::uuid const & id : new_sorted_proxy_list)
         {
-            auto acc = proxys_.find(id);
-
-            if (acc != proxys_.end() && acc->second->is_open())
+            if (auto acc = proxys_->find(id);
+                acc != proxys_->end() && acc->second->is_open())
+            {
+                // copy the existing socket
+                new_proxy->emplace(*acc);
                 continue;
+            }
 
             boost::asio::ip::tcp::endpoint endpoint = zoo_client_.get_uuid(id.encode_base64());
             BOOST_LOG_TRIVIAL(trace) << "connecting to " << id << " " << endpoint;
@@ -41,7 +51,7 @@ class client
                 auto proxy_socket = std::make_shared<boost::asio::ip::tcp::socket> (io_context_);
                 proxy_socket->connect(endpoint);
 
-                proxys_.emplace(id, proxy_socket);
+                new_proxy->emplace(id, proxy_socket);
             }
             catch (boost::exception & e)
             {
@@ -51,40 +61,23 @@ class client
             }
         }
 
-        if (proxys_.size() != new_sorted_proxy_list.size())
-        {
-            std::sort(new_sorted_proxy_list.begin(), new_sorted_proxy_list.end());
-
-            // remove all id not in the new_sorted_proxy_list
-            // only need at unsafe erase
-            std::unique_lock lock(proxy_mutex_);
-            for (auto it = proxys_.begin(); it != proxys_.end(); )
-            {
-                if (std::binary_search(new_sorted_proxy_list.begin(),
-                                       new_sorted_proxy_list.end(),
-                                       it->first))
-                    ++it;
-                else
-                    it = proxys_.unsafe_erase(it);
-            }
-        }
+        std::atomic_exchange(&proxys_, new_proxy);
     }
 
     auto send_request(slsfs::pack::packet_pointer pack) -> std::string
     {
+        std::shared_ptr<proxy_map> proxys_copy = proxys_;
         auto pbuf = pack->serialize();
-        //BOOST_LOG_TRIVIAL(trace) << "send " << pack->header;
+        BOOST_LOG_TRIVIAL(trace) << "send " << pack->header;
 
         std::shared_ptr<boost::asio::ip::tcp::socket> selected = nullptr;
         {
-            std::shared_lock lock(proxy_mutex_);
-
-            auto it = proxys_.upper_bound(slsfs::uuid::up_cast(pack->header.key));
-            if (it == proxys_.end())
-                it = proxys_.begin();
+            auto it = proxys_copy->upper_bound(slsfs::uuid::up_cast(pack->header.key));
+            if (it == proxys_copy->end())
+                it = proxys_copy->begin();
 
             selected = it->second;
-            BOOST_LOG_TRIVIAL(trace) << "selected proxy " << selected->remote_endpoint() << " from " << proxys_.size() << " proxys";
+            BOOST_LOG_TRIVIAL(trace) << "selected proxy " << selected->remote_endpoint() << " from " << proxys_copy->size() << " proxys";
         }
 
         BOOST_LOG_TRIVIAL(trace) << "sending packet " << pack->header;
@@ -98,6 +91,8 @@ class client
 
         std::string data(resp->header.datasize, '\0');
         boost::asio::read(*selected, boost::asio::buffer(data.data(), data.size()));
+
+        BOOST_LOG_TRIVIAL(trace) << "request finished " << pack->header;
         return data;
     }
 
