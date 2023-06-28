@@ -16,7 +16,7 @@
 namespace slsfs::client
 {
 
-class zookeeper
+class zookeeper : public std::enable_shared_from_this<zookeeper>
 {
     net::io_context& io_context_;
     zk::client client_;
@@ -36,10 +36,8 @@ class zookeeper
 public:
     zookeeper(net::io_context& io, std::string const& zkhost):
         io_context_{io},
-        client_{zk::client::connect(zkhost).get()}
-    {
+        client_{zk::client::connect(zkhost).get()} {
         ::zoo_set_debug_level(loglevel);
-        start_watch();
     }
 
     template<typename OnReconfigure>
@@ -53,17 +51,17 @@ public:
 
         client_.watch_children("/slsfs/proxy").then(
             pool_,
-            [this] (zk::future<zk::watch_children_result> children) {
+            [self=shared_from_this()] (zk::future<zk::watch_children_result> children) {
                 auto&& res = children.get();
                 BOOST_LOG_TRIVIAL(trace) << "set watch ok";
 
                 res.next().then(
-                    pool_,
-                    [this, children=std::move(children)] (zk::future<zk::event> event) {
+                    self->pool_,
+                    [self=self->shared_from_this(), children=std::move(children)] (zk::future<zk::event> event) {
                         zk::event const & e = event.get();
                         BOOST_LOG_TRIVIAL(trace) << "watch event get: " << e.type();
-                        start_watch();
-                        reconfigure();
+                        self->start_watch();
+                        self->reconfigure();
                     });
             });
     }

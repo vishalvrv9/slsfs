@@ -18,7 +18,7 @@ public:
     }
 
     int get_ideal_worker_count(worker_set &) override {
-        return 2;
+        return worker_launch::default_pool_value_;
     }
 };
 

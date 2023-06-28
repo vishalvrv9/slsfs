@@ -1,11 +1,11 @@
 #!/bin/bash
 
 source avaliable-host.sh
-export hosts=("${hosts1[@]}")
+export hosts=("${hosts16[@]}")
 
-export EACH_CLIENT_ISSUE=1000000
-export TOTAL_CLIENT=1
-export TOTAL_TIME_AVAILABLE=10
+export EACH_CLIENT_ISSUE=1000
+export TOTAL_CLIENT=96
+export TOTAL_TIME_AVAILABLE=10000
 
 export QSIZE=1
 export QTEST=1
@@ -14,7 +14,7 @@ export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
 #change here
-export MEMO="directclient-x1-size-$QSIZE-test-$QTEST"
+export MEMO="directclient-Nxv6-3-size-$QSIZE-test-$QTEST"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -76,7 +76,10 @@ export POLICY_FILETOWORKER_ARGS=""
 export POLICY_LAUNCH=max-queue
 export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 
-export POLICY_FILETOWORKER=lowest-load
+#export POLICY_FILETOWORKER=lowest-load
+#export POLICY_FILETOWORKER_ARGS=""
+
+export POLICY_FILETOWORKER=random-assign
 export POLICY_FILETOWORKER_ARGS=""
 
 # [const-average-load]
@@ -84,8 +87,7 @@ export POLICY_FILETOWORKER_ARGS=""
 #export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 
 export POLICY_LAUNCH=fix-pool
-export POLICY_LAUNCH_ARGS=8:20 #average queue = 2kb
-
+export POLICY_LAUNCH_ARGS=10:16 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time

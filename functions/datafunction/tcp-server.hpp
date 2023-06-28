@@ -6,6 +6,10 @@
 
 #include <slsfs.hpp>
 
+#include <boost/lexical_cast.hpp>
+
+#include <filesystem>
+
 namespace slsfsdf::server
 {
 
@@ -69,8 +73,7 @@ public:
                 case slsfs::pack::msg_t::worker_response:
                 case slsfs::pack::msg_t::trigger_reject:
                 {
-                    slsfs::log::log<slsfs::log::level::error>("packet error from endpoint");
-                    // BOOST_LOG_TRIVIAL(error) << "packet error " << pack->header << " from endpoint: " << self->socket_.remote_endpoint();
+                    slsfs::log::log<slsfs::log::level::error>("packet error from endpoint {}", boost::lexical_cast<std::string>(self->socket_.remote_endpoint()));
                     slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
                     resp->header = pack->header;
                     resp->header.type = slsfs::pack::msg_t::err;
@@ -152,7 +155,14 @@ public:
             [self=shared_from_this()] (boost::system::error_code const& error, tcp::socket socket) {
                 if (error)
                 {
-                    slsfs::log::log<slsfs::log::level::error>("error accepting connections");
+                    std::filesystem::directory_iterator it{"/proc/self/fd"};
+
+                    int const count = std::count_if(
+                        it, std::filesystem::directory_iterator(),
+                        [](std::filesystem::directory_entry const& entry) { return entry.is_regular_file(); });
+
+                    slsfs::log::log<slsfs::log::level::error>("error accepting connections: {}. opened file count: {}",
+                                                              error.message(), count);
                     return;
                 }
 

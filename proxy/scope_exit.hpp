@@ -7,7 +7,7 @@
 
 #define BASIC_SCOPE_EXIT_CONCAT_IMPL(x, y) x##y
 #define BASIC_SCOPE_EXIT_CONCAT(x, y) BASIC_SCOPE_EXIT_CONCAT_IMPL(x, y)
-#define SCOPE_DEFER ::basic::scope_exit BASIC_SCOPE_EXIT_CONCAT(UNIQUE_VAR_, __LINE__) = \
+#define SCOPE_DEFER [[maybe_unused]] ::basic::scope_exit BASIC_SCOPE_EXIT_CONCAT(UNIQUE_VAR_, __LINE__) = \
         ::basic::make_scope_exit
 
 

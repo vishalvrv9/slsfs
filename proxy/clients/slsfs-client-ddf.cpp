@@ -36,8 +36,8 @@ void start_test(boost::program_options::variables_map &vm)
     auto start = std::chrono::system_clock::now();
     std::atomic<int> counter = 0;
 
-    BOOST_LOG_TRIVIAL(info) << "starting test (thread=" << worker << ")";
-    std::vector<std::thread> pool;
+    BOOST_LOG_TRIVIAL(info) << "starting test (thread=" << worker << "); bufsize=(" << bufsize << ")";
+    std::vector<std::jthread> pool;
 
     for (int i = 0; i < worker; i++)
         pool.emplace_back(
@@ -46,55 +46,70 @@ void start_test(boost::program_options::variables_map &vm)
                 int const seed = rd();
                 std::mt19937 engine(seed);
 
+                //auto anyname =
+                //    [&engine, &singledist] {
+                //        slsfs::pack::key_t t{};
+                //        for (slsfs::pack::unit_t& n : t)
+                //            n = singledist(engine);
+                //        return t;
+                //    };
+
                 auto anyname =
                     [&engine, &singledist] {
                         slsfs::pack::key_t t{};
-                        for (slsfs::pack::unit_t& n : t)
-                            n = singledist(engine);
+                        t[0] = singledist(engine);
+                        t[1] = singledist(engine);
                         return t;
                     };
 
                 BOOST_LOG_TRIVIAL(info) << "thread id=" << i << " seed=" << seed;
 
-                do
+                try
                 {
-                    try
+                    boost::asio::io_context io_context;
+                    boost::asio::signal_set listener(io_context, SIGINT, SIGTERM);
+                    listener.async_wait(
+                        [&io_context] (boost::system::error_code const&, int signal_number) {
+                            BOOST_LOG_TRIVIAL(info) << "Stopping... sig=" << signal_number;
+                            io_context.stop();
+                        });
+
+                    slsfs::client::direct_client slsfs_client{io_context, zookeeper_host};
+
+                    std::string buf(bufsize, 'A');
+                    for (int i = 0; i < total_times; i++)
                     {
-                        boost::asio::io_context io_context;
-                        slsfs::client::direct_client slsfs_client{io_context, zookeeper_host};
-
-                        std::string buf(bufsize, 'A');
-                        for (int i = 0; i < total_times/worker; i++)
+                        using namespace std::chrono_literals;
+                        if (std::chrono::system_clock::now() - start > total_duration * 1s)
                         {
-                            using namespace std::chrono_literals;
-                            if (std::chrono::system_clock::now() - start > total_duration * 1s)
-                            {
-                                BOOST_LOG_TRIVIAL(info) << "Timeout (" << total_duration << "s). Closing client\n";
-                                return;
-                            }
-
-                            slsfs::pack::packet_pointer request = slsfs::client::packet_create::write(anyname(), buf);
-                            std::string response = slsfs_client.send(request);
-                            BOOST_LOG_TRIVIAL(trace) << response << "\n";
-                            counter++;
+                            BOOST_LOG_TRIVIAL(info) << "Timeout (" << total_duration << "s). Closing client\n";
+                            return;
                         }
-                        return;
-                    } catch (boost::exception const& e) {
-                        BOOST_LOG_TRIVIAL(error) << "boost exception catched at client " << i << " " << boost::diagnostic_information(e);
+
+                        slsfs::pack::packet_pointer request = slsfs::client::packet_create::write(anyname(), buf);
+                        std::string response = slsfs_client.send(request);
+
+                        if (response.empty())
+                            continue;
+
+                        BOOST_LOG_TRIVIAL(trace) << response << "\n";
+                        counter++;
                     }
-                } while (true);
+                    return;
+                } catch (boost::exception const& e) {
+                    BOOST_LOG_TRIVIAL(error) << "boost exception catched at client " << i << " " << boost::diagnostic_information(e);
+                }
             });
 
-    for (std::thread& th : pool)
+    for (std::jthread& th : pool)
         th.join();
 
     auto end = std::chrono::system_clock::now();
-
     double const duration_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
 
-    BOOST_LOG_TRIVIAL(info) << "Finish " << counter.load() * bufsize << " in " << duration_us / 1000 << "ms";
+    BOOST_LOG_TRIVIAL(info) << "Finish " << counter.load() << " requests in " << duration_us / 1000 << "ms";
     BOOST_LOG_TRIVIAL(info) << "Throughput = "
-                            << counter.load() * bufsize / duration_us * 1000000;
+                            << counter.load() * bufsize / duration_us * 1000000 / 1000 << " KBps";
 }
 
 

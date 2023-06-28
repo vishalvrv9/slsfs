@@ -66,7 +66,7 @@ int do_datafunction_with_proxy (
         function_timeout->expires_from_now(298s);
         function_timeout->async_wait(
             [proxy_command_ptr, function_timeout] (boost::system::error_code ec) {
-                slsfs::log::log("time to die. closing connection. ec={}", ec.message());
+                slsfs::log::log<slsfs::log::level::info>("time to die. closing connection. ec={}", ec.message());
                 proxy_command_ptr->close();
             });
     }
@@ -206,7 +206,6 @@ int do_datafunction(std::ostream &ow_out)
         for (unsigned int i = 0; i < worker; i++)
             threadpool.emplace_back([&ioc] { ioc.run(); });
 
-
         for (std::thread& th : threadpool)
             th.join();
 
@@ -220,11 +219,10 @@ int do_datafunction(std::ostream &ow_out)
     }
     catch (std::exception const & e)
     {
-        slsfs::log::log("std exception thrown {}", boost::diagnostic_information(e));
+        slsfs::log::log("std exception thrown {}", e.what());
         std::cerr << "input json " << input << std::endl;
         std::cerr << "do function exception: " << e.what() << std::endl;
     }
-
 
     return -1;
 }
@@ -245,14 +243,14 @@ int main(int argc, char *argv[])
     std::ostream ow_out {&fpstream};
     while (true)
     {
-        slsfs::log::log("starting as action loop");
+        slsfs::log::log<slsfs::log::level::info>("starting as action loop");
         int error = slsfsdf::do_datafunction(ow_out);
         if (error != 0)
             return error;
     }
     return 0;
 #else
-    std::cerr << "starting as normal" << std::endl;
+    slsfs::log::log<slsfs::log::level::info>("starting as normal");
     return slsfsdf::do_datafunction(std::cout);
     //slsfs::log::push_logs();
 #endif

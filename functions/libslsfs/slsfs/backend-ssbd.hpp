@@ -12,8 +12,11 @@
 
 #include <oneapi/tbb/concurrent_hash_map.h>
 
+#include <boost/exception/all.hpp>
+#include <boost/exception/error_info.hpp>
 #include <boost/signals2.hpp>
 #include <boost/asio.hpp>
+#include <boost/lexical_cast.hpp>
 
 namespace slsfs::backend
 {
@@ -72,7 +75,7 @@ class ssbd
 {
     boost::asio::io_context& io_context_;
     boost::asio::ip::tcp::socket socket_;
-    std::string const host_, port_;
+    boost::asio::ip::tcp::endpoint const endpoint_;
     using jobmap =
         oneapi::tbb::concurrent_hash_map<
             leveldb_pack::packet_header,
@@ -85,7 +88,7 @@ class ssbd
     socket_writer::socket_writer<leveldb_pack::packet, std::vector<leveldb_pack::unit_t>> writer_;
 
     void start_read_loop() {
-        std::call_once(read_started_flag_, [this](){ start_read_one(); });
+        std::call_once(read_started_flag_, [this] { start_read_one(); });
     }
 
     void start_read_one()
@@ -100,8 +103,8 @@ class ssbd
             (boost::system::error_code const& ec, std::size_t transferred_size) {
                 if (ec)
                 {
-                    log::log("ssbd backend: {} have boost error: {} on start_read_one() header {}",
-                             host_, ec.message(), resp->header.print());
+                    log::log<log::level::error>("ssbd backend: {} have boost error: {} on start_read_one() header {}",
+                             boost::lexical_cast<std::string>(endpoint_), ec.message(), resp->header.print());
                     return;
                 }
 
@@ -124,7 +127,7 @@ class ssbd
 
                 if (ec)
                 {
-                    log::log("ssbd backend: {} have boost error: {} on start_read_one() -> body header {}", host_, ec.message(), resp->header.print());
+                    log::log<log::level::error>("ssbd backend: {} have boost error: {} on start_read_one() -> body header {}", boost::lexical_cast<std::string>(endpoint_), ec.message(), resp->header.print());
                     return;
                 }
 
@@ -146,7 +149,7 @@ class ssbd
 public:
     ssbd(boost::asio::io_context& io, std::string const& host, std::string const& port):
         io_context_{io}, socket_(io),
-        host_{host}, port_{port},
+        endpoint_{boost::asio::ip::make_address_v4(host), static_cast<std::uint16_t>(std::stoi(port))},
         writer_{io, socket_} {}
 
     using handler     = std::function<void(base::buf)>;
@@ -154,9 +157,15 @@ public:
 
     void connect()
     {
-        log::log("connect to {}:{}", host_, port_);
-        boost::asio::ip::tcp::resolver resolver (io_context_);
-        boost::asio::connect (socket_, resolver.resolve(host_, port_));
+        log::log("connect to {}", boost::lexical_cast<std::string>(endpoint_));
+
+        try {
+            socket_.connect(endpoint_);
+        } catch (boost::exception & e) {
+            using host_endpoint = boost::error_info<struct ssbd_connect_host, boost::asio::ip::tcp::endpoint>;
+            e << host_endpoint{endpoint_};
+            throw;
+        }
     }
 
     void close()
@@ -182,8 +191,8 @@ public:
                 newjob->mark_started();
                 if (ec)
                 {
-                    log::log("error {} on {}; start_send_request: {}",
-                             ec.message(), host_, request->header.print());
+                    log::log<log::level::error>("error {} on {}; start_send_request: {}",
+                             ec.message(), boost::lexical_cast<std::string>(endpoint_), request->header.print());
                     newjob->cancel();
                     return;
                 }

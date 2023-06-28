@@ -15,7 +15,7 @@ namespace slsfs::client
 class client
 {
     boost::asio::io_context& io_context_;
-    zookeeper zoo_client_;
+    std::shared_ptr<zookeeper> zoo_client_;
 
     using proxy_map =
         oneapi::tbb::concurrent_map<slsfs::uuid::uuid,
@@ -41,7 +41,7 @@ class client
                 continue;
             }
 
-            boost::asio::ip::tcp::endpoint endpoint = zoo_client_.get_uuid(id.encode_base64());
+            boost::asio::ip::tcp::endpoint endpoint = zoo_client_->get_uuid(id.encode_base64());
             BOOST_LOG_TRIVIAL(trace) << "connecting to " << id << " " << endpoint;
 
             try
@@ -78,40 +78,57 @@ class client
             BOOST_LOG_TRIVIAL(trace) << "selected proxy " << selected->remote_endpoint() << " from " << proxys_copy->size() << " proxys";
         }
 
-        BOOST_LOG_TRIVIAL(trace) << "sending packet " << pack->header;
-        boost::asio::write(*selected, boost::asio::buffer(pbuf->data(), pbuf->size()));
+        try
+        {
+            BOOST_LOG_TRIVIAL(debug) << "sending packet to proxy " << pack->header;
+            boost::asio::write(*selected, boost::asio::buffer(pbuf->data(), pbuf->size()));
 
-        slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-        std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
-        boost::asio::read(*selected, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
+            slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
+            std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
+            boost::asio::read(*selected, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
 
-        resp->header.parse(headerbuf.data());
+            resp->header.parse(headerbuf.data());
 
-        std::string data(resp->header.datasize, '\0');
-        boost::asio::read(*selected, boost::asio::buffer(data.data(), data.size()));
+            std::string data(resp->header.datasize, '\0');
+            boost::asio::read(*selected, boost::asio::buffer(data.data(), data.size()));
 
-        BOOST_LOG_TRIVIAL(trace) << "request finished " << pack->header;
-        return data;
+            BOOST_LOG_TRIVIAL(trace) << "request finished " << pack->header;
+            return data;
+        }
+        catch (boost::exception& e)
+        {
+            using host_endpoint = boost::error_info<struct proxy_endpoint, boost::asio::ip::tcp::endpoint>;
+            e << host_endpoint{selected->remote_endpoint()};
+            throw;
+        }
     }
 
 
 public:
     client(boost::asio::io_context& io, std::string const& zkhost):
-        io_context_{io}, zoo_client_{io, zkhost}
+        io_context_{io}, zoo_client_{std::make_shared<zookeeper>(io, zkhost)}
     {
-        zoo_client_.bind_reconfigure(
+        zoo_client_->bind_reconfigure(
             [this](std::vector<uuid::uuid> &list) { reconfigure(list); });
-        zoo_client_.reconfigure();
+        zoo_client_->reconfigure();
+        zoo_client_->start_watch();
     }
 
     auto send(slsfs::pack::packet_pointer pack) -> std::string
     {
+        int retry_count = 0;
         do
         {
             try {
                 return send_request(pack);
-            } catch (boost::system::system_error const& e) {
-                BOOST_LOG_TRIVIAL(error) << "getin' system error when sending request. retry. " << boost::diagnostic_information(e);
+            } catch (boost::exception const& e) {
+                if (retry_count++ > 3)
+                {
+                    BOOST_LOG_TRIVIAL(error) << "no more retry " << boost::diagnostic_information(e);
+                    throw;
+                }
+
+                BOOST_LOG_TRIVIAL(error) << "getting system error when sending request. retry. " << boost::diagnostic_information(e);
             }
         } while (true);
         return "";

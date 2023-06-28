@@ -75,33 +75,30 @@ auto init(char const * &signature)
     info.start = std::chrono::high_resolution_clock::now();
     info.signature = std::addressof(signature);
 
-    detail::logstring(fmt::format("{} unixtime",
-                                  std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                      info.start.time_since_epoch()).count()));
+    detail::logstring<level::info>(fmt::format("{} unixtime",
+                                               std::chrono::duration_cast<std::chrono::nanoseconds>(
+                                                   info.start.time_since_epoch()).count()));
     return info;
 }
 
 template<level Level = level::trace, typename ... Args>
 void log(fmt::format_string<Args...> fmt, Args&& ... args)
 {
-    if constexpr (detail::global_info::current_level <= Level)
-        detail::logstring(fmt::format(fmt, std::forward<Args>(args)...));
+    detail::logstring<Level>(fmt::format(fmt, std::forward<Args>(args)...));
     return;
 }
 
 template<level Level = level::trace>
 void log(std::string const& str)
 {
-    if constexpr (detail::global_info::current_level <= Level)
-        detail::logstring(str);
+    detail::logstring<Level>(str);
     return;
 }
 
 template<level Level = level::trace>
 void log(char const* str)
 {
-    if constexpr (detail::global_info::current_level <= Level)
-        detail::logstring(str);
+    detail::logstring<Level>(str);
     return;
 }
 

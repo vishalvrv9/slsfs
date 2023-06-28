@@ -41,15 +41,15 @@ public:
     std::uint32_t data_size;
 
 
-    cache_entry(slsfs::pack::key_t key, std::uint32_t b_id, std::uint32_t datasize){
+    cache_entry(slsfs::pack::key_t key, std::uint32_t b_id, std::uint32_t datasize)
+    {
         timestamp = std::chrono::high_resolution_clock::now();
         file_key = key;
         block_id = b_id;
         data_size = datasize;
     }
 
-    bool operator== (const cache_entry& rhs) const
-    {
+    bool operator== (const cache_entry& rhs) const {
         return this->file_key == rhs.file_key && this->block_id == rhs.block_id;
     }
 };

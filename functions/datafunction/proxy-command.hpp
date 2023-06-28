@@ -62,7 +62,7 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     std::uint16_t server_port_ = 2000;
     std::shared_ptr<tcp_server> tcp_server_ = nullptr;
 
-    cache::cache cache_engine_{100, "LRU"};
+//    cache::cache cache_engine_{100, "LRU"};
 
     static
     auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
@@ -136,7 +136,7 @@ public:
             pack,
             [self=shared_from_this()] (boost::system::error_code ec, std::size_t length) {
                 self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
-                slsfs::log::log("timer_reset: send shutdown");
+                slsfs::log::log<slsfs::log::level::info>("timer_reset: send shutdown");
                 std::exit(0);
             });
     }
@@ -148,7 +148,7 @@ public:
             [self=shared_from_this()] (boost::system::error_code const & ec) {
                 if (ec)
                 {
-                    slsfs::log::log("connect to proxy error: {}", ec.message());
+                    slsfs::log::log<slsfs::log::level::error>("connect to proxy error: {}", ec.message());
                     return;
                 }
                 self->socket_.set_option(tcp::no_delay(true));
@@ -182,7 +182,7 @@ public:
         boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query, ec);
         boost::asio::ip::tcp::resolver::iterator end;
 
-        slsfs::log::log("my ip is ", it->endpoint().address().to_string());
+        slsfs::log::log("my ip is {}", it->endpoint().address().to_string());
 
         if (ec)
             return {};
@@ -194,6 +194,7 @@ public:
     {
         //slsfs::log::log("start_listen_commands called");
         auto readbuf = std::make_shared<std::array<slsfs::pack::unit_t, slsfs::pack::packet_header::bytesize>>();
+
 
         boost::asio::async_read(
             socket_, boost::asio::buffer(readbuf->data(), readbuf->size()),
