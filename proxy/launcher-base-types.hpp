@@ -75,6 +75,9 @@ class reporter : public policy::info
         basic::time_point start_time = basic::now();
         basic::time_point end_time   = start_time;
         std::atomic<unsigned int> finished_job_count = 0;
+        bool cache_transfer = false;
+        std::atomic<std::uint32_t> cache_hits = 0;
+        std::atomic<std::uint32_t> cache_evictions = 0;
         worker_info(std::chrono::nanoseconds duration): start_duration{duration} {}
     };
 
@@ -115,10 +118,10 @@ public:
         for (auto && [ptr, info] : worker_info_map_)
         {
             json dfstat;
+            dfstat["start_time"] = info.start_time.time_since_epoch().count();
             dfstat["start_duration"] = info.start_duration.count();
 
             using namespace std::chrono_literals;
-
             std::chrono::nanoseconds duration = info.end_time - info.start_time;
             if (duration == 0ns)
                 duration = (basic::now() - info.start_time);
@@ -162,7 +165,7 @@ public:
         pending_worker_timestamps_.push(basic::now());
     }
 
-    void registered_a_new_worker(df::worker * ptr) override
+    void registered_a_new_worker(df::worker * ptr, bool cache_transfer)
     {
         basic::time_point started_time;
         pending_worker_timestamps_.try_pop(started_time);
@@ -171,14 +174,24 @@ public:
         worker_count_.fetch_add(1, std::memory_order_relaxed);
 
         worker_info_map_.emplace(ptr->worker_id_, basic::now() - started_time);
+
+        worker_info_map_accessor it;
+        if (worker_info_map_.find(it, ptr->worker_id_))
+        {
+            it->second.cache_transfer = cache_transfer;
+        }
     }
 
-    void deregistered_a_worker(df::worker * ptr) override
+    void deregistered_a_worker(df::worker * ptr, std::uint32_t cache_hits, std::uint32_t cache_evictions)
     {
         worker_count_.fetch_sub(1, std::memory_order_relaxed);
         worker_info_map_accessor it;
         if (worker_info_map_.find(it, ptr->worker_id_))
+        {
             it->second.end_time = basic::now();
+            it->second.cache_hits = cache_hits;
+            it->second.cache_evictions = cache_evictions;
+        }
     }
 };
 

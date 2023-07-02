@@ -4,6 +4,9 @@
     "proxyhost": "192.168.0.135",
     "proxyport": "12001",
     "blocksize": 4096,
+    "cachesize": 118000000,
+    "caching": false,
+    "cache-policy": "LRU",
     "storagetype": "ssbd",
     "storageconfig": {
         "hosts": [

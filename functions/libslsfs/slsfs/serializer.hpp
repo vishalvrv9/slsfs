@@ -50,6 +50,7 @@ enum class msg_t: unit_t
     ack = 3,
     proxyjoin = 4,
     set_timer = 5,
+    cache_transfer = 6,
 
     worker_reg = 8,
     worker_dereg = 9,
@@ -97,6 +98,11 @@ auto operator << (std::ostream &os, msg_t const& msg) -> std::ostream &
     case msg_t::worker_reg:
     {
         os << "W_REG";
+        break;
+    }
+    case msg_t::cache_transfer:
+    {
+        os << "CACHE";
         break;
     }
     case msg_t::worker_dereg:

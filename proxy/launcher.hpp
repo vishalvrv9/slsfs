@@ -25,6 +25,15 @@ concept CanResolveZookeeper = requires(T t)
         -> std::convertible_to<net::ip::tcp::endpoint>;
 };
 
+
+struct transfer_request
+{
+    std::vector<slsfs::pack::packet_header> file_bindings;
+    slsfs::pack::packet_pointer cache_tables;
+};
+
+using transfer_queue = oneapi::tbb::concurrent_queue<transfer_request>;
+
 // Component responsible for launching jobs and workers
 class launcher
 {
@@ -32,6 +41,7 @@ class launcher
     net::io_context::strand launcher_strand_;
 
     worker_set worker_set_;
+    transfer_queue transfer_requests_;
 
     uuid::uuid const& id_;
     std::string const announce_host_;
@@ -132,18 +142,66 @@ public:
         launcher_policy_.worker_config_ = worker_config(std::forward<Args>(args)...);
     }
 
+    auto get_fileids_from_transfer(slsfs::pack::packet_pointer cache_table)
+        -> std::vector<pack::packet_header>
+    {
+        std::vector<pack::packet_header> toReturn;
+
+        for (auto it = cache_table->data.buf.begin(); it < cache_table->data.buf.end(); )
+        {
+            pack::packet_header ph;
+            std::copy_n(it, 32, ph.key.begin());
+            std::advance(it, 32);
+            it = std::find (it, cache_table->data.buf.end(), ' ');
+            it++;
+            toReturn.push_back(ph);
+        }
+        return toReturn;
+    }
+
     void add_worker (tcp::socket socket, [[maybe_unused]] pack::packet_pointer worker_info)
     {
         auto worker_ptr = std::make_shared<df::worker>(io_context_, std::move(socket), *this);
-        bool ok = worker_set_.emplace(worker_ptr, 0);
-
         BOOST_LOG_TRIVIAL(info) << "Get new worker [" << worker_ptr->id_ << "]. Active worker count: " << worker_set_.size();
 
+        bool ok = worker_set_.emplace(worker_ptr, 0);
         if (not ok)
             BOOST_LOG_TRIVIAL(error) << "Emplace worker not success";
 
-        launcher_policy_.registered_a_new_worker(worker_ptr.get());
+        bool cache_transfer = false;
+        launcher_policy_.registered_a_new_worker(worker_ptr.get(), cache_transfer);
         worker_ptr->start_read_header();
+
+        transfer_request pending_transfer;
+        if (transfer_requests_.try_pop(pending_transfer))
+        {
+            BOOST_LOG_TRIVIAL(trace) << "(launcher.add_worker) found pending transfer request, attaching to new worker";
+            for (slsfs::pack::packet_header const& file_binding : pending_transfer.file_bindings)
+            {
+                fileid_map::const_accessor acc;
+                if (fileid_to_worker().find(acc, file_binding))
+                {
+                    if (!acc->second->is_valid())
+                    {
+                        fileid_to_worker().emplace(file_binding, worker_ptr);
+                        BOOST_LOG_TRIVIAL(trace) << "(launcher.add_worker) adding a file_binding";
+                        continue;
+                    }
+                    BOOST_LOG_TRIVIAL(trace) << "(launcher.add_worker) file_binding already assigned";
+                }
+                else
+                {
+                    BOOST_LOG_TRIVIAL(trace) << "(launcher.add_worker) adding a file_binding";
+                    fileid_to_worker().emplace(file_binding, worker_ptr);
+                }
+            }
+            BOOST_LOG_TRIVIAL(trace) << "(launcher.add_worker) sending cache transfer request to new worker";
+            pending_transfer.cache_tables->header.type = slsfs::pack::msg_t::cache_transfer;
+            worker_ptr->start_write(pending_transfer.cache_tables);
+            cache_transfer = true;
+        }
+
+        launcher_policy_.registered_a_new_worker(worker_ptr.get(), cache_transfer);
     }
 
     void on_worker_reschedule (job_ptr job)
@@ -153,10 +211,28 @@ public:
         reschedule (job);
     }
 
-    void on_worker_close (df::worker_ptr worker)
+    void on_worker_close (df::worker_ptr worker, slsfs::pack::packet_pointer to_transfer)
     {
+        std::uint32_t cache_hits = 0;
+        std::uint32_t cache_evictions = 0;
+
+        if (to_transfer != nullptr)
+        {
+            std::memcpy(&cache_hits, to_transfer->data.buf.data() + to_transfer->data.buf.size() - 8, 4);
+            std::memcpy(&cache_evictions, to_transfer->data.buf.data() + to_transfer->data.buf.size() - 4, 4);
+
+            to_transfer->data.buf.erase(
+                to_transfer->data.buf.begin() + to_transfer->data.buf.size() - 8, to_transfer->data.buf.end());
+
+            std::vector<slsfs::pack::packet_header> file_bindings =
+            get_fileids_from_transfer(to_transfer);
+
+            BOOST_LOG_TRIVIAL(debug) << "(launcher.on_worker_close) queueing a transfer request total file bindings: "<< file_bindings.size();
+            transfer_requests_.push(transfer_request(file_bindings, to_transfer));
+        }
+
         worker_set_.erase(worker);
-        launcher_policy_.deregistered_a_worker(worker.get());
+        launcher_policy_.deregistered_a_worker(worker.get(), cache_hits, cache_evictions);
     }
 
     void on_worker_finished_a_job (df::worker* worker, job_ptr job) {

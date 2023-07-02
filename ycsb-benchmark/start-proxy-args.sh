@@ -74,6 +74,10 @@ export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:4000:1000:50
 
+export ENABLE_CACHE="--enable-cache"
+export CACHE_SIZE="113" #MB
+export CACHE_POLICY="LRU"
+
 export INITINT=1;
 export VERBOSE='-v'
 export MAX_FUNCTION_COUNT=15

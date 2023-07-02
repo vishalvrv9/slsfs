@@ -53,6 +53,9 @@ int main(int argc, char* argv[])
         ("policy-launch-args",       po::value<std::string>()->default_value(""),   "launch policy name extra args")
         ("policy-keepalive",         po::value<std::string>(),                      "keepalive policy name")
         ("policy-keepalive-args",    po::value<std::string>()->default_value(""),   "keepalive policy name extra args")
+        ("enable-cache",             po::bool_switch(),                             "enable cache (default=false)")
+        ("cache-size",               po::value<int>()->default_value(100),          "cache size (MB)")
+        ("cache-policy",             po::value<std::string>()->default_value(""),   "cache policy: [LRU]")
         ("worker-config",            po::value<std::string>(),                      "worker config json file path to use")
         ("max-function-count",       po::value<int>()->default_value(0),            "marks the max random function name to use")
         ("blocksize",                po::value<int>()->default_value(4096),         "worker config blocksize");
@@ -75,17 +78,20 @@ int main(int argc, char* argv[])
     int const verbosity = verbosity_values.size();
 
     slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
-    BOOST_LOG_TRIVIAL(trace) << "set verbosity=" << verbosity;
+    BOOST_LOG_TRIVIAL(debug) << "set verbosity=" << verbosity;
 
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
 
-    unsigned short const port     = vm["listen"].as<unsigned short>();
-    std::string const announce    = vm["announce"].as<std::string>();
-    std::string const save_report = vm["report"].as<std::string>();
-    int  const blocksize          = vm["blocksize"].as<int>();
-    bool const init_cluster       = vm["init"].as<bool>();
-    double const server_id_location = vm["server-id"].as<double>();
+    unsigned short const port         = vm["listen"].as<unsigned short>();
+    std::string    const announce     = vm["announce"].as<std::string>();
+    std::string    const save_report  = vm["report"].as<std::string>();
+    int            const blocksize    = vm["blocksize"].as<int>();
+    bool           const enable_cache = vm["enable-cache"].as<bool>();
+    int            const cache_size   = vm["cache-size"].as<int>() * 1024 * 1024;
+    std::string    const cache_policy = vm["cache-policy"].as<std::string>();
+    bool           const init_cluster = vm["init"].as<bool>();
+    double const server_id_location   = vm["server-id"].as<double>();
 
     slsfs::uuid::uuid server_id;
     if (0 <= server_id_location && server_id_location <= 1) // set the id according to fix location
@@ -108,7 +114,15 @@ int main(int argc, char* argv[])
 
         std::stringstream template_config;
         template_config << worker_configuration.rdbuf();
-        worker_config = (boost::format(template_config.str()) % announce % port % blocksize).str();
+
+        BOOST_LOG_TRIVIAL(trace) << "content of config: " << template_config.str();
+        worker_config = (boost::format(template_config.str())
+                         % announce
+                         % port
+                         % blocksize
+                         % (enable_cache? "true" : "false")
+                         % cache_size
+                         % cache_policy).str();
     }
 
     tcp_server server{ioc, port, server_id, announce, save_report};
@@ -147,6 +161,10 @@ int main(int argc, char* argv[])
     for(int i = 1; i < worker; i++)
         worker_threads.emplace_back([&ioc] { ioc.run(); });
     ioc.run();
+
+    // The destructor may not run in main(); join manually
+    for(std::jthread & th : worker_threads)
+        th.join();
 
     return EXIT_SUCCESS;
 }

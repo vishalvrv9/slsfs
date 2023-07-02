@@ -53,12 +53,16 @@ int do_datafunction_with_proxy (
     slsfsdf::server::queue_map queue_map;
     tcp::resolver resolver(ioc);
     slsfsdf::server::proxy_set proxys;
-    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(ioc, conf, queue_map, proxys);
 
+    bool const enable_cache = input["caching"].get<bool>();
+    int  const cache_size = input["cachesize"].get<int>();
+    std::string const cache_policy = input["cache-policy"].get<std::string>();
     std::string const proxyhost = input["proxyhost"].get<std::string>();
     std::string const proxyport = input["proxyport"].get<std::string>();
-
     slsfs::log::log("connect to {}:{}", proxyhost, proxyport);
+
+    auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(
+        ioc, conf, queue_map, proxys, enable_cache, cache_size, cache_policy);
 
     auto function_timeout = std::make_shared<boost::asio::steady_timer>(ioc);
     {

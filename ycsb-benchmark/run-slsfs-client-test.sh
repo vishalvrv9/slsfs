@@ -12,11 +12,12 @@ ssh zookeeper-2 docker rm -f proxy2&
 ssh zookeeper-3 docker rm -f proxy2&
 wait < <(jobs -p);
 
-#bash -c 'cd ../functions/datafunction; make function;' &
-#bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
-#bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
+bash -c 'cd ../functions/datafunction; make function;' &
+#bash -c 'source start-proxy-args.sh; cd ../proxy; make debug-from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1; start-proxy-remote proxy-2 noinit; start-proxy-remote proxy-3 noinit;' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make debug-from-docker; ./transfer_images.sh; cd -; start-proxy-remote proxy-1;' &
+bash -c "cd ../ssbd;  make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
-bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;' &
+#bash -c 'source start-proxy-args.sh; start-proxy-remote proxy-1;' &
 bash -c "cd ../ssbd; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 
 wait < <(jobs -p);
@@ -57,7 +58,7 @@ echo starting;
 
 for h in "${hosts[@]}"; do
     ssh "$h" "rm -f /tmp/$h-$TESTNAME*";
-    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
+    ssh "$h" "bash -c 'ulimit -n 8192; /tmp/slsfs-client --total-times ${EACH_CLIENT_ISSUE} --total-clients ${TOTAL_CLIENT} --total-duration ${TOTAL_TIME_AVAILABLE} --bufsize $BUFSIZE --zipf-alpha 1.2 ${UNIFORM_DIST} ${ENABLE_CACHE} --cache-size ${CACHE_SIZE} --cache-policy ${CACHE_POLICY} --result /tmp/$h-$TESTNAME --test-name $CLIENT_TESTNAME'" &
 done
 wait < <(jobs -p);
 

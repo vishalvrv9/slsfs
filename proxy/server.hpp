@@ -194,6 +194,7 @@ public:
                 case slsfs::pack::msg_t::set_timer:
                 case slsfs::pack::msg_t::proxyjoin:
                 case slsfs::pack::msg_t::err:
+                case slsfs::pack::msg_t::cache_transfer:
                 case slsfs::pack::msg_t::worker_dereg:
                 case slsfs::pack::msg_t::worker_push_request:
                 case slsfs::pack::msg_t::worker_response:

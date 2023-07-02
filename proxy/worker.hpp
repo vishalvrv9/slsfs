@@ -21,7 +21,7 @@ template<typename T>
 concept IsLauncher = requires(T l)
 {
     { l.on_worker_reschedule     (std::declval<launcher::job_ptr>())} -> std::convertible_to<void>;
-    { l.on_worker_close          (std::declval<worker_ptr>())       } -> std::convertible_to<void>;
+    { l.on_worker_close          (std::declval<worker_ptr>(), std::declval<pack::packet_pointer>())} -> std::convertible_to<void>;
     { l.on_worker_finished_a_job (std::declval<worker*>(), std::declval<launcher::job_ptr>())} -> std::convertible_to<void>;
 };
 
@@ -37,7 +37,7 @@ class worker : public std::enable_shared_from_this<worker>
     launcher::job_map started_jobs_;
 
     boost::signals2::signal<void (launcher::job_ptr)> on_worker_reschedule_;
-    boost::signals2::signal<void (worker_ptr)> on_worker_close_;
+    boost::signals2::signal<void (worker_ptr, pack::packet_pointer)> on_worker_close_;
     boost::signals2::signal<void (worker*, launcher::job_ptr)> on_worker_finished_a_job_;
 
 public:
@@ -53,7 +53,7 @@ public:
         writer_{io, socket_}
         {
             on_worker_reschedule_    .connect([&l] (launcher::job_ptr job) { l.on_worker_reschedule(job); });
-            on_worker_close_         .connect([&l] (worker_ptr p) { l.on_worker_close(p); });
+            on_worker_close_         .connect([&l] (worker_ptr p, pack::packet_pointer t) { l.on_worker_close(p, t); });
             on_worker_finished_a_job_.connect([&l] (worker* p, launcher::job_ptr job) { l.on_worker_finished_a_job(p, job); });
         }
 
@@ -61,17 +61,22 @@ public:
     void soft_close()   { valid_.store(false); }
     int  pending_jobs() { return started_jobs_.size(); }
 
-    void close()
+    void close(pack::packet_pointer to_transfer = nullptr)
     {
-        boost::system::error_code ec;
         valid_.store(false);
+
+        boost::system::error_code ec;
         socket_.shutdown(tcp::socket::shutdown_both, ec);
-        on_worker_close_(shared_from_this());
+
+        if (to_transfer)
+        {
+            BOOST_LOG_TRIVIAL(debug) << "(worker.close) passing cache table to launcher";
+            on_worker_close_(shared_from_this(), to_transfer);
+        }
 
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
         BOOST_LOG_TRIVIAL(info) << "worker [" << id_ << "] closed. Reschedule " << started_jobs_.size() << " jobs";
-
     }
 
     void start_read_header()
@@ -96,7 +101,7 @@ public:
                 switch (pack->header.type)
                 {
                 case pack::msg_t::worker_dereg:
-                    self->close();
+                    self->start_read_body(pack);
                     BOOST_LOG_TRIVIAL(trace) << "worker get worker_dereg" << pack->header;
                     break;
 
@@ -116,15 +121,14 @@ public:
                 case pack::msg_t::err:
                 case pack::msg_t::put:
                 case pack::msg_t::get:
+                case pack::msg_t::cache_transfer:
                 case pack::msg_t::worker_reg:
                 case pack::msg_t::worker_push_request:
                 case pack::msg_t::trigger:
                 case pack::msg_t::trigger_reject:
-                {
                     BOOST_LOG_TRIVIAL(error) << "worker receive a strange packet " << pack->header;
                     self->start_read_header();
                     break;
-                }
                 }
             });
     }
@@ -144,6 +148,12 @@ public:
                 }
 
                 pack->data.parse(length, read_buf->data());
+                if (pack->header.type == pack::msg_t::worker_dereg)
+                {
+                    self->close(pack);
+                    return;
+                }
+
                 BOOST_LOG_TRIVIAL(trace) << "worker start self->registered_job_";
                 self->on_worker_response(pack);
                 self->start_read_header();
