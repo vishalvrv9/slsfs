@@ -62,40 +62,16 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     queue_map& queue_map_;
     proxy_set& proxy_set_;
 
-    std::uint16_t server_port_ = 2000;
+    std::uint16_t const server_port_ = 2000;
     std::shared_ptr<tcp_server> tcp_server_ = nullptr;
 
-    bool const caching_;
-    int const cachesize_;
-    std::string const cache_policy_;
-    cache::cache cache_engine_;
-
-    static
-    auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
-    {
-        // Convert the time point to a duration since the epoch
-        std::chrono::duration<double> time_since_epoch = now.time_since_epoch();
-
-        // Convert the duration to a number of seconds
-        double seconds = time_since_epoch.count();
-
-        // Convert the number of seconds to a time_t object
-        std::time_t time = std::time_t(seconds);
-
-        // Convert the time_t object to a tm object
-        std::tm tm = *std::gmtime(&time);
-
-        // Create a stringstream and use put_time to format the tm object
-        std::stringstream ss;
-        ss << std::put_time(&tm, "%Y-%m-%d %H:%M:%S");
-
-        // Get the string from the stringstream
-        return ss.str();
-    }
+    bool const          enable_cache_;
+    std::uint32_t const cache_size_;
+    std::string const   cache_policy_;
+    cache::cache        cache_engine_;
 
     void timer_reset()
     {
-        //slsfs::log::log("timer_reset");
         recv_deadline_.cancel();
 
         std::chrono::steady_clock::time_point timeout_time = last_update_ + waittime_;
@@ -122,18 +98,18 @@ public:
                   queue_map& qm,
                   proxy_set& ps,
                   std::uint16_t server_port,
-                  bool caching,
-                  int cachesize,
+                  bool enable_cache,
+                  std::uint32_t cache_size,
                   std::string const& cache_policy)
         : io_context_{io_context}, socket_{io_context_}, recv_deadline_{io_context_},
           datastorage_conf_{conf}, writer_{io_context_, socket_},
           queue_map_{qm}, proxy_set_{ps},
           server_port_{server_port},
           tcp_server_{std::make_shared<tcp_server>(io_context_, *this, server_port)},
-          caching_{caching},
-          cachesize_{cachesize},
+          enable_cache_{enable_cache},
+          cache_size_{cache_size},
           cache_policy_{cache_policy},
-          cache_engine_{cachesize, cache_policy} {
+          cache_engine_{cache_size, cache_policy} {
         tcp_server_->start_accept();
     }
 
@@ -271,8 +247,8 @@ public:
                             self->queue_map_,
                             self->proxy_set_,
                             self->server_port_ + 1,
-                            self->caching_,
-                            self->cachesize_,
+                            self->enable_cache_,
+                            self->cache_size_,
                             self->cache_policy_);
 
                         proxy_command_ptr->start_connect(ep);
@@ -293,7 +269,8 @@ public:
                 case slsfs::pack::msg_t::cache_transfer:
                 {
                     slsfs::log::log("received cache_transfer");
-                    if (self->cache_engine_.eviction_policy == "LRU" || "FIFO")
+                    if (self->cache_engine_.eviction_policy_ == "LRU" ||
+                        self->cache_engine_.eviction_policy_ == "FIFO")
                     {
                         slsfs::log::log("executing cache_transfer");
                         self->cache_engine_.build_cache(pack->data.buf, self->datastorage_conf_);
@@ -504,7 +481,7 @@ public:
 
                         std::invoke(next, buf);
                         slsfs::log::log("storage perform write finished. write to cache");
-                        if (self->caching_)
+                        if (self->enable_cache_)
                             self->cache_engine_.write_to_cache(single_input, single_input.data());
                     });
             }
@@ -520,7 +497,7 @@ public:
                         [next=std::move(next), single_input, self=shared_from_this()]
                         (slsfs::base::buf buf) {
                             std::invoke(next, buf);
-                            if (self->caching_)
+                            if (self->enable_cache_)
                                 self->cache_engine_.write_to_cache(single_input, buf.data());
                         });
             }

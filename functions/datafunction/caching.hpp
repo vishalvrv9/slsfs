@@ -207,12 +207,15 @@ class cache
 
 
     // Block size and block limit
-    std::uint32_t fullsize_ = 4096;
-    std::uint32_t block_limit = 104857600; // 100 megabytes
-    std::atomic<std::uint32_t> block_counter = 0;
+    std::uint32_t const fullsize_ = 4096;
+    std::uint32_t const block_limit_ = 104857600; // 100 megabytes
+    std::atomic<std::uint32_t> block_counter_ = 0;
+public:
+    std::string eviction_policy_ = "LRU";
+private:
 
     // Metrics
-    long cache_hits = 0;
+    long cache_hits_ = 0;
 
     auto blocksize() -> std::uint32_t { return fullsize_; }
 
@@ -234,15 +237,13 @@ class cache
         return block_ids;
     }
 
-
 public:
-    cache(int cachesize, std::string policy) : lru_cache_(cachesize, caching_map_)
-    {
-        block_limit = cachesize;
-        eviction_policy = policy;
-        slsfs::log::log("(cache) cache size: {}, policy: {}", block_limit, eviction_policy);
+    cache(std::uint32_t const cachesize, std::string const& policy):
+        lru_cache_(cachesize, caching_map_),
+        block_limit_{cachesize},
+        eviction_policy_{policy} {
+        slsfs::log::log("(cache) cache size: {}, policy: {}", block_limit_, eviction_policy_);
     }
-    std::string eviction_policy = "LRU";
 
     ///////////////////////////// CACHE TRANSFER OPERATIONS ////////////////////////////////
 
@@ -308,7 +309,7 @@ public:
 
 
         std::array<std::uint8_t, 4> buf;
-        std::memcpy(buf.data(), &cache_hits, 4);
+        std::memcpy(buf.data(), &cache_hits_, 4);
 
         std::copy(buf.begin(), buf.end(), std::back_inserter(toReturn));
 
@@ -420,7 +421,7 @@ public:
                         {
                             slsfs::log::log("(caching.build_table) emplacing block");
                             acc->second.emplace(bid, data);
-                            block_counter += data.size();
+                            block_counter_ += data.size();
                         }
                     });
             }
@@ -453,7 +454,7 @@ public:
                     block_c++;
                     slsfs::log::log("(read_from_cache) Cache hit on block {}, size={}", block_id, block_acc->second.size());
 
-                    if (eviction_policy != "FIFO")
+                    if (eviction_policy_ != "FIFO")
                         lru_cache_.set(cache_entry(input.uuid(), block_id, block_acc->second.size()));
 
                     to_return.insert(
@@ -468,8 +469,8 @@ public:
                 }
             }
 
-            cache_hits++;
-            slsfs::log::log("(read_from_cache) Cache hit: {} blocks, hitss so far = {}", block_c, cache_hits);
+            cache_hits_++;
+            slsfs::log::log("(read_from_cache) Cache hit: {} blocks, hitss so far = {}", block_c, cache_hits_);
             return to_return;
         }
         // Case 3: CACHE MISS
@@ -534,7 +535,7 @@ public:
                 slsfs::log::log("(write_to_cache) emplacing block");
                 lru_cache_.set(cache_entry(input.uuid(), block_id, copy_size));
                 blocks.emplace(block_id, toEmplace);
-                block_counter += copy_size;
+                block_counter_ += copy_size;
             }
 
             caching_map_.emplace(input.uuid(), blocks);
