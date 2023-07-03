@@ -149,27 +149,27 @@ public:
             });
     }
 
-    void registered_a_new_worker(df::worker* worker_ptr)
+    void registered_a_new_worker(df::worker* worker_ptr, bool cache_transfer)
     {
         net::post(
             io_context_,
-            [this, worker_ptr] () {
+            [this, worker_ptr, cache_transfer] () {
                 keepalive_policy_   ->registered_a_new_worker(worker_ptr);
                 launch_policy_      ->registered_a_new_worker(worker_ptr);
                 filetoworker_policy_->registered_a_new_worker(worker_ptr);
-                reporter_            .registered_a_new_worker(worker_ptr);
+                reporter_            .registered_a_new_worker(worker_ptr, cache_transfer);
             });
     }
 
-    void deregistered_a_worker(df::worker* worker_ptr)
+    void deregistered_a_worker(df::worker* worker_ptr, std::uint32_t cache_hits, std::uint32_t cache_evictions)
     {
         net::post(
             io_context_,
-            [this, worker_ptr] () {
+            [this, worker_ptr, cache_hits, cache_evictions] () {
                 keepalive_policy_   ->deregistered_a_worker(worker_ptr);
                 launch_policy_      ->deregistered_a_worker(worker_ptr);
                 filetoworker_policy_->deregistered_a_worker(worker_ptr);
-                reporter_            .deregistered_a_worker(worker_ptr);
+                reporter_            .deregistered_a_worker(worker_ptr, cache_hits, cache_evictions);
             });
     }
 };

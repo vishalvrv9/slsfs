@@ -4,6 +4,9 @@
     "proxyhost": "%1%",
     "proxyport": "%2%",
     "blocksize":  %3%,
+    "caching":    %4%,
+    "cachesize":  %5%,
+    "cache-policy": "%6%",
     "storagetype": "ssbd",
     "storageconfig": {
         "hosts": [

@@ -7,7 +7,7 @@
 #include "serializer.hpp"
 #include "storage.hpp"
 #include "scope-exit.hpp"
-#include "uuid-gen.hpp"
+#include "uuid.hpp"
 
 #include <boost/iostreams/device/array.hpp>
 #include <boost/iostreams/stream.hpp>

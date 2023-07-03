@@ -1,7 +1,7 @@
 #pragma once
 
-#ifndef UUID_GEN_HPP__
-#define UUID_GEN_HPP__
+#ifndef UUID_HPP__
+#define UUID_HPP__
 
 #include "serializer.hpp"
 
@@ -44,6 +44,12 @@ struct uuid : public pack::key_t
                 c = '_';
         return raw_encode;
     }
+
+    auto short_hash() const -> std::string
+    {
+        std::string const base64 = encode_base64();
+        return base64.substr(0, 6);
+    }
 };
 
 template <typename RangeType>
@@ -85,6 +91,23 @@ uuid get_uuid(std::string const& buffer)
     return id;
 }
 
+uuid gen_uuid_static_seed(std::string const& any)
+{
+    static std::mt19937 rng;
+    uuid id;
+    Poco::Crypto::DigestEngine engine{"SHA256"};
+
+    int sum = std::accumulate(any.begin(), any.end(), 0);
+    rng.seed(sum);
+    engine.update(any.data(), any.size());
+
+    Poco::DigestEngine::Digest const& digest = engine.digest();
+
+    std::copy(digest.begin(), digest.end(), id.begin());
+//    std::cout << Poco::DigestEngine::digestToHex(digest) << "\n";
+    return id;
+}
+
 uuid gen_uuid()
 {
     static std::mt19937 rng;
@@ -107,8 +130,12 @@ uuid gen_uuid()
     return id;
 }
 
+auto up_cast(pack::key_t const& key) -> uuid const& {
+    return *static_cast<uuid const*>(&key);
+}
+
 auto encode_base64(pack::key_t const& key) -> std::string {
-    return to_uuid(key).encode_base64();
+    return up_cast(key).encode_base64();
 }
 
 auto decode_base64(std::string& base64str) -> uuid
@@ -134,6 +161,13 @@ auto operator << (std::ostream &os, uuid const& id) -> std::ostream&
     return os;
 }
 
+auto hash(uuid const& k) -> std::size_t
+{
+    std::size_t seed = 0x1b873593;
+    pack::hash::range(seed, k.begin(), k.end());
+    return seed;
+}
+
 int gen_rand_number()
 {
     static thread_local std::mt19937 rng(std::random_device{}());
@@ -143,5 +177,4 @@ int gen_rand_number()
 }
 
 } // namespace uuid
-
-#endif // UUID_GEN_HPP__
+#endif // UUID_HPP__

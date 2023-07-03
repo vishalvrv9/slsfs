@@ -210,7 +210,7 @@ int main(int argc, char *argv[])
 
     boost::asio::io_context ioc;
     slsfs::uuid::uuid server_id = slsfs::uuid::gen_uuid_static_seed(announce);
-    slsfs::server::tcp_server server{ioc, port, server_id, announce, resultfile};
+    slsfs::server::tcp_server server{ioc, port, server_id, announce, false, resultfile};
 
     slsfs::server::set_policy_filetoworker(server, "active-load-balance", "");
     slsfs::server::set_policy_launch      (server, "worker-launch-fix-pool", fmt::format("64:{}", total_df));

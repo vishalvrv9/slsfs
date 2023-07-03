@@ -39,23 +39,26 @@ int main(int argc, char* argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("listen,l",  po::value<unsigned short>()->default_value(12000),            "listen on this port")
-        ("verbose,v", po::value<std::string>(&verbosity_values)->implicit_value(""),"log verbosity")
-        ("init",      po::bool_switch(),                                            "reset all system (clear zookeeper entries)")
-        ("initint",   po::value<int>()->default_value(0),                           "reset all system with 0, 1")
-        ("thread",    po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
-        ("server-id", po::value<double>()->default_value(-1.0),                     "server id position in ring [0-1]")
-        ("announce",  po::value<std::string>(),                                     "announce this ip address for other proxy to connect")
-        ("report",    po::value<std::string>()->default_value("/dev/null"),         "path to save report every seconds")
-        ("policy-filetoworker",      po::value<std::string>(),                      "file to worker policy name")
-        ("policy-filetoworker-args", po::value<std::string>()->default_value(""),   "file to worker policy name extra args")
-        ("policy-launch",            po::value<std::string>(),                      "launch policy name")
-        ("policy-launch-args",       po::value<std::string>()->default_value(""),   "launch policy name extra args")
-        ("policy-keepalive",         po::value<std::string>(),                      "keepalive policy name")
-        ("policy-keepalive-args",    po::value<std::string>()->default_value(""),   "keepalive policy name extra args")
-        ("worker-config",            po::value<std::string>(),                      "worker config json file path to use")
-        ("max-function-count",       po::value<int>()->default_value(0),            "marks the max random function name to use")
-        ("blocksize",                po::value<int>()->default_value(4096),         "worker config blocksize");
+        ("listen,l",   po::value<unsigned short>()->default_value(12000),            "listen on this port")
+        ("verbose,v",  po::value<std::string>(&verbosity_values)->implicit_value(""),"log verbosity")
+        ("new-cluster",po::bool_switch(),                                            "create new system (clear zookeeper entries)")
+        ("thread",     po::value<int>()->default_value(std::thread::hardware_concurrency()), "# of thread")
+        ("server-id",  po::value<double>()->default_value(-1.0),                     "server id position in ring [0-1]")
+        ("announce",   po::value<std::string>(),                                     "announce this ip address for other proxy to connect")
+        ("report",     po::value<std::string>()->default_value("/dev/null"),         "path to save report every seconds")
+        ("policy-filetoworker",      po::value<std::string>(),                       "file to worker policy name")
+        ("policy-filetoworker-args", po::value<std::string>()->default_value(""),    "file to worker policy name extra args")
+        ("policy-launch",            po::value<std::string>(),                       "launch policy name")
+        ("policy-launch-args",       po::value<std::string>()->default_value(""),    "launch policy name extra args")
+        ("policy-keepalive",         po::value<std::string>(),                       "keepalive policy name")
+        ("policy-keepalive-args",    po::value<std::string>()->default_value(""),    "keepalive policy name extra args")
+        ("enable-direct-connection", po::bool_switch(),                              "enable direct connection")
+        ("enable-cache",             po::bool_switch(),                              "enable cache (default=false)")
+        ("cache-size",               po::value<int>()->default_value(100),           "cache size (MB)")
+        ("cache-policy",             po::value<std::string>()->default_value(""),    "cache policy: [LRU]")
+        ("worker-config",            po::value<std::string>(),                       "worker config json file path to use")
+        ("max-function-count",       po::value<int>()->default_value(0),             "marks the max random function name to use")
+        ("blocksize",                po::value<int>()->default_value(4096),          "worker config blocksize");
     po::positional_options_description pos_po;
     po::variables_map vm;
     po::store(po::command_line_parser(argc, argv)
@@ -75,17 +78,21 @@ int main(int argc, char* argv[])
     int const verbosity = verbosity_values.size();
 
     slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
-    BOOST_LOG_TRIVIAL(trace) << "set verbosity=" << verbosity;
+    BOOST_LOG_TRIVIAL(debug) << "set verbosity=" << verbosity;
 
     int const worker  = vm["thread"].as<int>();
     net::io_context ioc {worker};
 
-    unsigned short const port     = vm["listen"].as<unsigned short>();
-    std::string const announce    = vm["announce"].as<std::string>();
-    std::string const save_report = vm["report"].as<std::string>();
-    int  const blocksize          = vm["blocksize"].as<int>();
-    bool const init_cluster       = vm["init"].as<bool>();
-    double const server_id_location = vm["server-id"].as<double>();
+    unsigned short const port         = vm["listen"].as<unsigned short>();
+    std::string    const announce     = vm["announce"].as<std::string>();
+    std::string    const save_report  = vm["report"].as<std::string>();
+    int            const blocksize    = vm["blocksize"].as<int>();
+    bool           const enable_ddf   = vm["enable-direct-connection"].as<bool>();
+    bool           const enable_cache = vm["enable-cache"].as<bool>();
+    int            const cache_size   = vm["cache-size"].as<int>() * 1024 * 1024;
+    std::string    const cache_policy = vm["cache-policy"].as<std::string>();
+    bool           const init_cluster = vm["new-cluster"].as<bool>();
+    double const server_id_location   = vm["server-id"].as<double>();
 
     slsfs::uuid::uuid server_id;
     if (0 <= server_id_location && server_id_location <= 1) // set the id according to fix location
@@ -108,10 +115,18 @@ int main(int argc, char* argv[])
 
         std::stringstream template_config;
         template_config << worker_configuration.rdbuf();
-        worker_config = (boost::format(template_config.str()) % announce % port % blocksize).str();
+
+        BOOST_LOG_TRIVIAL(trace) << "content of config: " << template_config.str();
+        worker_config = (boost::format(template_config.str())
+                         % announce
+                         % port
+                         % blocksize
+                         % (enable_cache? "true" : "false")
+                         % cache_size
+                         % cache_policy).str();
     }
 
-    tcp_server server{ioc, port, server_id, announce, save_report};
+    tcp_server server{ioc, port, server_id, announce, enable_ddf, save_report};
 
     set_policy_filetoworker(server, vm["policy-filetoworker"].as<std::string>(), vm["policy-filetoworker-args"].as<std::string>());
     set_policy_launch      (server, vm["policy-launch"]      .as<std::string>(), vm["policy-launch-args"]      .as<std::string>());
@@ -126,7 +141,7 @@ int main(int argc, char* argv[])
 
     slsfs::zookeeper::zookeeper zoo {ioc, server.launcher(), server_id, announce_buf};
 
-    if (init_cluster || vm["initint"].as<int>() != 0)
+    if (init_cluster)
     {
         BOOST_LOG_TRIVIAL(info) << "init cluster + init zookeeper";
         zoo.reset();
@@ -147,6 +162,10 @@ int main(int argc, char* argv[])
     for(int i = 1; i < worker; i++)
         worker_threads.emplace_back([&ioc] { ioc.run(); });
     ioc.run();
+
+    // The destructor may not run in main(); join manually
+    for(std::jthread & th : worker_threads)
+        th.join();
 
     return EXIT_SUCCESS;
 }

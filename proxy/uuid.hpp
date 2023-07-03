@@ -44,7 +44,40 @@ struct uuid : public pack::key_t
                 c = '_';
         return raw_encode;
     }
+
+    auto short_hash() const -> std::string
+    {
+        std::string const base64 = encode_base64();
+        return base64.substr(0, 6);
+    }
 };
+
+template <typename RangeType>
+struct hash_compare
+{
+    static
+    auto hash (RangeType const& id) -> std::size_t
+    {
+        std::size_t seed = 0x1b873594;
+        pack::hash::range(seed, id.begin(), id.end());
+        return seed;
+    }
+
+    static
+    bool equal (RangeType const& lhs, RangeType const& rhs) {
+        return lhs == rhs;
+    }
+};
+
+inline
+auto to_uuid(pack::key_t &key) -> uuid& {
+    return *static_cast<uuid*>(&key);
+}
+
+inline
+auto to_uuid(pack::key_t const &key) -> uuid const & {
+    return *static_cast<uuid const*>(&key);
+}
 
 uuid get_uuid(std::string const& buffer)
 {
@@ -133,6 +166,14 @@ auto hash(uuid const& k) -> std::size_t
     std::size_t seed = 0x1b873593;
     pack::hash::range(seed, k.begin(), k.end());
     return seed;
+}
+
+int gen_rand_number()
+{
+    static thread_local std::mt19937 rng(std::random_device{}());
+    static thread_local std::uniform_int_distribution<int> dist(0, 9999);
+
+    return dist(rng);
 }
 
 } // namespace uuid

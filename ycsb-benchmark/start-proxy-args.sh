@@ -4,17 +4,16 @@ source avaliable-host.sh
 export hosts=("${hosts16[@]}")
 
 export EACH_CLIENT_ISSUE=1000
-export TOTAL_CLIENT=96
+export TOTAL_CLIENT=1
 export TOTAL_TIME_AVAILABLE=10000
 
 export QSIZE=1
-export QTEST=1
 export BUFSIZE=$(( 4096 * $QSIZE ))
 export UNIFORM_DIST="--uniform-dist"
 #export UNIFORM_DIST=""
 
 #change here
-export MEMO="directclient-Nxv6-3-size-$QSIZE-test-$QTEST"
+export MEMO="runtest-size-$QSIZE"
 
 #export CLIENT_TESTNAME=100-0
 #export CLIENT_TESTNAME=fill
@@ -49,21 +48,7 @@ export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compa
 
 ##### ----- proxy args ----- #####
 
-#export BACKEND_CONFIG=/backend/cassandra-repl3.json
-#export BACKEND_CONFIG=/backend/ssbd-basic-async.json
-#export BACKEND_CONFIG=/backend/ssbd.json
 export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
-#export BACKEND_CONFIG=/backend/ssbd-27-repl-none.json #replica=0
-#export BACKEND_CONFIG=/backend/ssbd-27-repl-2.json    #replica=1
-#export BACKEND_CONFIG=/backend/ssbd-repl-none.json
-#export BACKEND_CONFIG=/backend/ssbd-repl1.json
-#export BACKEND_CONFIG=/backend/ssbd-repl-none.json
-#export BACKEND_CONFIG=/backend/ssbd-debug.json
-#export BACKEND_CONFIG=/backend/ssbd-single.json
-#export BACKEND_CONFIG=/backend/ssbd-stripe.json
-#export BACKEND_CONFIG=/backend/ssbd-basic.json
-#export BACKEND_CONFIG=/backend/swift.json
-
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
 export BACKEND_BLOCKSIZE=4096
 
@@ -76,18 +61,11 @@ export POLICY_FILETOWORKER_ARGS=""
 export POLICY_LAUNCH=max-queue
 export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 
-#export POLICY_FILETOWORKER=lowest-load
+#export POLICY_FILETOWORKER=random-assign
 #export POLICY_FILETOWORKER_ARGS=""
 
-export POLICY_FILETOWORKER=random-assign
-export POLICY_FILETOWORKER_ARGS=""
-
-# [const-average-load]
-#export POLICY_LAUNCH=max-queue
-#export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
-
-export POLICY_LAUNCH=fix-pool
-export POLICY_LAUNCH_ARGS=10:16 #average queue = 2kb
+#export POLICY_LAUNCH=fix-pool
+#export POLICY_LAUNCH_ARGS=10:16 #average queue = 2kb
 
 # [const-time, moving-interval]
 #export POLICY_KEEPALIVE=const-time
@@ -96,10 +74,26 @@ export POLICY_KEEPALIVE=moving-interval-global
 export POLICY_KEEPALIVE_ARGS=5:120000:1000:50
 
 
-export INITINT=1;
+export ENABLE_CACHE="--enable-cache"
+export CACHE_SIZE="113" #MB
+export CACHE_POLICY="LRU"
+
+export NEW_CLUSTER="--new-cluster";
 export VERBOSE='-v'
 export MAX_FUNCTION_COUNT=15
 export PORT=12001
+
+export ENABLE_DIRECT_CONNECT=""
+
+## the set of ddf
+#export ENABLE_DIRECT_CONNECT="--enable-direct-connection"
+#
+#export POLICY_FILETOWORKER=random-assign
+#export POLICY_FILETOWORKER_ARGS=""
+#
+#export POLICY_LAUNCH=fix-pool
+#export POLICY_LAUNCH_ARGS=10:4 # 10 pending request; maintain 4 functions
+## endset
 
 start-proxy-remote()
 {
@@ -123,7 +117,7 @@ start-proxy-remote()
     fi
 
     if [[ "$2" == "noinit" ]]; then
-        ssh $h "echo 'INITINT=0' >> ./start-proxy-args.sh"
+        ssh $h "echo 'NEW_CLUSTER=\"\"' >> ./start-proxy-args.sh"
     fi
     ssh $h "/home/ubuntu/start-proxy.sh"
 }

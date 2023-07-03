@@ -21,9 +21,10 @@ docker run --privileged -d \
            --listen $PORT \
            --announce $IP \
            $VERBOSE \
+           ${NEW_CLUSTER} \
+           ${ENABLE_DIRECT_CONNECT} \
            --server-id                "$SERVER_ID" \
-           --report                   /tmp/proxy-report.json \
-           --initint                  "$INITINT" \
+           --report                   "/tmp/proxy-report.json" \
            --policy-filetoworker      "$POLICY_FILETOWORKER" \
            --policy-filetoworker-args "$POLICY_FILETOWORKER_ARGS" \
            --policy-launch            "$POLICY_LAUNCH" \
@@ -32,4 +33,7 @@ docker run --privileged -d \
            --policy-keepalive-args    "$POLICY_KEEPALIVE_ARGS" \
            --worker-config            "$BACKEND_CONFIG" \
            --max-function-count       "$MAX_FUNCTION_COUNT" \
-           --blocksize                "$BACKEND_BLOCKSIZE"
+           --blocksize                "$BACKEND_BLOCKSIZE" \
+           ${ENABLE_CACHE} \
+           --cache-size               "${CACHE_SIZE}" \
+           --cache-policy             "${CACHE_POLICY}"

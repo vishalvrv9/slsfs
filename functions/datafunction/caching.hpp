@@ -17,7 +17,6 @@
 namespace slsfsdf::cache
 {
 
-
 using frequency_map =
     oneapi::tbb::concurrent_hash_map<slsfs::pack::key_t,
                                      int,
@@ -35,49 +34,41 @@ using caching_map =
 class cache_entry
 {
 public:
-    std::chrono::high_resolution_clock::time_point timestamp;
-    slsfs::pack::key_t file_key;
-    std::uint32_t block_id;
-    std::uint32_t data_size;
+    std::chrono::high_resolution_clock::time_point timestamp_ = std::chrono::high_resolution_clock::now();
+    slsfs::pack::key_t const file_key_;
+    std::uint32_t const block_id_;
+    std::uint32_t const data_size_;
 
+    cache_entry(slsfs::pack::key_t const& key, std::uint32_t b_id, std::uint32_t datasize):
+        file_key_{key}, block_id_{b_id}, data_size_{datasize} {}
 
-    cache_entry(slsfs::pack::key_t key, std::uint32_t b_id, std::uint32_t datasize)
+    bool operator== (cache_entry const & rhs) const
     {
-        timestamp = std::chrono::high_resolution_clock::now();
-        file_key = key;
-        block_id = b_id;
-        data_size = datasize;
-    }
-
-    bool operator== (const cache_entry& rhs) const {
-        return this->file_key == rhs.file_key && this->block_id == rhs.block_id;
+        return file_key_ == rhs.file_key_ &&
+               block_id_ == rhs.block_id_;
     }
 };
 
 // Comapre object for comparing cache_entry objects
-struct cmp
+struct cache_entry_compare
 {
     bool operator() (cache_entry const& a, cache_entry const& b) const {
-        return std::tie(a.file_key, a.block_id) < std::tie(b.file_key, b.block_id);
+        return std::tie(a.file_key_, a.block_id_) < std::tie(b.file_key_, b.block_id_);
     }
 };
 
 // Implementation of an LRU cache
 class LRUCache
 {
-    class node
+    struct node
     {
-        public:
         cache_entry key;
         int value;
         node * prev;
         node * next;
 
-        node(cache_entry _key,int _value):
-            key{_key}
-        {
-            value = _value;
-        }
+        node(cache_entry const& k, int val):
+            key{k}, value {val} {}
     };
 
     std::mutex mtx_;
@@ -90,11 +81,11 @@ class LRUCache
     std::uint32_t cap;
     int cur_size_ = 0;
 
-    std::map<cache_entry, node *, cmp> m;
+    std::map<cache_entry, node *, cache_entry_compare> m;
 
     void addnode(node * temp)
     {
-        cur_size_ += temp->key.data_size;
+        cur_size_ += temp->key.data_size_;
         slsfs::log::log("(caching.addnode) Cache space = {}/{}", cur_size_ * 0.001, cap * 0.001);
 
         node * dummy = head->next;
@@ -102,13 +93,12 @@ class LRUCache
         temp->prev = head;
         temp->next = dummy;
         dummy->prev = temp;
-
     }
 
     void deletenode(node * temp)
     {
         // reducing current size of cache by size of deleted cache entry
-        cur_size_ -= temp->key.data_size;
+        cur_size_ -= temp->key.data_size_;
         slsfs::log::log("(caching.deletenode) Cache space = {}/{}", cur_size_ * 0.001, cap * 0.001);
 
         node * delnext = temp->next;
@@ -121,15 +111,15 @@ class LRUCache
     {
         slsfs::log::log("(caching.delete_entry_from_cache)");
         caching_map::accessor acc;
-        slsfs::log::log("(caching.delete_entry_from_cache) after accessor");
-        if (caching_map_ref_.find(acc, entry.file_key))
+        if (caching_map_ref_.find(acc, entry.file_key_))
         {
-            auto ret = acc->second.erase(entry.block_id);
-            if (ret) {
+            auto ret = acc->second.erase(entry.block_id_);
+            if (ret)
+            {
                 evictions++;
                 slsfs::log::log("(caching.delete_entry_from_cache) evictions so far = {}", evictions);
             }
-            slsfs::log::log("(caching.delete_entry_from_cache) erasure of block {}: {}", entry.block_id, ret);
+            slsfs::log::log("(caching.delete_entry_from_cache) erasure of block {}: {}", entry.block_id_, ret);
 
             if (acc->second.size() == 0)
             {
@@ -139,7 +129,7 @@ class LRUCache
         }
     }
 
-    public:
+public:
 
     // metrics
     long evictions = 0;
@@ -147,20 +137,18 @@ class LRUCache
     // Constructor for initializing the
     // cache capacity with the given value.
     LRUCache(std::uint32_t capacity, caching_map& caching_map_ref) :
-    caching_map_ref_(caching_map_ref)
+        caching_map_ref_(caching_map_ref)
     {
         cap = capacity;
         head->next = tail;
         tail->prev = head;
     }
 
-    node * get_head()
-    {
+    node * get_head() {
         return head;
     }
 
-    node * get_tail()
-    {
+    node * get_tail() {
         return tail;
     }
 
@@ -168,9 +156,6 @@ class LRUCache
     void set(cache_entry key)
     {
         std::lock_guard<std::mutex> lock{mtx_};
-
-        // cout << "Going to set the (key, value) : ("
-        //      << key << ", " << 0 << ")" << "\n";
 
         // if cache entry is found, delete existing to replace with new one
         if (m.find(key) != m.end())
@@ -181,10 +166,10 @@ class LRUCache
             // let emplace() replace existing entry in caching_map.block_map
         }
 
-        while (cur_size_ + key.data_size > cap)
+        while (cur_size_ + key.data_size_ > cap)
         {
             // delete this tail->prev->key from caching_map.block_map
-            slsfs::log::log("(caching.set) in while loop, cur size = {}, key.data_size = {}", cur_size_, key.data_size);
+            slsfs::log::log("(caching.set) in while loop, cur size = {}, key.data_size = {}", cur_size_, key.data_size_);
             delete_entry_from_cache(tail->prev->key);
 
             m.erase(tail->prev->key);
@@ -243,9 +228,8 @@ class cache
 
         std::vector<std::uint32_t> block_ids;
 
-        for (std::uint32_t currentpos = realpos; currentpos < endpos; currentpos += blocksize()){
+        for (std::uint32_t currentpos = realpos; currentpos < endpos; currentpos += blocksize())
             block_ids.push_back(currentpos / blocksize());
-        }
 
         return block_ids;
     }
@@ -258,27 +242,26 @@ public:
         eviction_policy = policy;
         slsfs::log::log("(cache) cache size: {}, policy: {}", block_limit, eviction_policy);
     }
-
     std::string eviction_policy = "LRU";
-
 
     ///////////////////////////// CACHE TRANSFER OPERATIONS ////////////////////////////////
 
     // Prepares cache and LRU tables for transfer
-    auto get_tables() -> std::vector<slsfs::pack::unit_t> {
+    auto get_tables() -> std::vector<slsfs::pack::unit_t>
+    {
         std::vector<slsfs::pack::unit_t> toReturn;
 
         slsfs::log::log("(caching.get_tables) generating string of caching table");
 
         auto r = caching_map_.range();
-        for(caching_map::iterator i = r.begin(); i != r.end(); i++)
+        for (caching_map::iterator i = r.begin(); i != r.end(); i++)
         {
             slsfs::log::log("(caching.get_tables) i->first size: {}", i->first.end() - i->first.begin());
             std::copy (i->first.begin(), i->first.end(), std::back_inserter(toReturn));
             toReturn.push_back(':');
 
             auto r_b = i->second.range();
-            for(block_map::iterator i_b = r_b.begin(); i_b != r_b.end(); i_b++)
+            for (block_map::iterator i_b = r_b.begin(); i_b != r_b.end(); i_b++)
             {
                 std::array<std::uint8_t, 4> buf;
                 slsfs::log::log("(caching.get_tables) first = {} ", i_b->first);
@@ -293,10 +276,8 @@ public:
 
                 std::copy(buf_size.begin(), buf_size.end(), std::back_inserter(toReturn));
 
-
-                if (std::next(i_b) != r_b.end()){
+                if (std::next(i_b) != r_b.end())
                     toReturn.push_back(',');
-                }
             }
 
             toReturn.push_back(' ');
@@ -304,19 +285,19 @@ public:
 
         // LRU Transfer table
         auto iterator = lru_cache_.get_tail()->prev;
-        while(iterator != lru_cache_.get_head())
+        while (iterator != lru_cache_.get_head())
         {
-            slsfs::log::log("(caching.get_tables) cache entry block_id: {}", iterator->key.block_id);
-            std::copy (iterator->key.file_key.begin(), iterator->key.file_key.end(), std::back_inserter(toReturn));
+            slsfs::log::log("(caching.get_tables) cache entry block_id: {}", iterator->key.block_id_);
+            std::copy (iterator->key.file_key_.begin(), iterator->key.file_key_.end(), std::back_inserter(toReturn));
             toReturn.push_back('.');
 
             std::array<std::uint8_t, 4> buf;
-            std::memcpy(buf.data(), &iterator->key.block_id, 4);
+            std::memcpy(buf.data(), &iterator->key.block_id_, 4);
 
             std::copy(buf.begin(), buf.end(), std::back_inserter(toReturn));
 
             std::array<std::uint8_t, 4> buf_size;
-            std::memcpy(buf_size.data(), &iterator->key.data_size, 4);
+            std::memcpy(buf_size.data(), &iterator->key.data_size_, 4);
 
             std::copy(buf_size.begin(), buf_size.end(), std::back_inserter(toReturn));
 
@@ -349,14 +330,11 @@ public:
             block_map blocks;
 
             caching_map::const_accessor acc;
-            if (!caching_map_.find(acc, file_key)){
+            if (!caching_map_.find(acc, file_key))
+            {
                 caching_map_.emplace(file_key, blocks);
                 acc.release();
             }
-
-            auto copyit = it;
-            for (int i=0; i<10; i++)
-                slsfs::log::log("(caching.build_table) ={}", (int)*copyit++);
 
             while (*it != ' ')
             {
@@ -399,11 +377,6 @@ public:
                 std::array<std::uint8_t, 4> buf;
                 std::copy_n (it, 4, buf.begin());
                 std::memcpy(&bid, buf.data(), 4);
-
-                auto copyit = it;
-                for (int i=0; i<10; i++)
-                    slsfs::log::log("(caching.build_table) iterator={}", (int)*copyit++);
-
 
                 // skipping the bid 4 bytes
                 std::advance(it, 4);
@@ -468,12 +441,12 @@ public:
         {
             slsfs::log::log("(read_from_cache) Cache hit on file");
             // Find needed block ids
-            auto block_ids = get_block_ids(input);
+            std::vector<std::uint32_t> block_ids = get_block_ids(input);
 
             slsfs::base::buf to_return;
             block_map::const_accessor block_acc;
             long block_c = 0;
-            for (auto block_id : block_ids)
+            for (std::uint32_t const block_id : block_ids)
             {
                 if (acc->second.find(block_acc, block_id))
                 {
@@ -481,9 +454,7 @@ public:
                     slsfs::log::log("(read_from_cache) Cache hit on block {}, size={}", block_id, block_acc->second.size());
 
                     if (eviction_policy != "FIFO")
-                    {
                         lru_cache_.set(cache_entry(input.uuid(), block_id, block_acc->second.size()));
-                    }
 
                     to_return.insert(
                         to_return.end(),
@@ -522,15 +493,15 @@ public:
         caching_map::const_accessor acc;
         if (caching_map_.find(acc, input.uuid()))
         {
-            auto block_ids = get_block_ids(input);
+            std::vector<std::uint32_t> block_ids = get_block_ids(input);
             slsfs::log::log("(write_to_cache) file found.");
 
-            for (std::uint32_t block_id : block_ids)
+            for (std::uint32_t const block_id : block_ids)
             {
                 slsfs::log::log("(write_to_cache) FOR loop iteration, block id from input: {}", block_id);
                 slsfs::base::buf toEmplace;
 
-                std::uint32_t copy_size = std::min(blocksize(), input.size() - ((block_id - input.position() / blocksize()) * blocksize()));
+                std::uint32_t const copy_size = std::min(blocksize(), input.size() - ((block_id - input.position() / blocksize()) * blocksize()));
 
                 std::copy_n(data + (block_id - (input.position() / blocksize())) * blocksize(),
                             copy_size,
@@ -541,7 +512,7 @@ public:
                 lru_cache_.set(cache_entry(input.uuid(), block_id, copy_size));
                 caching_map::accessor acc_mod;
                 if (caching_map_.find(acc_mod, input.uuid()))
-                acc_mod->second.emplace(block_id, toEmplace);
+                    acc_mod->second.emplace(block_id, toEmplace);
             }
         }
         else
@@ -549,8 +520,8 @@ public:
             slsfs::log::log("(write_to_cache) file not found. adding block map");
             block_map blocks;
 
-            auto block_ids = get_block_ids(input);
-            for (auto block_id : block_ids)
+            std::vector<std::uint32_t> block_ids = get_block_ids(input);
+            for (std::uint32_t const block_id : block_ids)
             {
                 slsfs::log::log("(write_to_cache) FOR loop iteration, block id from input: {}", block_id);
                 slsfs::base::buf toEmplace;

@@ -11,8 +11,11 @@
 #include <boost/signals2.hpp>
 #include <boost/exception/diagnostic_information.hpp>
 #include <boost/asio.hpp>
+#include <boost/lexical_cast.hpp>
+
 
 #include <slsfs.hpp>
+#include <string>
 #include <optional>
 
 namespace slsfsdf::server
@@ -62,7 +65,10 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
     std::uint16_t server_port_ = 2000;
     std::shared_ptr<tcp_server> tcp_server_ = nullptr;
 
-//    cache::cache cache_engine_{100, "LRU"};
+    bool const caching_;
+    int const cachesize_;
+    std::string const cache_policy_;
+    cache::cache cache_engine_;
 
     static
     auto log_timer(std::chrono::steady_clock::time_point now) -> std::string
@@ -99,10 +105,8 @@ class proxy_command : public std::enable_shared_from_this<proxy_command>
                 switch (ec.value())
                 {
                 case boost::system::errc::success: // timer timeout
-                {
                     self->close();
                     break;
-                }
                 case boost::system::errc::operation_canceled: // timer canceled
                     break;
                 default:
@@ -116,15 +120,20 @@ public:
     proxy_command(boost::asio::io_context& io_context,
                   std::shared_ptr<storage_conf> conf,
                   queue_map& qm,
-                  proxy_set& ps)
-        : io_context_{io_context},
-          socket_{io_context_},
-          recv_deadline_{io_context_},
-          datastorage_conf_{conf},
-          writer_{io_context_, socket_},
-          queue_map_{qm},
-          proxy_set_{ps},
-          tcp_server_{std::make_shared<tcp_server>(io_context_, *this, server_port_)} {
+                  proxy_set& ps,
+                  std::uint16_t server_port,
+                  bool caching,
+                  int cachesize,
+                  std::string const& cache_policy)
+        : io_context_{io_context}, socket_{io_context_}, recv_deadline_{io_context_},
+          datastorage_conf_{conf}, writer_{io_context_, socket_},
+          queue_map_{qm}, proxy_set_{ps},
+          server_port_{server_port},
+          tcp_server_{std::make_shared<tcp_server>(io_context_, *this, server_port)},
+          caching_{caching},
+          cachesize_{cachesize},
+          cache_policy_{cache_policy},
+          cache_engine_{cachesize, cache_policy} {
         tcp_server_->start_accept();
     }
 
@@ -132,12 +141,16 @@ public:
     {
         slsfs::pack::packet_pointer pack = std::make_shared<slsfs::pack::packet>();
         pack->header.type = slsfs::pack::msg_t::worker_dereg;
+        pack->data.buf = cache_engine_.get_tables();
+
+        slsfs::log::log("close: sending cache table to proxy");
         start_write(
             pack,
             [self=shared_from_this()] (boost::system::error_code ec, std::size_t length) {
                 self->socket_.shutdown(tcp::socket::shutdown_receive, ec);
-                slsfs::log::log<slsfs::log::level::info>("timer_reset: send shutdown");
-                std::exit(0);
+                slsfs::log::log("timer_reset: send shutdown");
+
+                self->io_context_.stop();
             });
     }
 
@@ -152,6 +165,8 @@ public:
                     return;
                 }
                 self->socket_.set_option(tcp::no_delay(true));
+
+                slsfs::log::log<slsfs::log::level::info>("Start listening from proxy {}", boost::lexical_cast<std::string>(self->socket_.remote_endpoint()));
 
                 boost::asio::ip::address_v4::bytes_type ip_bytes = self->get_host();
                 slsfs::log::log("connected. start write and listen");
@@ -178,7 +193,7 @@ public:
         boost::system::error_code ec;
 
         boost::asio::ip::tcp::resolver resolver(io_context_);
-        boost::asio::ip::tcp::resolver::query query (boost::asio::ip::host_name(),"");
+        boost::asio::ip::tcp::resolver::query query (boost::asio::ip::host_name(), "");
         boost::asio::ip::tcp::resolver::iterator it = resolver.resolve(query, ec);
         boost::asio::ip::tcp::resolver::iterator end;
 
@@ -248,13 +263,17 @@ public:
                     if (proxy_set::accessor acc;
                         !self->proxy_set_.find(acc, ep))
                     {
-                        slsfs::log::log("try connect to {}:{}", ep.address().to_string(), ep.port());
+                        slsfs::log::log("try connect to {}", boost::lexical_cast<std::string>(ep));
 
                         auto proxy_command_ptr = std::make_shared<slsfsdf::server::proxy_command>(
                             self->io_context_,
                             self->datastorage_conf_,
                             self->queue_map_,
-                            self->proxy_set_);
+                            self->proxy_set_,
+                            self->server_port_ + 1,
+                            self->caching_,
+                            self->cachesize_,
+                            self->cache_policy_);
 
                         proxy_command_ptr->start_connect(ep);
 
@@ -269,6 +288,19 @@ public:
                     std::memcpy(&duration_in_ms, read_buf->data(), sizeof(slsfs::pack::waittime_type));
                     self->waittime_ = slsfs::pack::ntoh(duration_in_ms) * 1ms;
                     //slsfs::log::log("set timer wait time to {}ms", slsfs::pack::ntoh(duration_in_ms));
+                    break;
+                }
+                case slsfs::pack::msg_t::cache_transfer:
+                {
+                    slsfs::log::log("received cache_transfer");
+                    if (self->cache_engine_.eviction_policy == "LRU" || "FIFO")
+                    {
+                        slsfs::log::log("executing cache_transfer");
+                        self->cache_engine_.build_cache(pack->data.buf, self->datastorage_conf_);
+                    }
+                    // for (auto chr : pack->data.buf)
+                    //     slsfs::log::log("received table : '{}'", (int)chr);
+                    // deserialize cache and reconstruct it
                     break;
                 }
 
@@ -420,27 +452,25 @@ public:
                 slsfs::base::buf buf (single_input.size());
                 std::memcpy(buf.data(), single_input.data(), single_input.size());
 
-                //cache_engine_.write_to_cache(single_input, buf);
+                cache_engine_.write_to_cache(single_input, buf.data());
                 return datastorage_conf_->perform(single_input);
             }
             else
             {
-//                // TODO: switch it to real type later please!!!!!!!
-//                auto cached_file = cache_engine_.read_from_cache(single_input);
-//
-//                if (cached_file)
-//                {
-//                    slsfs::log::log("CACHE HIT");
-//                    return cached_file.value();
-//                }
-//                else // Cache miss
-//                {
-//                    // write to cache
-//                    auto data = datastorage_conf_->perform(single_input);
-//                    cache_engine_.write_to_cache(single_input, data);
-//                    return data;
-//                }
-                return datastorage_conf_->perform(single_input);
+                std::optional<slsfs::base::buf> cached_file = cache_engine_.read_from_cache(single_input);
+
+                if (cached_file)
+                {
+                    slsfs::log::log("CACHE HIT");
+                    return cached_file.value();
+                }
+                else // Cache miss
+                {
+                    // write to cache
+                    slsfs::base::buf data = datastorage_conf_->perform(single_input);
+                    cache_engine_.write_to_cache(single_input, data.data());
+                    return data;
+                }
             }
             break;
 
@@ -461,7 +491,39 @@ public:
         switch (single_input.type())
         {
         case slsfs::jsre::type_t::file:
-            datastorage_conf_->start_perform(single_input, std::move(next));
+            if (single_input.operation() == slsfs::jsre::operation_t::write)
+            {
+                datastorage_conf_->start_perform(
+                    single_input,
+                    [next=std::move(next), single_input, self=shared_from_this()]
+                    (slsfs::base::buf buf) {
+
+                        // bug?
+                        // i.e. "OK" or "Error: abort"
+
+
+                        std::invoke(next, buf);
+                        slsfs::log::log("storage perform write finished. write to cache");
+                        if (self->caching_)
+                            self->cache_engine_.write_to_cache(single_input, single_input.data());
+                    });
+            }
+            else
+            {
+                std::optional<slsfs::base::buf> cached_file = cache_engine_.read_from_cache(single_input);
+
+                if (cached_file)
+                    std::invoke(next, cached_file.value());
+                else
+                    datastorage_conf_->start_perform(
+                        single_input,
+                        [next=std::move(next), single_input, self=shared_from_this()]
+                        (slsfs::base::buf buf) {
+                            std::invoke(next, buf);
+                            if (self->caching_)
+                                self->cache_engine_.write_to_cache(single_input, buf.data());
+                        });
+            }
             break;
 
         case slsfs::jsre::type_t::metadata:

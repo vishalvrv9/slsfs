@@ -5,7 +5,7 @@
 #include "storage-conf-swift.hpp"
 #include "storage-conf-ssbd-backend.hpp"
 #include "proxy-command.hpp"
-#include "uuid-gen.hpp"
+#include "uuid.hpp"
 #include "create-request.hpp"
 
 #include <slsfs.hpp>

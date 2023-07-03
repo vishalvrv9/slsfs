@@ -13,8 +13,6 @@
 namespace slsfsdf::server
 {
 
-class proxy_command;
-
 template<typename ProxyCommand>
 class direct_client_connection : public std::enable_shared_from_this<direct_client_connection<ProxyCommand>>
 {
@@ -56,10 +54,8 @@ public:
                 switch (pack->header.type)
                 {
                 case slsfs::pack::msg_t::trigger:
-                    // add log
                     self->start_trigger(pack);
                     break;
-
 
                 case slsfs::pack::msg_t::put:
                 case slsfs::pack::msg_t::get:
@@ -68,6 +64,7 @@ public:
                 case slsfs::pack::msg_t::set_timer:
                 case slsfs::pack::msg_t::proxyjoin:
                 case slsfs::pack::msg_t::err:
+                case slsfs::pack::msg_t::cache_transfer:
                 case slsfs::pack::msg_t::worker_dereg:
                 case slsfs::pack::msg_t::worker_push_request:
                 case slsfs::pack::msg_t::worker_response:
@@ -136,6 +133,8 @@ public:
     }
 };
 
+class proxy_command;
+
 class tcp_server : public std::enable_shared_from_this<tcp_server>
 {
     boost::asio::io_context& io_context_;
@@ -146,7 +145,9 @@ public:
     tcp_server(boost::asio::io_context& io_context, proxy_command& pc, boost::asio::ip::port_type port)
         : io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-          proxy_command_{pc} {}
+          proxy_command_{pc} {
+        slsfs::log::log<slsfs::log::level::info>("Creating listener on :{}", port);
+    }
 
     void start_accept()
     {
@@ -155,14 +156,7 @@ public:
             [self=shared_from_this()] (boost::system::error_code const& error, tcp::socket socket) {
                 if (error)
                 {
-                    std::filesystem::directory_iterator it{"/proc/self/fd"};
-
-                    int const count = std::count_if(
-                        it, std::filesystem::directory_iterator(),
-                        [](std::filesystem::directory_entry const& entry) { return entry.is_regular_file(); });
-
-                    slsfs::log::log<slsfs::log::level::error>("error accepting connections: {}. opened file count: {}",
-                                                              error.message(), count);
+                    slsfs::log::log<slsfs::log::level::error>("error accepting connections: {}.", error.message());
                     return;
                 }
 

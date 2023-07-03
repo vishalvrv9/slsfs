@@ -195,6 +195,7 @@ public:
                 case slsfs::pack::msg_t::set_timer:
                 case slsfs::pack::msg_t::proxyjoin:
                 case slsfs::pack::msg_t::err:
+                case slsfs::pack::msg_t::cache_transfer:
                 case slsfs::pack::msg_t::worker_dereg:
                 case slsfs::pack::msg_t::worker_push_request:
                 case slsfs::pack::msg_t::worker_response:
@@ -335,11 +336,11 @@ class tcp_server
     slsfs::launcher::launcher launcher_;
 
 public:
-    tcp_server(net::io_context& io_context, net::ip::port_type port, slsfs::uuid::uuid & id, std::string const& announce, std::string const& save_report)
+    tcp_server(net::io_context& io_context, net::ip::port_type port, slsfs::uuid::uuid & id, std::string const& announce, bool enable_direct_datafunction, std::string const& save_report)
         : id_{id},
           io_context_(io_context),
           acceptor_(io_context, tcp::endpoint(tcp::v4(), port)),
-          launcher_{io_context, id_, announce, port, save_report} {}
+          launcher_{io_context, id_, enable_direct_datafunction, announce, port, save_report} {}
 
     template<typename PolicyType, typename ... Args>
     void set_policy_filetoworker(Args&& ... args) {
