@@ -58,6 +58,7 @@ struct cache_entry_compare
 };
 
 // Implementation of an LRU cache
+// TODO: use concurrent data structures instead of mutex
 class LRUCache
 {
     struct node
@@ -105,6 +106,7 @@ class LRUCache
         node * delprev = temp->prev;
         delnext->prev = delprev;
         delprev->next = delnext;
+        delete temp;
     }
 
     void delete_entry_from_cache(cache_entry entry)
@@ -155,6 +157,7 @@ public:
     // This method works in O(1)
     void set(cache_entry key)
     {
+        // TODO: synchronize this in a more efficient way 
         std::lock_guard<std::mutex> lock{mtx_};
 
         // if cache entry is found, delete existing to replace with new one
