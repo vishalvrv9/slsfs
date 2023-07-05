@@ -25,143 +25,88 @@
 #include <random>
 #include <chrono>
 
-auto get_uuid (boost::asio::io_context &io_context, std::string const& child) -> boost::asio::ip::tcp::resolver::results_type
+void run (slsfs::client::client& slsfs_client)
 {
-    using namespace std::string_literals;
-
-    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
-
-    zk::future<zk::get_result> resp = client.get("/slsfs/proxy/"s + child);
-    zk::buffer const buf = resp.get().data();
-
-    auto const colon = std::find(buf.begin(), buf.end(), ':');
-
-    std::string host(std::distance(buf.begin(), colon), '\0');
-    std::copy(buf.begin(), colon, host.begin());
-
-    std::string port(std::distance(std::next(colon), buf.end()), '\0');
-    std::copy(std::next(colon), buf.end(), port.begin());
-
-    boost::asio::ip::tcp::resolver resolver(io_context);
-    BOOST_LOG_TRIVIAL(debug) << "resolving: " << host << ":" << port ;
-    return resolver.resolve(host, port);
-}
-
-auto setup_slsfs(boost::asio::io_context &io_context) -> std::pair<std::vector<slsfs::uuid::uuid>, std::vector<boost::asio::ip::tcp::resolver::results_type>>
-{
-    zk::client client = zk::client::connect("zk://zookeeper-1:2181").get();
-
-    std::vector<slsfs::uuid::uuid> new_proxy_list;
-    std::vector<boost::asio::ip::tcp::resolver::results_type> proxys;
-    zk::future<zk::get_children_result> children = client.get_children("/slsfs/proxy");
-
-    std::vector<std::string> list = children.get().children();
-
-    std::transform (list.begin(), list.end(),
-                    std::back_inserter(new_proxy_list),
-                    slsfs::uuid::decode_base64);
-
-    std::sort(new_proxy_list.begin(), new_proxy_list.end());
-
-    for (auto proxy : new_proxy_list)
-        proxys.push_back(get_uuid(io_context, proxy.encode_base64()));
-
-    BOOST_LOG_TRIVIAL(debug) << "start with " << proxys.size()  << " proxies";
-    return {new_proxy_list, proxys};
-}
-
-int pick_proxy(std::vector<slsfs::uuid::uuid> const& proxy_uuid, slsfs::pack::key_t& fileid)
-{
-    auto it = std::upper_bound (proxy_uuid.begin(), proxy_uuid.end(), fileid);
-    if (it == proxy_uuid.end())
-        it = proxy_uuid.begin();
-
-    return std::distance(proxy_uuid.begin(), it);
-}
-
-void send_cmd(slsfs::tcp::socket& s, slsfs::pack::packet_pointer ptr)
-{
-    auto pbuf = ptr->serialize();
-    BOOST_LOG_TRIVIAL(debug) << "sending request " << ptr->header;
-    boost::asio::write(s, boost::asio::buffer(pbuf->data(), pbuf->size()));
-
-    slsfs::pack::packet_pointer resp = std::make_shared<slsfs::pack::packet>();
-    std::vector<slsfs::pack::unit_t> headerbuf(slsfs::pack::packet_header::bytesize);
-    boost::asio::read(s, boost::asio::buffer(headerbuf.data(), headerbuf.size()));
-
-    resp->header.parse(headerbuf.data());
-    std::string data(resp->header.datasize, '\0');
-    boost::asio::read(s, boost::asio::buffer(data.data(), data.size()));
-    std::cout << data << "\n";
-}
-
-void run()
-{
-    boost::asio::io_context io_context;
-    auto&& [proxy_uuid, proxy_endpoint] = setup_slsfs(io_context);
-    std::vector<slsfs::tcp::socket> proxy_sockets;
-
-    for (unsigned int i = 0; i < proxy_endpoint.size(); i++)
-    {
-        proxy_sockets.emplace_back(io_context);
-        boost::asio::connect(proxy_sockets.back(), proxy_endpoint.at(i));
-    }
-
     while (true)
     {
         std::string cmd, arg1, arg2;
         std::cout << "cmd> ";
         std::cin >> cmd >> arg1;
 
-        slsfs::pack::packet_pointer ptr = nullptr;
+        slsfs::pack::packet_pointer request = nullptr;
 
         switch (slsfs::basic::sswitcher::hash(cmd))
         {
             using namespace slsfs::basic::sswitcher;
         case "ls"_:
-            ptr = slsfs::client::packet_create::ls(arg1);
+            request = slsfs::client::packet_create::ls(arg1);
             break;
         case "mkdir"_:
-            ptr = slsfs::client::packet_create::mkdir(arg1);
+            request = slsfs::client::packet_create::mkdir(arg1);
             break;
         case "addfile"_:
             std::cin >> arg2;
-            ptr = slsfs::client::packet_create::addfile(arg1, arg2);
+            request = slsfs::client::packet_create::addfile(arg1, arg2);
             break;
         case "write"_:
             std::cin >> arg2;
-            ptr = slsfs::client::packet_create::write(arg1, arg2);
+            request = slsfs::client::packet_create::write(arg1, arg2);
             break;
         case "read"_:
             std::cin >> arg2;
-            ptr = slsfs::client::packet_create::read(arg1, std::stoi(arg2));
+            request = slsfs::client::packet_create::read(arg1, std::stoi(arg2));
             break;
         default:
             BOOST_LOG_TRIVIAL(error) << "unknown cmd '" << cmd << "'";
             return;
         }
 
-        int index = pick_proxy(proxy_uuid, ptr->header.key);
-        slsfs::tcp::socket& s = proxy_sockets.at(index);
-
-        send_cmd(s, ptr);
+        std::cout << slsfs_client.send(request) << "\n";
     }
 }
 
-int main()
+int main(int argc, char *argv[])
 {
     slsfs::basic::init_log();
-#ifdef NDEBUG
-    boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::info);
-    constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_ERROR;
-#else
-    boost::log::core::get()->set_filter(
-        boost::log::trivial::severity >= boost::log::trivial::trace);
-    constexpr static ZooLogLevel loglevel = ZOO_LOG_LEVEL_INFO;
-#endif // NDEBUG
-    ::zoo_set_debug_level(loglevel);
+    std::string verbosity_values;
 
-    run();
+    namespace po = boost::program_options;
+    po::options_description desc{"Options"};
+    desc.add_options()
+        ("help,h", "Print this help messages")
+        ("verbose,v",  po::value<std::string>(&verbosity_values)->implicit_value(""),"log verbosity")
+        ("zookeeper", po::value<std::string>()->default_value("zk://zookeeper-1:2181"), "zookeeper host");
+
+    po::positional_options_description pos_po;
+    po::variables_map vm;
+    po::store(po::command_line_parser(argc, argv)
+              .options(desc)
+              .positional(pos_po).run(), vm);
+    po::notify(vm);
+
+    if (vm.count("help"))
+    {
+        BOOST_LOG_TRIVIAL(info) << desc;
+        return EXIT_SUCCESS;
+    }
+    if (vm.count("verbosity"))
+        verbosity_values += "v";
+
+    int const verbosity = verbosity_values.size();
+    boost::log::trivial::severity_level const level = boost::log::trivial::info;
+    slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
+    BOOST_LOG_TRIVIAL(debug) << "set verbosity=" << verbosity;
+
+    boost::asio::io_context io_context;
+    slsfs::client::client slsfs_client{io_context, vm["zookeeper"].as<std::string>()};
+
+    boost::asio::signal_set listener(io_context, SIGINT, SIGTERM);
+    listener.async_wait(
+        [&io_context] (boost::system::error_code const&, int signal_number) {
+            BOOST_LOG_TRIVIAL(debug) << "Stopping... sig=" << signal_number;
+            io_context.stop();
+        });
+
+    run(slsfs_client);
     return EXIT_SUCCESS;
 }

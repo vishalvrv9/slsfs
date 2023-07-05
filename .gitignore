@@ -10,4 +10,4 @@ ycsb-benchmark/trace_emulator_*
 ycsb-benchmark/test*
 
 ycsb-benchmark/slsfs-client-image-build/*.so.*
-ycsb-benchmark/slsfs-client-image-build/slsfs-client*
+ycsb-benchmark/slsfs-client-image-build/slsfs*

@@ -43,7 +43,7 @@ public:
         if (ws.empty())
             starter_ = default_pool_value_;
         else
-            starter_ = 1;
+            starter_ = 0;
     }
 
     void reschedule_a_job (worker_set& ws, job_ptr) override
@@ -51,7 +51,7 @@ public:
         if (ws.empty())
             starter_ = default_pool_value_;
         else
-            starter_ = 1;
+            starter_ = 0;
     }
 
     virtual

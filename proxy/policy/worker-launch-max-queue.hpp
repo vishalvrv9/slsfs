@@ -26,8 +26,8 @@ public:
     {
         ideal_worker_count_.store(queue_size_ / max_average_queue_);
 
-        BOOST_LOG_TRIVIAL(trace) << "queue size: " << queue_size_
-                                 << " internal count: " << ideal_worker_count_;
+        BOOST_LOG_TRIVIAL(debug) << "queue size: " << queue_size_
+                                 << " ideal count: " << ideal_worker_count_;
     }
 
     void finished_a_job (df::worker *, job_ptr job) override {

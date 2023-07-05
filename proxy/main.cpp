@@ -32,8 +32,6 @@ int main(int argc, char* argv[])
 {
     using namespace slsfs::server;
 
-    boost::log::trivial::severity_level level = boost::log::trivial::info;
-
     std::string verbosity_values;
     namespace po = boost::program_options;
     po::options_description desc{"Options"};
@@ -76,7 +74,7 @@ int main(int argc, char* argv[])
         verbosity_values += "v";
 
     int const verbosity = verbosity_values.size();
-
+    boost::log::trivial::severity_level const level = boost::log::trivial::info;
     slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
     BOOST_LOG_TRIVIAL(debug) << "set verbosity=" << verbosity;
 
