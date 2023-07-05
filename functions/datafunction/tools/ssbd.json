@@ -5,7 +5,7 @@
     "proxyport": "12001",
     "blocksize": 4096,
     "cachesize": 118000000,
-    "caching": false,
+    "caching": true,
     "cache-policy": "LRU",
     "storagetype": "ssbd",
     "storageconfig": {
