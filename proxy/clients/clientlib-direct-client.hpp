@@ -2,6 +2,7 @@
 #ifndef CLIENTLIB_DIRECT_CLIENT_HPP__
 
 #include <oneapi/tbb/concurrent_map.h>
+#include <oneapi/tbb/concurrent_hash_map.h>
 
 #include "clientlib.hpp"
 

@@ -11,7 +11,9 @@
 #include <zookeeper/zookeeper.h>
 #include <boost/signals2.hpp>
 #include <boost/asio.hpp>
-
+#include <boost/thread.hpp>
+#include <boost/thread/future.hpp>
+#include <oneapi/tbb/concurrent_hash_map.h>
 
 namespace slsfs::client
 {

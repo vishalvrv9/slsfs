@@ -3,6 +3,7 @@
 #include "../json-replacement.hpp"
 #include "../uuid.hpp"
 #include "clientlib.hpp"
+#include "clientlib-client-pool.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -107,6 +108,7 @@ int main(int argc, char *argv[])
             io_context.stop();
         });
 
+    //slsfs::client::client_pool<slsfs::client::client> pool{10, "zk://zookeeper-1:2181"};
     run(slsfs_client);
     return EXIT_SUCCESS;
 }
