@@ -7,36 +7,26 @@ TESTNAME="${BACKEND_CONFIG_NAME}_T+${1}_P+${POLICY_FILETOWORKER}+${POLICY_LAUNCH
 echo "testname: $TESTNAME"
 
 ssh proxy-1 docker rm -f proxy2&
+ssh proxy-2 docker rm -f proxy2&
+ssh proxy-3 docker rm -f proxy2&
 
 bash -c 'cd ../functions/datafunction; make function;' &
-bash -c 'cd ../proxy; make from-docker; ./transfer_images.sh' &
+bash -c 'source start-proxy-args.sh; cd ../proxy; make from-docker; ./transfer_images.sh' &
 bash -c "cd ../ssbd; make from-docker; ./transfer_images.sh; ./cleanup.sh; ./start.sh ${BACKEND_BLOCKSIZE}" &
 bash -c "cd ../../soufiane/serverlessfs/bench/trace-emulator; make from-docker; "&
 wait < <(jobs -p);
 
-start-proxy-remote()
-{
-    local h=192.168.0.135;
-    scp start-proxy* $h:
-    if [[ "$2" == "noinit" ]]; then
-        ssh $h "echo 'INITINT=0' >> ./start-proxy-args.sh"
-    fi
-    scp avaliable-host.sh $h:
-    ssh $h "/home/ubuntu/start-proxy.sh"
-}
-
 echo starting remote hosts
 
-start-proxy-remote proxy-1
-#./start-proxy.sh
+start-proxy-remote proxy-1 &
+start-proxy-remote proxy-2 noinit &
+start-proxy-remote proxy-3 noinit &
 
-docker run --rm hare1039/trace_emulator:build cat /bin/trace_emulator > /tmp/trace_emulator
+hostparis=("proxy-1:12001"
+           "proxy-2:12001"
+           "proxy-3:12001")
 
-chmod +x /tmp/trace_emulator
-
-scp /tmp/trace_emulator ow-invoker-1:
-
-ssh ow-invoker-9 "chmod +x trace_emulator"
+bash -c "cd slsfs-client-image-build; ./build.sh; ./transfer_images.sh" &
 
 wait < <(jobs -p);
 
@@ -47,12 +37,13 @@ done
 
 echo wait until proxy open
 
-while ! nc -z -v -w1 192.168.0.135 12001 2>&1 | grep -q succeeded; do
-    echo 'waiting proxy1 192.168.0.135:12001'
-    sleep 1;
+for pair in "${hostparis[@]}"; do
+    p=(`echo $pair | tr ':' ' '`)
+    while ! nc -z -v -w1 ${p[0]} ${p[1]} 2>&1 | grep -q succeeded; do
+        echo "waiting $pair";
+        sleep 1;
+    done
 done
-
-echo starting;
 
 wait < <(jobs -p);
 
@@ -66,6 +57,8 @@ start-watching-ow()
         sleep 60;
     done
 }
+
+echo starting;
 
 start-watching-ow &
 OW_WATCHING=$!

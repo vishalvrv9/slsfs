@@ -86,13 +86,13 @@ export PORT=12001
 export ENABLE_DIRECT_CONNECT=""
 
 ## the set of ddf
-#export ENABLE_DIRECT_CONNECT="--enable-direct-connection"
-#
-#export POLICY_FILETOWORKER=random-assign
-#export POLICY_FILETOWORKER_ARGS=""
-#
-#export POLICY_LAUNCH=fix-pool
-#export POLICY_LAUNCH_ARGS=10:4 # 10 pending request; maintain 4 functions
+export ENABLE_DIRECT_CONNECT="--enable-direct-connection"
+
+export POLICY_FILETOWORKER=random-assign
+export POLICY_FILETOWORKER_ARGS=""
+
+export POLICY_LAUNCH=fix-pool
+export POLICY_LAUNCH_ARGS=10:4 # 10 pending request; maintain 4 functions
 ## endset
 
 start-proxy-remote()

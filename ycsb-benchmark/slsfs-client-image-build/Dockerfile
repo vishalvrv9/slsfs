@@ -7,6 +7,4 @@ ADD librt.so.1 /lib/librt.so.1
 ADD slsfs-client-dynamic /bin/slsfs-client-dynamic
 ADD slsfs-client-ddf     /bin/slsfs-client-ddf
 ADD slsfs-cmd            /bin/slsfs-cmd
-RUN chmod +x /bin/slsfs-client-dynamic
-RUN chmod +x /bin/slsfs-client-ddf
-RUN chmod +x /bin/slsfs-cmd
+ADD slsfs-trace-emulator /bin/slsfs-trace-emulator

@@ -26,8 +26,24 @@ class client
 
     void reconfigure(std::vector<uuid::uuid> &new_sorted_proxy_list)
     {
-        //BOOST_LOG_TRIVIAL(trace) << "on reconfigure";
-        BOOST_LOG_TRIVIAL(info) << "proxy reconfigured. new proxy size = " << new_sorted_proxy_list.size();
+        // check if any change
+        if (new_sorted_proxy_list.size() == proxys_->size())
+        {
+            bool changed = false;
+
+            for (uuid::uuid const & id : new_sorted_proxy_list)
+                if (auto acc = proxys_->find(id);
+                    acc == proxys_->end())
+                {
+                    changed = true;
+                    break;
+                }
+
+            if (not changed)
+                return;
+        }
+
+        BOOST_LOG_TRIVIAL(info) << "on reconfigure: new proxy size = " << new_sorted_proxy_list.size();
 
         auto new_proxy = std::make_shared<proxy_map>();
 
