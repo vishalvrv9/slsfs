@@ -8,6 +8,7 @@ ycsb-benchmark/*result*
 ycsb-benchmark/block-mappings-to-psb
 ycsb-benchmark/trace_emulator_*
 ycsb-benchmark/test*
+ycsb-benchmark/trace-emulator-test
 
 ycsb-benchmark/slsfs-client-image-build/*.so.*
 ycsb-benchmark/slsfs-client-image-build/slsfs*
