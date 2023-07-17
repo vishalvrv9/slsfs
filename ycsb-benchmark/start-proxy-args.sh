@@ -71,7 +71,7 @@ export POLICY_LAUNCH_ARGS=10:400 #average queue = 2kb
 #export POLICY_KEEPALIVE=const-time
 #export POLICY_KEEPALIVE_ARGS=100000
 export POLICY_KEEPALIVE=moving-interval-global
-export POLICY_KEEPALIVE_ARGS=5:120000:1000:50
+export POLICY_KEEPALIVE_ARGS=5:180000:1000:50
 
 
 export ENABLE_CACHE="--enable-cache"

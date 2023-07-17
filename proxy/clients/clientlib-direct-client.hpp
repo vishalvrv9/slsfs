@@ -58,7 +58,10 @@ class direct_client
         // check assigned endpoint is already in local connection list
         if (endpoint_socket_map::accessor acc;
             endpoint_socket_map_.find(acc, endpoint) && acc->second->is_open())
+        {
+            df_connection_map_.emplace(pack->header, acc->second);
             return acc->second;
+        }
 
         // if not, connect to remote and return
         auto df_socket = std::make_shared<tcp::socket>(io_context_);
@@ -101,7 +104,7 @@ class direct_client
         catch (boost::exception& e)
         {
             df_connection_map_.erase(pack->header);
-            //endpoint_socket_map_.erase(endpoint);
+            endpoint_socket_map_.erase(selected->remote_endpoint());
 
             using host_endpoint = boost::error_info<struct direct_datafunction_endpoint, boost::asio::ip::tcp::endpoint>;
             e << host_endpoint{selected->remote_endpoint()};
@@ -113,7 +116,7 @@ public:
     direct_client(boost::asio::io_context& io, std::string const& zkhost):
         io_context_{io}, client_{io, zkhost} {}
 
-    auto send(pack::packet_pointer pack) -> std::string
+    auto send (pack::packet_pointer pack) -> std::string
     {
         int retry_count = 0;
         do

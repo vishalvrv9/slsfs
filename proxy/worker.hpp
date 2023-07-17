@@ -76,7 +76,7 @@ public:
 
         for (auto unsafe_iterator = started_jobs_.begin(); unsafe_iterator != started_jobs_.end(); ++unsafe_iterator)
             on_worker_reschedule_(unsafe_iterator->second); // job
-        BOOST_LOG_TRIVIAL(info) << "worker [" << id_ << "] closed. Reschedule " << started_jobs_.size() << " jobs";
+        BOOST_LOG_TRIVIAL(info) << "worker [" << id_.short_hash() << "] closed. Reschedule " << started_jobs_.size() << " jobs";
     }
 
     void start_read_header()
