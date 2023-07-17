@@ -4,6 +4,7 @@
 #include "../uuid.hpp"
 #include "clientlib.hpp"
 #include "clientlib-client-pool.hpp"
+#include "clientlib-direct-client.hpp"
 
 #include <fmt/core.h>
 #include <boost/asio.hpp>
@@ -26,7 +27,8 @@
 #include <random>
 #include <chrono>
 
-void run (slsfs::client::client& slsfs_client)
+template<slsfs::client::SlsfsClient SlsfsClientType>
+void run (SlsfsClientType& slsfs_client)
 {
     while (true)
     {
@@ -75,7 +77,8 @@ int main(int argc, char *argv[])
     po::options_description desc{"Options"};
     desc.add_options()
         ("help,h", "Print this help messages")
-        ("verbose,v",  po::value<std::string>(&verbosity_values)->implicit_value(""),"log verbosity")
+        ("verbose,v",  po::value<std::string>(&verbosity_values)->implicit_value(""), "log verbosity")
+        ("direct",     po::bool_switch(),                                             "enable direct client")
         ("zookeeper", po::value<std::string>()->default_value("zk://zookeeper-1:2181"), "zookeeper host");
 
     po::positional_options_description pos_po;
@@ -92,14 +95,14 @@ int main(int argc, char *argv[])
     }
     if (vm.count("verbosity"))
         verbosity_values += "v";
-
     int const verbosity = verbosity_values.size();
     boost::log::trivial::severity_level const level = boost::log::trivial::info;
     slsfs::basic::init_log(static_cast<boost::log::trivial::severity_level>(level - static_cast<boost::log::trivial::severity_level>(verbosity)));
     BOOST_LOG_TRIVIAL(debug) << "set verbosity=" << verbosity;
 
+    bool const enable_direct = vm["direct"].as<bool>();
+
     boost::asio::io_context io_context;
-    slsfs::client::client slsfs_client{io_context, vm["zookeeper"].as<std::string>()};
 
     boost::asio::signal_set listener(io_context, SIGINT, SIGTERM);
     listener.async_wait(
@@ -108,7 +111,16 @@ int main(int argc, char *argv[])
             io_context.stop();
         });
 
-    //slsfs::client::client_pool<slsfs::client::client> pool{10, "zk://zookeeper-1:2181"};
-    run(slsfs_client);
+    if (enable_direct)
+    {
+        slsfs::client::client_pool<slsfs::client::direct_client> pool{10, "zk://zookeeper-1:2181"};
+        run(pool);
+    }
+    else
+    {
+        slsfs::client::client slsfs_client{io_context, vm["zookeeper"].as<std::string>()};
+        run(slsfs_client);
+    }
+
     return EXIT_SUCCESS;
 }
