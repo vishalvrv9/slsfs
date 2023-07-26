@@ -66,7 +66,7 @@ class zookeeper
 public:
     zookeeper(net::io_context& io, launcher::launcher &l, uuid::uuid &u, std::vector<char> &announce):
         io_context_{io},
-        client_{zk::client::connect("zk://zookeeper-1:2181").get()},
+        client_{zk::client::connect("zk://192.168.0.96:2183").get()},
         launcher_{l},
         uuid_{u},
         announce_buf_{announce} {

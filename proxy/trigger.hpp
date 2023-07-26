@@ -239,7 +239,7 @@ auto make_trigger(net::io_context& io, int const max_func_count = 0)
     rng.seed(rd());
     std::uniform_int_distribution<> dist(0, max_func_count);
 
-    std::string const url = fmt::format("https://ow-ctrl/api/v1/namespaces/_/actions/slsfs-datafunction-{}?blocking=false&result=false", dist(rng));
+    std::string const url = fmt::format("https://192.168.0.96/api/v1/namespaces/_/actions/slsfs-datafunction-{}?blocking=false&result=false", dist(rng));
     return std::make_shared<
                trigger<
                    beast::ssl_stream<
