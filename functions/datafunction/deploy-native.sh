@@ -21,7 +21,7 @@
 strip exec;
 zip -r hello.zip exec;
 
-for i in $(seq 0 15); do
+for i in $(seq 0 1); do
     wsk -i action update slsfs-datafunction-$i --native hello.zip --memory 256
 done
 

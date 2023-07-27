@@ -48,7 +48,7 @@ export UPLOAD_GDRIVE=1G0E_2yFEF4ZIh3F3mi2Rsy9IBK7W7QpYV4Vjsd2fgd4   #proxy-compa
 
 ##### ----- proxy args ----- #####
 
-export BACKEND_CONFIG=/backend/ssbd-27.json           #normal
+export BACKEND_CONFIG=/backend/ssbd-localhost.json           #normal
 export BACKEND_CONFIG_NAME=$(echo ${BACKEND_CONFIG} | sed 's/\/backend\///g' | sed 's/.json//g')
 export BACKEND_BLOCKSIZE=4096
 
@@ -80,12 +80,13 @@ export CACHE_POLICY="LRU"
 
 export NEW_CLUSTER="--new-cluster";
 export VERBOSE='-v'
-export MAX_FUNCTION_COUNT=15
+export MAX_FUNCTION_COUNT=1
 export PORT=12001
 
 export ENABLE_DIRECT_CONNECT=""
 
 ## the set of ddf
+
 export ENABLE_DIRECT_CONNECT="--enable-direct-connection"
 
 export POLICY_FILETOWORKER=random-assign
