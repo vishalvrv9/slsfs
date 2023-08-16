@@ -26,6 +26,13 @@
 - go to `/openwhisk/ansible/environments/moc`and edit the host file with hosts required for invokers, schedulers, kafkas, etc.
 - run the openwhisk script again to successfully install openwhisk
 
+### Setup a Docker Overlay Network
+
+A Docker overlay network would be required to establish communication between standalone containers on different Docker daemons using an overlay network.
+
+[This Offical Docker Tutorial](https://docs.docker.com/network/network-tutorial-overlay/#use-an-overlay-network-for-standalone-containers) helps achieve that. 
+
+
 #### Tutorial for setting up 3 node version of slsfs with openwhisk
 
 - In the 3 node version, we setup a openwhisk cluster with 1 controller and 2 invoker nodes.
@@ -63,3 +70,15 @@ cd ~/slsfs/ycsb-benchmark
 # to run dynamic proxy test
 ./run-slsfs-client-dynamic-test.sh
 ```
+
+#### Changing benchmark configurations
+
+The above scripts run different pre-configured benchmarks. In order to change the proxy configurations, we can tweak the ```start-proxy-args.sh```. The different variables available are:
+
+- EACH_CLIENT_ISSUE : The number of requests each client issues
+- TOTAL_CLIENT : Total number of clients
+- TOTAL_TIME_AVAILABLE : Time until the client is up and running
+- ENABLE_DIRECT_CONNECT : To enable direct connection between client and datafunction
+- POLICY_FILETOWORKER : How the proxy assigns datafunction to client
+- ENABLE_CACHE : To enable caching 
+
