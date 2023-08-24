@@ -82,3 +82,14 @@ The above scripts run different pre-configured benchmarks. In order to change th
 - POLICY_FILETOWORKER : How the proxy assigns datafunction to client
 - ENABLE_CACHE : To enable caching 
 
+#### Experiments
+
+The experiments from the SLFS paper can be replicated to test and verify the benchmarks as below:
+
+- Figure 6: Placing blocks of the same file in the same PSB
+node vs. scattering them across different PSB nodes.
+  - To run this experiment, we need to run the ```~/slsfs/ycsb-benchmark/run-slsfs-client-test.sh``` with specific proxy arguments
+
+  - The ```BACKEND_CONFIG``` variable inside ```start-proxy-args.sh``` should point to specific backend configs:
+    - ```/proxy/backend/ssbd-27-repl-none.json``` : to run experiments with blocks of same file going to the same PSB
+    - ```/proxy/backend/ssbd-27-repl-2.json``` : to run experiments with blocks of same size getting scattered across different PSB nodes. This config creates 3 replicas of PSB nodes.
